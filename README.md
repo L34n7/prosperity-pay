@@ -60,6 +60,7 @@ As tabelas nascem com RLS habilitado e sem políticas públicas. No início, ope
 O painel administrativo usa uma estrutura responsiva compartilhada com sidebar recolhível, topbar, componentes financeiros e tema centralizado por tokens CSS. As rotas disponíveis nesta primeira versão são:
 
 - `/dashboard`: KPIs, volume de pagamentos, distribuição por status e transações recentes.
+- `/dashboard1`: conceito visual alternativo com navegação horizontal, transições cinematográficas e módulos interativos.
 - `/pagamentos`: busca, filtros e drawer com composição financeira e linha do tempo.
 - `/afiliados`: indicadores, busca, cards e detalhes do parceiro.
 - `/comissoes`: resumo financeiro, busca e filtros por status.

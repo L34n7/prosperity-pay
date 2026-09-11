@@ -1,0 +1,1168 @@
+.page {
+  --concept-bg: #030a08;
+  --concept-surface: rgba(9, 22, 17, 0.94);
+  --concept-surface-soft: rgba(13, 29, 22, 0.78);
+  --concept-line: rgba(126, 171, 150, 0.15);
+  --concept-text: #f6faf8;
+  --concept-muted: #91a59b;
+  --concept-subtle: #60766b;
+  --concept-emerald: #31e6aa;
+  --concept-emerald-deep: #0a9768;
+  --concept-gold: #d6aa45;
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% -12%, rgba(21, 118, 84, 0.24), transparent 34rem),
+    linear-gradient(180deg, #04100c 0%, var(--concept-bg) 32%, #020705 100%);
+  color: var(--concept-text);
+  isolation: isolate;
+}
+
+.ambientLight {
+  position: fixed;
+  z-index: -2;
+  top: 12%;
+  left: 50%;
+  width: min(74vw, 1050px);
+  height: 460px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(16, 132, 91, 0.12), transparent 67%);
+  filter: blur(42px);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.gridTexture {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  opacity: 0.2;
+  background-image:
+    linear-gradient(rgba(99, 148, 124, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 148, 124, 0.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: linear-gradient(to bottom, black, transparent 78%);
+  pointer-events: none;
+}
+
+.header {
+  position: relative;
+  z-index: 40;
+  height: 88px;
+  border-bottom: 1px solid rgba(139, 181, 161, 0.11);
+  background: rgba(3, 10, 8, 0.7);
+  backdrop-filter: blur(18px);
+}
+
+.headerInner {
+  display: grid;
+  width: min(1480px, calc(100% - 64px));
+  height: 100%;
+  grid-template-columns: 220px 1fr 220px;
+  align-items: center;
+  gap: 24px;
+  margin: 0 auto;
+}
+
+.navigation {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 2.5vw, 40px);
+}
+
+.navItem {
+  position: relative;
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #82968c;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 610;
+  letter-spacing: -0.01em;
+  transition:
+    color 240ms ease,
+    transform 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    letter-spacing 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.navItem::after {
+  position: absolute;
+  content: "";
+  right: 50%;
+  bottom: -2px;
+  left: 50%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--concept-gold), var(--concept-emerald));
+  box-shadow: 0 0 12px rgba(49, 230, 170, 0.35);
+  transition: left 300ms ease, right 300ms ease;
+}
+
+.navItem svg {
+  width: 0;
+  opacity: 0;
+  transform: translateX(6px) scale(0.75);
+  transition: width 280ms ease, opacity 230ms ease, transform 330ms ease;
+}
+
+.navItem:hover,
+.navItem:focus-visible {
+  color: #e9f6f0;
+  letter-spacing: 0.012em;
+  outline: none;
+  transform: scale(1.1);
+}
+
+.navItem:hover svg,
+.navItem:focus-visible svg,
+.navItemActive svg {
+  width: 16px;
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+
+.navItem:hover::after,
+.navItem:focus-visible::after,
+.navItemActive::after {
+  right: 0;
+  left: 0;
+}
+
+.navItemActive {
+  color: #c8f9e6;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.iconButton {
+  position: relative;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--concept-line);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--concept-muted);
+  cursor: pointer;
+  transition: 180ms ease;
+}
+
+.iconButton:hover {
+  border-color: rgba(49, 230, 170, 0.28);
+  background: rgba(49, 230, 170, 0.07);
+  color: var(--concept-emerald);
+}
+
+.iconButton i {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--concept-gold);
+}
+
+.profile {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.profile > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(49, 230, 170, 0.2);
+  border-radius: 10px;
+  background: linear-gradient(145deg, #17392a, #091610);
+  color: #bdf9e3;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.profile div {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile strong {
+  font-size: 0.72rem;
+}
+
+.profile small {
+  margin-top: 2px;
+  color: var(--concept-subtle);
+  font-size: 0.62rem;
+}
+
+.menuButton {
+  display: none;
+}
+
+.viewport {
+  position: relative;
+  width: min(1480px, calc(100% - 64px));
+  margin: 0 auto;
+  perspective: 1300px;
+  animation: cameraEnter 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: 50% 26%;
+}
+
+@keyframes cameraEnter {
+  from {
+    opacity: 0;
+    filter: blur(7px);
+    transform: perspective(1300px) translate3d(0, 20px, -85px) rotateX(1.25deg) scale(0.975);
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: perspective(1300px) translate3d(0, 0, 0) rotateX(0) scale(1);
+  }
+}
+
+.moduleView {
+  min-height: calc(100vh - 138px);
+  padding: 48px 0 36px;
+}
+
+.heroRow {
+  display: flex;
+  min-height: 150px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 40px;
+  margin-bottom: 30px;
+}
+
+.heroCopy {
+  max-width: 840px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid rgba(49, 230, 170, 0.16);
+  border-radius: 999px;
+  background: rgba(49, 230, 170, 0.055);
+  color: #8ee9c8;
+  font-size: 0.68rem;
+  font-weight: 680;
+  letter-spacing: 0.04em;
+}
+
+.heroCopy h1 {
+  margin: 17px 0 10px;
+  font-size: clamp(2.15rem, 4.3vw, 4.2rem);
+  font-weight: 620;
+  letter-spacing: -0.062em;
+  line-height: 0.98;
+}
+
+.heroCopy h1 em {
+  background: linear-gradient(92deg, #ead6a5 2%, #d6b45d 30%, #75d6ae 68%, #31e6aa 100%);
+  background-clip: text;
+  color: transparent;
+  font-style: normal;
+}
+
+.heroCopy p {
+  margin: 0;
+  color: var(--concept-muted);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.periodControl {
+  display: flex;
+  min-width: 160px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  border: 1px solid var(--concept-line);
+  border-radius: 11px;
+  background: rgba(8, 20, 15, 0.72);
+  color: var(--concept-muted);
+  font-size: 0.75rem;
+}
+
+.periodControl svg {
+  color: var(--concept-emerald);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.metricEntrance {
+  min-width: 0;
+  opacity: 0;
+  animation: cardReveal 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes cardReveal {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.metricCard {
+  position: relative;
+  min-height: 154px;
+  overflow: hidden;
+  padding: 18px;
+  border: 1px solid var(--concept-line);
+  border-radius: 15px;
+  background:
+    linear-gradient(145deg, rgba(15, 33, 25, 0.97), rgba(5, 15, 11, 0.97));
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.16);
+  animation: cardDrift 8s ease-in-out infinite;
+  transition: border-color 240ms ease, box-shadow 240ms ease, transform 320ms ease;
+}
+
+.metricEntrance:nth-child(2) .metricCard { animation-delay: -1.9s; }
+.metricEntrance:nth-child(3) .metricCard { animation-delay: -3.7s; }
+.metricEntrance:nth-child(4) .metricCard { animation-delay: -5.5s; }
+
+@keyframes cardDrift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -4px, 0); }
+}
+
+.metricCard::before {
+  position: absolute;
+  content: "";
+  top: -45px;
+  right: -35px;
+  width: 105px;
+  height: 105px;
+  border-radius: 50%;
+  background: rgba(49, 230, 170, 0.055);
+  filter: blur(22px);
+}
+
+.metricCard:hover {
+  border-color: rgba(49, 230, 170, 0.28);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.26), inset 0 1px rgba(255, 255, 255, 0.03);
+  transform: translateY(-6px) !important;
+}
+
+.metricGold::before {
+  background: rgba(214, 170, 69, 0.07);
+}
+
+.metricGold:hover {
+  border-color: rgba(214, 170, 69, 0.26);
+}
+
+.metricTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 17px;
+}
+
+.metricTop > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(49, 230, 170, 0.13);
+  border-radius: 9px;
+  background: rgba(49, 230, 170, 0.065);
+  color: var(--concept-emerald);
+}
+
+.metricGold .metricTop > span {
+  border-color: rgba(214, 170, 69, 0.14);
+  background: rgba(214, 170, 69, 0.07);
+  color: #e6c46f;
+}
+
+.metricTop em {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--concept-emerald);
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 690;
+}
+
+.metricTop em.trendDown {
+  color: #e7bd63;
+}
+
+.metricCard > p {
+  margin: 0 0 4px;
+  color: var(--concept-muted);
+  font-size: 0.7rem;
+}
+
+.metricCard > strong {
+  display: block;
+  overflow: hidden;
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  font-weight: 640;
+  letter-spacing: -0.045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metricCard > small {
+  display: block;
+  margin-top: 5px;
+  color: var(--concept-subtle);
+  font-size: 0.64rem;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(310px, 0.75fr);
+  gap: 14px;
+}
+
+.surfaceCard {
+  border: 1px solid var(--concept-line);
+  border-radius: 16px;
+  background: var(--concept-surface);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  animation: surfaceReveal 620ms 310ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes surfaceReveal {
+  from { opacity: 0; transform: translateY(28px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.cardHeading {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 21px;
+  border-bottom: 1px solid rgba(126, 171, 150, 0.1);
+}
+
+.cardHeading > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.cardHeading span {
+  color: var(--concept-subtle);
+  font-size: 0.65rem;
+}
+
+.cardHeading strong {
+  margin-top: 4px;
+  font-size: 0.91rem;
+  font-weight: 630;
+}
+
+.cardHeading button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--concept-line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--concept-muted);
+  cursor: pointer;
+  font-size: 0.66rem;
+  transition: 160ms ease;
+}
+
+.cardHeading button:hover {
+  border-color: rgba(49, 230, 170, 0.25);
+  color: var(--concept-emerald);
+}
+
+.cardHeading > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--concept-emerald);
+  box-shadow: 0 0 13px rgba(49, 230, 170, 0.55);
+}
+
+.chartArea {
+  overflow: hidden;
+  padding: 8px 13px 4px;
+}
+
+.chartArea svg {
+  display: block;
+  width: 100%;
+  min-height: 215px;
+}
+
+.chartGrid {
+  stroke: rgba(130, 163, 147, 0.11);
+  stroke-width: 1;
+  stroke-dasharray: 4 7;
+}
+
+.chartLine {
+  fill: none;
+  stroke: url(#conceptLine);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+  stroke-dasharray: 1100;
+  stroke-dashoffset: 1100;
+  animation: drawLine 1.1s 450ms ease-out forwards;
+}
+
+@keyframes drawLine {
+  to { stroke-dashoffset: 0; }
+}
+
+.chartDot {
+  fill: #08150f;
+  stroke: var(--concept-emerald);
+  stroke-width: 2.2;
+  opacity: 0;
+  animation: dotReveal 250ms 1.15s ease forwards;
+}
+
+@keyframes dotReveal {
+  to { opacity: 1; }
+}
+
+.chartLabel {
+  fill: var(--concept-subtle);
+  font-size: 10px;
+}
+
+.activityList {
+  padding: 7px 18px 10px;
+}
+
+.activityList > div {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 3px;
+  border-bottom: 1px solid rgba(126, 171, 150, 0.09);
+  opacity: 0;
+  animation: rowEnter 480ms ease forwards;
+}
+
+.activityList > div:last-child {
+  border-bottom: 0;
+}
+
+@keyframes rowEnter {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.activityIcon,
+.commissionIcon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(49, 230, 170, 0.065);
+  color: var(--concept-emerald);
+  font-size: 0.65rem;
+}
+
+.activityList p,
+.conceptTable p,
+.peopleCard p {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin: 0;
+}
+
+.activityList p strong,
+.conceptTable p strong,
+.peopleCard p strong {
+  overflow: hidden;
+  color: #e6efeb;
+  font-size: 0.69rem;
+  font-weight: 590;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activityList p small,
+.conceptTable p small,
+.peopleCard p small {
+  margin-top: 3px;
+  color: var(--concept-subtle);
+  font-size: 0.59rem;
+}
+
+.activityValue {
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.tableCard {
+  overflow: hidden;
+}
+
+.conceptTable {
+  padding: 6px 20px 10px;
+}
+
+.conceptTable > div {
+  display: grid;
+  grid-template-columns: 34px minmax(170px, 1.4fr) repeat(3, minmax(105px, 0.75fr)) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 65px;
+  border-bottom: 1px solid rgba(126, 171, 150, 0.09);
+  opacity: 0;
+  animation: rowEnter 480ms ease forwards;
+}
+
+.conceptTable > div:last-child {
+  border-bottom: 0;
+}
+
+.customerAvatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid rgba(49, 230, 170, 0.14);
+  border-radius: 9px;
+  background: linear-gradient(145deg, #17362a, #0b1912);
+  color: #aaf2d7;
+  font-size: 0.62rem;
+  font-weight: 690;
+}
+
+.planList {
+  padding: 8px 21px 16px;
+}
+
+.planList > div {
+  display: grid;
+  grid-template-columns: 130px minmax(160px, 1fr) 95px;
+  align-items: center;
+  gap: 16px;
+  min-height: 67px;
+  border-bottom: 1px solid rgba(126, 171, 150, 0.09);
+  opacity: 0;
+  animation: rowEnter 480ms ease forwards;
+}
+
+.planList > div:last-child {
+  border-bottom: 0;
+}
+
+.planList span,
+.planList p {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.planList strong {
+  font-size: 0.72rem;
+}
+
+.planList small {
+  margin-top: 3px;
+  color: var(--concept-subtle);
+  font-size: 0.61rem;
+}
+
+.planList > div > div {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.planList > div > div i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--concept-gold), var(--concept-emerald));
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: barGrow 750ms 600ms ease-out forwards;
+}
+
+@keyframes barGrow {
+  to { transform: scaleX(1); }
+}
+
+.planList p {
+  align-items: flex-end;
+}
+
+.renewalCard {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 30px;
+}
+
+.renewalCard::after {
+  position: absolute;
+  content: "";
+  right: -70px;
+  bottom: -80px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: rgba(49, 230, 170, 0.07);
+  filter: blur(28px);
+}
+
+.featureIcon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgba(214, 170, 69, 0.2);
+  border-radius: 11px;
+  background: rgba(214, 170, 69, 0.07);
+  color: #e2bf69;
+}
+
+.renewalCard p {
+  margin: 24px 0 4px;
+  color: var(--concept-muted);
+  font-size: 0.72rem;
+}
+
+.renewalCard > strong {
+  font-size: 2rem;
+  letter-spacing: -0.05em;
+}
+
+.renewalCard > small {
+  margin-top: 5px;
+  color: var(--concept-subtle);
+  font-size: 0.64rem;
+}
+
+.renewalCard > div {
+  width: 100%;
+  height: 5px;
+  margin-top: 24px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.renewalCard > div i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--concept-gold), var(--concept-emerald));
+  animation: barGrow 850ms 600ms ease-out both;
+  transform-origin: left;
+}
+
+.renewalCard em {
+  margin-top: 8px;
+  color: #82a394;
+  font-size: 0.61rem;
+  font-style: normal;
+}
+
+.peopleCard {
+  padding-bottom: 20px;
+}
+
+.peopleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+  padding: 15px 20px 0;
+}
+
+.peopleGrid article {
+  padding: 16px;
+  border: 1px solid rgba(126, 171, 150, 0.11);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.015);
+  opacity: 0;
+  animation: cardReveal 520ms ease forwards;
+  transition: border-color 180ms ease, transform 250ms ease;
+}
+
+.peopleGrid article:hover {
+  border-color: rgba(49, 230, 170, 0.23);
+  transform: translateY(-3px);
+}
+
+.peopleGrid article > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.peopleGrid article p small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--concept-emerald);
+}
+
+.peopleGrid dl {
+  display: grid;
+  grid-template-columns: 0.55fr 1fr 1fr;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding-top: 13px;
+  border-top: 1px solid rgba(126, 171, 150, 0.09);
+}
+
+.peopleGrid dl div {
+  display: flex;
+  flex-direction: column;
+}
+
+.peopleGrid dt {
+  color: var(--concept-subtle);
+  font-size: 0.58rem;
+}
+
+.peopleGrid dd {
+  margin: 4px 0 0;
+  color: #dce8e2;
+  font-size: 0.69rem;
+  font-weight: 620;
+}
+
+.commissionTable > div {
+  grid-template-columns: 34px minmax(190px, 1.5fr) repeat(3, minmax(90px, 0.7fr)) auto;
+}
+
+.footer {
+  display: flex;
+  width: min(1480px, calc(100% - 64px));
+  min-height: 50px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 auto;
+  border-top: 1px solid rgba(126, 171, 150, 0.09);
+  color: var(--concept-subtle);
+  font-size: 0.61rem;
+}
+
+.footer span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.footer i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--concept-emerald);
+  box-shadow: 0 0 10px rgba(49, 230, 170, 0.55);
+}
+
+@media (max-width: 1180px) {
+  .headerInner {
+    grid-template-columns: 190px 1fr 160px;
+    width: min(100% - 40px, 1480px);
+  }
+
+  .viewport,
+  .footer {
+    width: min(100% - 40px, 1480px);
+  }
+
+  .navigation {
+    gap: 18px;
+  }
+
+  .profile div {
+    display: none;
+  }
+
+  .metricCard > strong {
+    font-size: 1.4rem;
+  }
+}
+
+@media (max-width: 920px) {
+  .headerInner {
+    grid-template-columns: 1fr auto;
+  }
+
+  .navigation {
+    position: absolute;
+    top: 74px;
+    right: 20px;
+    left: 20px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid var(--concept-line);
+    border-radius: 13px;
+    background: rgba(5, 15, 11, 0.97);
+    box-shadow: 0 20px 55px rgba(0, 0, 0, 0.42);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-8px) scale(0.98);
+    transition: 180ms ease;
+  }
+
+  .navigationOpen {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+  }
+
+  .navItem {
+    min-height: 58px;
+    justify-content: center;
+    flex-direction: column;
+    gap: 5px;
+    border-radius: 9px;
+    font-size: 0.67rem;
+  }
+
+  .navItem:hover,
+  .navItem:focus-visible {
+    background: rgba(49, 230, 170, 0.06);
+    transform: scale(1.03);
+  }
+
+  .navItem::after {
+    right: 38%;
+    bottom: 2px;
+    left: 38%;
+  }
+
+  .navItem svg,
+  .navItem:hover svg,
+  .navItem:focus-visible svg,
+  .navItemActive svg {
+    width: 16px;
+    opacity: 1;
+    transform: none;
+  }
+
+  .menuButton {
+    display: grid;
+  }
+
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .renewalCard {
+    min-height: 290px;
+  }
+}
+
+@media (max-width: 680px) {
+  .header {
+    height: 76px;
+  }
+
+  .headerInner,
+  .viewport,
+  .footer {
+    width: calc(100% - 32px);
+  }
+
+  .navigation {
+    top: 68px;
+    right: 16px;
+    left: 16px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .profile {
+    display: none;
+  }
+
+  .moduleView {
+    padding-top: 30px;
+  }
+
+  .heroRow {
+    min-height: auto;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+    margin-bottom: 25px;
+  }
+
+  .heroCopy h1 {
+    margin-top: 15px;
+    font-size: clamp(2.25rem, 12vw, 3.25rem);
+  }
+
+  .heroCopy p {
+    font-size: 0.82rem;
+  }
+
+  .periodControl {
+    width: 100%;
+  }
+
+  .metricGrid {
+    display: flex;
+    margin-right: -16px;
+    overflow-x: auto;
+    padding-right: 16px;
+    scroll-snap-type: x mandatory;
+  }
+
+  .metricEntrance {
+    min-width: min(76vw, 275px);
+    scroll-snap-align: start;
+  }
+
+  .chartArea {
+    overflow-x: auto;
+  }
+
+  .chartArea svg {
+    width: 650px;
+  }
+
+  .activityList > div {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+
+  .conceptTable {
+    overflow-x: auto;
+  }
+
+  .conceptTable > div {
+    width: 800px;
+  }
+
+  .planList > div {
+    grid-template-columns: 100px minmax(100px, 1fr) 80px;
+    gap: 10px;
+  }
+
+  .peopleGrid {
+    grid-template-columns: 1fr;
+    padding-inline: 14px;
+  }
+
+  .cardHeading {
+    padding-inline: 16px;
+  }
+
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    padding: 13px 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .headerInner,
+  .viewport,
+  .footer {
+    width: calc(100% - 24px);
+  }
+
+  .headerActions {
+    gap: 6px;
+  }
+
+  .navigation {
+    right: 12px;
+    left: 12px;
+  }
+
+  .activityValue :global(.status-badge) {
+    display: none !important;
+  }
+
+  .planList {
+    padding-inline: 14px;
+  }
+
+  .renewalCard {
+    padding: 23px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viewport,
+  .metricEntrance,
+  .surfaceCard,
+  .activityList > div,
+  .conceptTable > div,
+  .planList > div,
+  .peopleGrid article,
+  .chartLine,
+  .chartDot,
+  .planList > div > div i,
+  .renewalCard > div i,
+  .metricCard {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+
+  .navItem,
+  .navItem::after,
+  .navItem svg,
+  .navigation {
+    transition-duration: 0.01ms !important;
+  }
+}
