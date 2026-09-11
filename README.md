@@ -55,6 +55,18 @@ Ela cria a fundação para provedores, clientes, afiliados, links, atribuições
 
 As tabelas nascem com RLS habilitado e sem políticas públicas. No início, operações administrativas do backend devem usar a service role somente no servidor.
 
+## Fundação visual
+
+O painel administrativo usa uma estrutura responsiva compartilhada com sidebar recolhível, topbar, componentes financeiros e tema centralizado por tokens CSS. As rotas disponíveis nesta primeira versão são:
+
+- `/dashboard`: KPIs, volume de pagamentos, distribuição por status e transações recentes.
+- `/pagamentos`: busca, filtros e drawer com composição financeira e linha do tempo.
+- `/afiliados`: indicadores, busca, cards e detalhes do parceiro.
+- `/comissoes`: resumo financeiro, busca e filtros por status.
+- `/checkout/basico`: checkout público demonstrativo com indicação por `?ref=CODIGO` e etapa PIX.
+
+Os dados visuais são demonstrativos e ficam isolados em `src/lib/dashboard/mock-data.ts`. Nenhuma cobrança real é iniciada pelos componentes de interface.
+
 ## Próximas etapas
 
 - Criar projeto Supabase e executar a migration inicial.
