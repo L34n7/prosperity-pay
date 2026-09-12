@@ -1,8 +1,10 @@
 import { env, requireEnv } from "@/lib/env";
 import type { PaymentProvider } from "../../payment-provider";
 import type {
+  CreateCheckoutInput,
   CreatePaymentInput,
   PaymentStatus,
+  ProviderCheckout,
   ProviderPayment,
   RefundPaymentInput,
 } from "../../types";
@@ -20,6 +22,12 @@ type MercadoPagoPaymentResponse = {
       ticket_url?: string;
     };
   };
+  init_point?: string;
+  sandbox_init_point?: string;
+};
+
+type MercadoPagoPreferenceResponse = {
+  id?: string;
   init_point?: string;
   sandbox_init_point?: string;
 };
@@ -45,8 +53,50 @@ function mapStatus(status?: string): PaymentStatus {
 }
 
 export class MercadoPagoProvider implements PaymentProvider {
+  constructor(private readonly token?: string) {}
+
   private get accessToken() {
-    return requireEnv(env.mercadoPagoAccessToken, "MERCADO_PAGO_ACCESS_TOKEN");
+    return this.token || requireEnv(env.mercadoPagoAccessToken, "MERCADO_PAGO_ACCESS_TOKEN");
+  }
+
+  async createCheckout(input: CreateCheckoutInput): Promise<ProviderCheckout> {
+    const body = await this.request<MercadoPagoPreferenceResponse>(
+      "/checkout/preferences",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          external_reference: input.externalReference,
+          items: [{
+            id: input.externalReference,
+            title: input.title,
+            currency_id: input.money.currency,
+            quantity: input.quantity ?? 1,
+            unit_price: input.money.amount,
+          }],
+          payer: input.payerEmail ? { email: input.payerEmail } : undefined,
+          marketplace_fee: input.marketplaceFeeAmount,
+          notification_url: input.notificationUrl,
+          back_urls: {
+            success: input.successUrl,
+            failure: input.failureUrl,
+            pending: input.pendingUrl,
+          },
+          auto_return: "approved",
+          date_of_expiration: input.expiresAt?.toISOString(),
+        }),
+      },
+      input.idempotencyKey,
+    );
+
+    if (!body.id || !body.init_point) {
+      throw new Error("Mercado Pago retornou preferencia incompleta.");
+    }
+    return {
+      provider: "mercadopago",
+      externalId: body.id,
+      checkoutUrl: body.init_point,
+      sandboxCheckoutUrl: body.sandbox_init_point,
+    };
   }
 
   private async request<T>(

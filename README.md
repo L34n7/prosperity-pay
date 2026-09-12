@@ -12,14 +12,20 @@ Camada de pagamentos da Prosperity, criada para começar com vendas próprias do
 - Mercado Pago como primeiro provedor
 - Vercel para deploy
 
-## Objetivo da primeira fase
+## Domínio implementado
 
-1. Checkout dos planos Prosperity.
-2. Registro de pagamentos e assinaturas.
-3. Atribuição de afiliados por link/referral.
-4. Regras configuráveis de comissão.
-5. Conciliação por webhook.
-6. Comissão pendente, disponível, paga ou estornada.
+O projeto suporta uma conta única por usuário e papéis contextuais de produtor,
+coprodutor e afiliado. Produtos possuem ofertas e escolhem explicitamente um dos
+modelos de liquidação:
+
+- `connected_account`: checkout criado com o token OAuth do produtor e split 1:1
+  entre produtor e Prosperity.
+- `prosperity_balance`: checkout criado na conta da Prosperity e distribuição
+  interna através do ledger.
+
+O cálculo financeiro fica centralizado em `FinancialDistributionService`, usa
+centavos inteiros e congela um snapshot por pedido. Caso a mesma pessoa seja
+coprodutora e tenha originado a venda como afiliada, a coprodução prevalece.
 
 ## Arquitetura
 
@@ -47,13 +53,38 @@ npm install
 npm run dev
 ```
 
-## Banco de dados
+## Banco de dados e segurança
 
-A migration inicial está em `supabase/migrations/202609100001_initial_payments.sql`.
+As migrations em `supabase/migrations` são a fonte versionada do schema aplicado.
+Elas criam 31 tabelas públicas com RLS habilitado e forçado, além de um schema
+`private` para credenciais criptografadas. O saldo é derivado dos lançamentos
+imutáveis do ledger. Saques usam lock transacional para impedir double-spend e
+estornos devem ser lançamentos compensatórios — registros financeiros não são
+apagados.
 
-Ela cria a fundação para provedores, clientes, afiliados, links, atribuições, regras de comissão, assinaturas, pagamentos, transações, comissões, repasses e eventos de webhook.
+Os tipos atuais do banco estão em `src/lib/supabase/database.types.ts`.
 
-As tabelas nascem com RLS habilitado e sem políticas públicas. No início, operações administrativas do backend devem usar a service role somente no servidor.
+## Backend HTTP
+
+- `POST /api/auth/signup`
+- `GET|POST /api/products`
+- `GET|POST /api/products/:id/offers`
+- `PUT /api/products/:id/affiliate-program`
+- `POST /api/affiliate-programs/:id/join`
+- `POST /api/products/:id/coproducers/invitations`
+- `POST /api/coproducer-invitations/respond`
+- `GET|POST /api/financial-profile/identity`
+- `GET|POST /api/financial-profile/pix`
+- `GET /api/balance`
+- `GET|POST /api/withdrawals`
+- `GET /api/integrations/mercadopago/connect`
+- `GET /api/integrations/mercadopago/callback`
+- `POST /api/checkout/orders` (exige `Idempotency-Key`)
+- `POST /api/webhooks/mercadopago`
+- rotas administrativas para KYC, Pix, conexão central e saques manuais
+
+O webhook valida `x-signature` por HMAC, busca o pagamento diretamente no
+Mercado Pago e só então atualiza o pedido e publica as alocações no ledger.
 
 ## Fundação visual
 
@@ -68,11 +99,13 @@ O painel administrativo usa uma estrutura responsiva compartilhada com sidebar r
 
 Os dados visuais são demonstrativos e ficam isolados em `src/lib/dashboard/mock-data.ts`. Nenhuma cobrança real é iniciada pelos componentes de interface.
 
-## Próximas etapas
+## Configuração externa necessária
 
-- Criar projeto Supabase e executar a migration inicial.
-- Configurar variáveis na Vercel.
-- Implementar autenticação administrativa.
-- Implementar checkout de plano e criação de pagamento no Mercado Pago.
-- Implementar validação e idempotência do webhook Mercado Pago.
-- Integrar ativação/renovação com o CRM Prosperity.
+- Preencher as variáveis de `.env.example` na Vercel.
+- Criar a aplicação Marketplace no Mercado Pago, habilitar OAuth/PKCE e registrar
+  a Redirect URL e o webhook HTTPS.
+- Conceder `admin` ou `finance_operator` em `user_roles` ao primeiro operador.
+- Registrar a conexão central uma vez em
+  `POST /api/admin/payment-connections/platform`.
+- Integrar as telas do dashboard aos endpoints; os protótipos visuais continuam
+  usando os dados demonstrativos isolados.

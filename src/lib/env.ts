@@ -10,6 +10,10 @@ export const env = {
   supabaseServiceRoleKey: readOptional("SUPABASE_SERVICE_ROLE_KEY"),
   mercadoPagoAccessToken: readOptional("MERCADO_PAGO_ACCESS_TOKEN"),
   mercadoPagoWebhookSecret: readOptional("MERCADO_PAGO_WEBHOOK_SECRET"),
+  mercadoPagoClientId: readOptional("MERCADO_PAGO_CLIENT_ID"),
+  mercadoPagoClientSecret: readOptional("MERCADO_PAGO_CLIENT_SECRET"),
+  mercadoPagoRedirectUri: readOptional("MERCADO_PAGO_REDIRECT_URI"),
+  financialEncryptionKey: readOptional("FINANCIAL_ENCRYPTION_KEY"),
 };
 
 export function requireEnv(value: string | undefined, name: string) {

@@ -45,3 +45,25 @@ export type RefundPaymentInput = {
   amount?: number;
   idempotencyKey: string;
 };
+
+export type CreateCheckoutInput = {
+  externalReference: string;
+  idempotencyKey: string;
+  title: string;
+  quantity?: number;
+  money: Money;
+  payerEmail?: string;
+  notificationUrl: string;
+  successUrl: string;
+  failureUrl: string;
+  pendingUrl: string;
+  marketplaceFeeAmount?: number;
+  expiresAt?: Date;
+};
+
+export type ProviderCheckout = {
+  provider: PaymentProviderCode;
+  externalId: string;
+  checkoutUrl: string;
+  sandboxCheckoutUrl?: string;
+};
