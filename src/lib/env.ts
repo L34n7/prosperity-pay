@@ -1,19 +1,19 @@
-function readOptional(name: string) {
-  const value = process.env[name]?.trim();
-  return value || undefined;
+function readOptional(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized || undefined;
 }
 
 export const env = {
-  appUrl: readOptional("NEXT_PUBLIC_APP_URL"),
-  supabaseUrl: readOptional("NEXT_PUBLIC_SUPABASE_URL"),
-  supabaseAnonKey: readOptional("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-  supabaseServiceRoleKey: readOptional("SUPABASE_SERVICE_ROLE_KEY"),
-  mercadoPagoAccessToken: readOptional("MERCADO_PAGO_ACCESS_TOKEN"),
-  mercadoPagoWebhookSecret: readOptional("MERCADO_PAGO_WEBHOOK_SECRET"),
-  mercadoPagoClientId: readOptional("MERCADO_PAGO_CLIENT_ID"),
-  mercadoPagoClientSecret: readOptional("MERCADO_PAGO_CLIENT_SECRET"),
-  mercadoPagoRedirectUri: readOptional("MERCADO_PAGO_REDIRECT_URI"),
-  financialEncryptionKey: readOptional("FINANCIAL_ENCRYPTION_KEY"),
+  appUrl: readOptional(process.env.NEXT_PUBLIC_APP_URL),
+  supabaseUrl: readOptional(process.env.NEXT_PUBLIC_SUPABASE_URL),
+  supabaseAnonKey: readOptional(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+  supabaseServiceRoleKey: readOptional(process.env.SUPABASE_SERVICE_ROLE_KEY),
+  mercadoPagoAccessToken: readOptional(process.env.MERCADO_PAGO_ACCESS_TOKEN),
+  mercadoPagoWebhookSecret: readOptional(process.env.MERCADO_PAGO_WEBHOOK_SECRET),
+  mercadoPagoClientId: readOptional(process.env.MERCADO_PAGO_CLIENT_ID),
+  mercadoPagoClientSecret: readOptional(process.env.MERCADO_PAGO_CLIENT_SECRET),
+  mercadoPagoRedirectUri: readOptional(process.env.MERCADO_PAGO_REDIRECT_URI),
+  financialEncryptionKey: readOptional(process.env.FINANCIAL_ENCRYPTION_KEY),
 };
 
 export function requireEnv(value: string | undefined, name: string) {
