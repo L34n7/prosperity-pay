@@ -1,0 +1,4 @@
+"use client";
+import { useState } from "react";
+import { requestJson } from "@/lib/operational";
+export function InvitationResponse({token}:{token:string}){const [status,setStatus]=useState("");async function respond(action:"accept"|"reject"){try{await requestJson("/api/coproducer-invitations/respond",{method:"POST",body:JSON.stringify({token,action})});setStatus(action==="accept"?"Convite aceito.":"Convite recusado.");}catch(cause){setStatus(cause instanceof Error?cause.message:"Falha ao responder.");}}return <main className="auth-page"><section className="auth-card"><h1>Convite de coprodução</h1>{status?<p role="status">{status}</p>:token?<div className="button-row"><button className="primary-button" onClick={()=>respond("accept")}>Aceitar</button><button className="secondary-button" onClick={()=>respond("reject")}>Recusar</button></div>:<p>Convite inválido.</p>}</section></main>}

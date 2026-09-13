@@ -5,8 +5,8 @@ import { toSlug } from "@/lib/domain/slug";
 
 export async function GET() {
   try {
-    const { supabase } = await requireUser();
-    const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
+    const { supabase, user } = await requireUser();
+    const { data, error } = await supabase.from("products").select("*").eq("producer_id", user.id).order("created_at", { ascending: false });
     if (error) throw error;
     return NextResponse.json({ products: data });
   } catch (error) { return jsonError(error); }

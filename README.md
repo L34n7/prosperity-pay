@@ -86,26 +86,23 @@ Os tipos atuais do banco estão em `src/lib/supabase/database.types.ts`.
 O webhook valida `x-signature` por HMAC, busca o pagamento diretamente no
 Mercado Pago e só então atualiza o pedido e publica as alocações no ledger.
 
-## Fundação visual
+## Aplicação operacional
 
-O painel administrativo usa uma estrutura responsiva compartilhada com sidebar recolhível, topbar, componentes financeiros e tema centralizado por tokens CSS. As rotas disponíveis nesta primeira versão são:
+- `/login`, `/cadastro`, `/esqueci-senha` e `/redefinir-senha`: Supabase Auth com cookies e confirmação por e-mail.
+- `/dashboard`, `/pagamentos`, `/comissoes`, `/saldo` e `/saques`: dados reais do usuário; a área interna exige sessão.
+- `/produtos` e `/produtos/[id]`: cadastro, gestão de ofertas, links de checkout, afiliados e convites de coprodução.
+- `/integracoes` e `/conta`: conexão Mercado Pago, identidade e chaves Pix.
+- `/checkout/[slug]`: oferta pública ativa com pagamento redirecionado para o Mercado Pago. O retorno consulta o status do pedido registrado, sem presumir aprovação pela URL.
+- `/admin`: acesso restrito a `admin` ou `finance_operator`, revisão de identidade, Pix, saques, conexões, usuários e logs.
 
-- `/dashboard`: KPIs, volume de pagamentos, distribuição por status e transações recentes.
-- `/dashboard1`: conceito visual alternativo com navegação horizontal, transições cinematográficas e módulos interativos.
-- `/pagamentos`: busca, filtros e drawer com composição financeira e linha do tempo.
-- `/afiliados`: indicadores, busca, cards e detalhes do parceiro.
-- `/comissoes`: resumo financeiro, busca e filtros por status.
-- `/checkout/basico`: checkout público demonstrativo com indicação por `?ref=CODIGO` e etapa PIX.
+`/dashboard1` redireciona ao dashboard real; os dados e componentes demonstrativos foram removidos. O checkout atual suporta **venda avulsa**; a criação de ofertas recorrentes é rejeitada enquanto a API de assinaturas não estiver implementada. O preço, split e comissões continuam calculados no backend. A taxa efetiva do processador, conhecida após a confirmação, gera um débito compensatório único no saldo interno do produtor; o snapshot inicial permanece imutável.
 
-Os dados visuais são demonstrativos e ficam isolados em `src/lib/dashboard/mock-data.ts`. Nenhuma cobrança real é iniciada pelos componentes de interface.
+## Ativação em produção
 
-## Configuração externa necessária
+1. Configure todas as variáveis de `.env.example` no projeto Vercel, especialmente URL e chave pública do Supabase, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_APP_URL`, `FINANCIAL_ENCRYPTION_KEY`, credenciais OAuth e segredo do webhook Mercado Pago. Nunca coloque service role, token ou chave de criptografia em variáveis `NEXT_PUBLIC_`.
+2. Configure no Supabase Auth a URL pública do site e os redirects `/auth/confirm` e `/redefinir-senha`; confirme as configurações de e-mail. Configure na aplicação Mercado Pago o redirect HTTPS que coincide com `MERCADO_PAGO_REDIRECT_URI` e o webhook `/api/webhooks/mercadopago`.
+3. Cadastre a primeira conta, confirme o e-mail e atribua **manualmente** o papel de operador ao usuário correto em `user_roles`. Não há promoção automática do primeiro cadastro para administrador.
+4. Acesse `/admin` e configure a conexão central com o token da conta Prosperity caso vá usar `prosperity_balance`. Para recebimento direto, cada produtor conecta sua própria conta em `/integracoes`.
+5. Crie produto e oferta, ative ambos, faça uma compra de teste no Mercado Pago e confira o retorno e o webhook antes de usar em produção.
 
-- Preencher as variáveis de `.env.example` na Vercel.
-- Criar a aplicação Marketplace no Mercado Pago, habilitar OAuth/PKCE e registrar
-  a Redirect URL e o webhook HTTPS.
-- Conceder `admin` ou `finance_operator` em `user_roles` ao primeiro operador.
-- Registrar a conexão central uma vez em
-  `POST /api/admin/payment-connections/platform`.
-- Integrar as telas do dashboard aos endpoints; os protótipos visuais continuam
-  usando os dados demonstrativos isolados.
+As verificações de identidade e chaves Pix exigem revisão humana. Um operador deve comprovar a identidade por um procedimento externo e registrar a referência ao aprovar; os saques são manuais e pedem referência do comprovante para marcar como pagos. O projeto ainda não envia convites por e-mail automaticamente: copie o link retornado na gestão do produto.

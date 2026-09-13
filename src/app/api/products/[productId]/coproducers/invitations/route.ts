@@ -8,6 +8,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ productId: string }> };
 
+export async function GET(_: Request, context: Context) {
+  try {
+    const { productId } = await context.params;
+    const { supabase } = await requireUser();
+    const { data: owns } = await supabase.rpc("owns_product", { target_product_id: productId });
+    if (!owns) return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+    const [{ data: invitations, error }, { data: participants, error: participantsError }] = await Promise.all([
+      supabase.from("coproducer_invitations").select("id,invited_email,participation_bps,status,expires_at").eq("product_id", productId).order("created_at", { ascending: false }),
+      supabase.from("product_participants").select("id,user_id,participation_bps,active,offer_id").eq("product_id", productId),
+    ]);
+    if (error || participantsError) throw error ?? participantsError;
+    return NextResponse.json({ invitations, participants });
+  } catch (error) { return jsonError(error); }
+}
+
 export async function POST(request: Request, context: Context) {
   try {
     const { productId } = await context.params;

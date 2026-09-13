@@ -1,41 +1,21 @@
-import { BadgeDollarSign, CircleDollarSign, Percent, WalletCards } from "lucide-react";
-import { PaymentStatusChart } from "@/components/dashboard/payment-status-chart";
 import { PaymentVolumeChart } from "@/components/dashboard/payment-volume-chart";
-import { StatCard } from "@/components/dashboard/stat-card";
-import { PaymentsTable } from "@/components/payments/payments-table";
+import { PaymentStatusChart } from "@/components/dashboard/payment-status-chart";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
+import { getFinanceView } from "@/lib/finance-view";
 import { PageHeader } from "@/components/ui/page-header";
-import { SelectField } from "@/components/ui/select-field";
-import { payments } from "@/lib/dashboard/mock-data";
-
-export default function DashboardPage() {
-  return (
-    <>
-      <PageHeader
-        eyebrow="Olá, Leandro"
-        title="Dashboard financeiro"
-        description="Acompanhe em tempo real o desempenho dos seus pagamentos."
-        action={
-          <SelectField defaultValue="30" aria-label="Selecionar período">
-            <option value="7">Últimos 7 dias</option>
-            <option value="30">Últimos 30 dias</option>
-            <option value="90">Últimos 90 dias</option>
-          </SelectField>
-        }
-      />
-
-      <section className="stats-grid">
-        <StatCard title="Volume processado" value="R$ 162.640" change={18.4} icon={WalletCards} description="Valor bruto de todos os pagamentos processados no período." />
-        <StatCard title="Receita líquida" value="R$ 139.820" change={15.2} icon={CircleDollarSign} description="Valor após taxas do processador e comissões de afiliados." />
-        <StatCard title="Comissões a pagar" value="R$ 4.842" change={-3.1} icon={BadgeDollarSign} accent="gold" description="Comissões pendentes e disponíveis que ainda não foram repassadas." />
-        <StatCard title="Taxa de aprovação" value="92,8%" change={2.6} icon={Percent} description="Percentual de pagamentos aprovados entre todas as tentativas." />
-      </section>
-
-      <section className="charts-grid">
-        <PaymentVolumeChart />
-        <PaymentStatusChart />
-      </section>
-
-      <PaymentsTable data={payments} compact />
-    </>
-  );
+import { formatCents } from "@/lib/operational";
+export const dynamic="force-dynamic";
+export default async function Page() {
+ const data=await getFinanceView();const {data:{user}}=await (await createClient()).auth.getUser();
+ const {data:profile}=await (await createClient()).from("profiles").select("full_name").eq("id",user!.id).maybeSingle();
+ const approved=data.payments.filter(p=>p.status==="approved");const volume=approved.reduce((sum,p)=>sum+Number(p.gross_amount_cents),0);
+ const ownRevenue=data.orders.filter(o=>approved.some(p=>p.order_id===o.id)).reduce((sum,o)=>sum+Number(o.financial_snapshots?.producer_amount_cents??0)-(o.settlement_model==="prosperity_balance"?Number(approved.find(p=>p.order_id===o.id)?.provider_fee_amount_cents??0):0),0);
+ const affiliate=data.commissions.filter(c=>c.commission_type==="affiliate").reduce((sum,c)=>sum+Number(c.amount_cents),0);
+ const coproducer=data.commissions.filter(c=>c.commission_type==="coproducer").reduce((sum,c)=>sum+Number(c.amount_cents),0);
+ return <><PageHeader eyebrow={`Olá, ${profile?.full_name?.split(" ")[0]??user?.email?.split("@")[0]??"usuário"}`} title="Dashboard financeiro" description="Acompanhe seus resultados confirmados."/>
+ <section className="operational-stats">{[["Vendas",String(approved.length)],["Volume processado",formatCents(volume)],["Receita dos produtos",formatCents(ownRevenue)],["Comissões de afiliado",formatCents(affiliate)],["Coprodução",formatCents(coproducer)],["Saldo pendente",formatCents(data.balance.pending_cents)],["Saldo disponível",formatCents(data.balance.available_cents)],["Saques",formatCents(data.withdrawals.reduce((sum,w)=>sum+Number(w.amount_cents),0))]].map(([label,value])=><article className="panel operational-stat" key={label}><span>{label}</span><strong>{value}</strong></article>)}</section>
+ {!data.orders.length&&<section className="panel operational-panel"><h2>Comece a vender</h2><p>Sua conta começa zerada. Configure seu primeiro produto e seus dados financeiros.</p><div className="button-row"><Link href="/produtos" className="primary-button">Criar produto</Link><Link href="/integracoes" className="secondary-button">Conectar Mercado Pago</Link><Link href="/conta" className="secondary-button">Dados financeiros</Link></div></section>}
+ <div className="finance-charts"><PaymentVolumeChart payments={data.payments}/><PaymentStatusChart payments={data.payments}/></div>
+ <section className="panel operational-panel"><h2>Pagamentos recentes</h2>{data.payments.length?data.payments.slice(0,5).map(p=><div className="record-row" key={p.id}><span>{p.external_reference}</span><strong>{formatCents(p.gross_amount_cents)}</strong><span>{p.status}</span></div>):<p>Nenhum pagamento registrado.</p>}<Link href="/pagamentos">Ver pagamentos →</Link></section></>;
 }

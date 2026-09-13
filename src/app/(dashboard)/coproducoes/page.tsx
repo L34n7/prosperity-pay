@@ -1,0 +1,5 @@
+import { requireUser } from "@/lib/auth/require-user";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { PageHeader } from "@/components/ui/page-header";
+export const dynamic="force-dynamic";
+export default async function Page(){const {user}=await requireUser();const {data,error}=await createAdminClient().from("product_participants").select("id,participation_bps,active,products(name),offers!product_participants_offer_id_fkey(name)").eq("user_id",user.id);if(error)throw error;return <><PageHeader title="Minhas coproduções" description="Produtos em que você participa como coprodutor."/><section className="panel operational-panel">{data?.length?data.map(p=><div className="record-row" key={p.id}><strong>{p.products?.name}</strong><span>{p.offers?.name??"Produto inteiro"}</span><span>{p.participation_bps/100}% · {p.active?"Ativo":"Inativo"}</span></div>):<p>Nenhuma coprodução registrada.</p>}</section></>}

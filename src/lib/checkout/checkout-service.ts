@@ -26,7 +26,35 @@ export async function createCheckout(input: CheckoutRequest) {
     const checkout = Array.isArray(existing.payment_provider_checkouts)
       ? existing.payment_provider_checkouts[0]
       : existing.payment_provider_checkouts;
-    return { orderId: existing.id, checkoutUrl: checkout?.checkout_url, reused: true };
+    if (checkout?.checkout_url) return { orderId: existing.id, checkoutUrl: checkout.checkout_url, reused: true };
+    const [orderResult, paymentResult, checkoutResult] = await Promise.all([
+      admin.from("orders").select("id,gross_amount_cents,settlement_model,products(name),offers!orders_offer_id_fkey(name),customers(email),financial_snapshots(prosperity_split_amount_cents)").eq("id", existing.id).single(),
+      admin.from("payments").select("id,connection_id,external_reference").eq("order_id", existing.id).single(),
+      admin.from("payment_provider_checkouts").select("id,idempotency_key,connection_id").eq("order_id", existing.id).single(),
+    ]);
+    const order = orderResult.data;
+    const storedPayment = paymentResult.data;
+    const record = checkoutResult.data;
+    if (!order || !storedPayment || !record) throw new HttpError(409, "O pedido não foi concluído. Inicie outra tentativa de pagamento.");
+    const provider = getPaymentProvider("mercadopago", await getProviderAccessToken(record.connection_id));
+    const appUrl = requireEnv(env.appUrl, "NEXT_PUBLIC_APP_URL");
+    const created = await provider.createCheckout({
+      externalReference: storedPayment.external_reference, idempotencyKey: record.idempotency_key,
+      title: `${order.products.name} — ${order.offers.name}`,
+      money: { amount: Number(order.gross_amount_cents) / 100, currency: "BRL" },
+      payerEmail: order.customers.email,
+      notificationUrl: `${appUrl}/api/webhooks/mercadopago?source_news=webhooks`,
+      successUrl: `${appUrl}/checkout/sucesso?order=${order.id}`,
+      failureUrl: `${appUrl}/checkout/falha?order=${order.id}`,
+      pendingUrl: `${appUrl}/checkout/pendente?order=${order.id}`,
+      marketplaceFeeAmount: order.settlement_model === "connected_account" ? Number(order.financial_snapshots?.prosperity_split_amount_cents ?? 0) / 100 : undefined,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+    const save = await admin.from("payment_provider_checkouts").update({ external_checkout_id: created.externalId, checkout_url: created.checkoutUrl }).eq("id", record.id);
+    if (save.error) throw save.error;
+    const status = await admin.from("orders").update({ status: "pending_payment" }).eq("id", order.id);
+    if (status.error) throw status.error;
+    return { orderId: order.id, checkoutUrl: created.checkoutUrl, reused: true };
   }
 
   const { data: offer, error: offerError } = await admin.from("offers")
@@ -36,6 +64,8 @@ export async function createCheckout(input: CheckoutRequest) {
     throw new HttpError(404, "Oferta ativa nao encontrada.");
   }
   const product = offer.products;
+  if (product.status !== "active") throw new HttpError(409, "Produto indisponível para venda.");
+  if (offer.billing_type === "recurring") throw new HttpError(409, "Cobrança recorrente ainda não está habilitada no processador.");
 
   const { data: participants, error: participantError } = await admin.from("product_participants")
     .select("user_id, participation_bps, offer_id")
@@ -46,10 +76,10 @@ export async function createCheckout(input: CheckoutRequest) {
   let affiliate: { userId: string; rule: FeeRule; membershipId: string; linkId: string } | undefined;
   if (input.refCode) {
     const { data: link } = await admin.from("affiliate_links")
-      .select("id, membership_id, affiliate_memberships!inner(user_id, status)")
+      .select("id, membership_id, affiliate_memberships!inner(user_id, status, affiliate_programs!inner(product_id, active))")
       .eq("ref_code", input.refCode).eq("active", true).maybeSingle();
     const membership = link?.affiliate_memberships;
-    if (link && membership && !Array.isArray(membership) && membership.status === "active") {
+    if (link && membership && !Array.isArray(membership) && membership.status === "active" && membership.affiliate_programs?.product_id === product.id && membership.affiliate_programs.active) {
       affiliate = {
         userId: membership.user_id,
         membershipId: link.membership_id,
@@ -158,9 +188,10 @@ export async function createCheckout(input: CheckoutRequest) {
     marketplaceFeeAmount: product.settlement_model === "connected_account" ? result.prosperitySplitCents / 100 : undefined,
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
-  await Promise.all([
+  const updates = await Promise.all([
     admin.from("payment_provider_checkouts").update({ external_checkout_id: checkout.externalId, checkout_url: checkout.checkoutUrl }).eq("order_id", order.id),
     admin.from("orders").update({ status: "pending_payment" }).eq("id", order.id),
   ]);
+  for (const update of updates) if (update.error) throw update.error;
   return { orderId: order.id, checkoutUrl: checkout.checkoutUrl, reused: false };
 }

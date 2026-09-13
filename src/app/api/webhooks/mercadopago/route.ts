@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   const { data: provider } = await admin.from("payment_providers").select("id").eq("code", "mercadopago").single();
   if (!provider) return NextResponse.json({ error: "Provedor indisponivel." }, { status: 503 });
 
-  const { data: event, error: eventError } = await admin.from("webhook_events").insert({
+  let { data: event, error: eventError } = await admin.from("webhook_events").insert({
     provider_id: provider.id,
     external_event_id: payload.id ? String(payload.id) : requestId,
     external_resource_id: dataId,
@@ -48,20 +48,47 @@ export async function POST(request: Request) {
     status: "processing",
     attempts: 1,
   }).select("id").single();
-  if (eventError?.code === "23505") return NextResponse.json({ received: true, duplicate: true });
+  if (eventError?.code === "23505") {
+    const { data: matchingId } = await admin.from("webhook_events").select("id,status,attempts")
+      .eq("provider_id", provider.id).eq("external_event_id", payload.id ? String(payload.id) : requestId).maybeSingle();
+    const { data: matchingHash } = matchingId ? { data: null } : await admin.from("webhook_events").select("id,status,attempts")
+      .eq("provider_id", provider.id).eq("payload_hash", sha256(rawBody)).maybeSingle();
+    const existing = matchingId ?? matchingHash;
+    if (!existing) return NextResponse.json({ error: "Não foi possível recuperar o evento." }, { status: 503 });
+    if (existing.status === "processed") return NextResponse.json({ received: true, duplicate: true });
+    if (existing.status === "processing") return NextResponse.json({ error: "Evento em processamento." }, { status: 503 });
+    const retry = await admin.from("webhook_events").update({ status: "processing", attempts: existing.attempts + 1, error_message: null })
+      .eq("id", existing.id).eq("status", "failed").select("id").maybeSingle();
+    if (!retry.data) return NextResponse.json({ error: "Evento em processamento." }, { status: 503 });
+    event = { id: retry.data.id } as typeof event;
+    eventError = null;
+  }
   if (eventError || !event) return NextResponse.json({ error: "Falha ao registrar evento." }, { status: 500 });
 
   try {
     let connectionQuery = admin.from("payment_provider_connections").select("id")
       .eq("provider_id", provider.id).eq("status", "active");
     if (payload.user_id) connectionQuery = connectionQuery.eq("external_account_id", String(payload.user_id));
-    const { data: connection } = await connectionQuery.limit(1).single();
-    if (!connection) throw new Error("Conexao do pagamento nao identificada.");
-
-    const payment = await getPaymentProvider("mercadopago", await getProviderAccessToken(connection.id)).getPayment(dataId);
-    if (!payment.externalReference) throw new Error("Pagamento sem external_reference.");
+    const { data: candidates } = await connectionQuery.limit(payload.user_id ? 1 : 100);
+    let connection: { id: string } | undefined;
+    let payment: Awaited<ReturnType<ReturnType<typeof getPaymentProvider>["getPayment"]>> | undefined;
+    for (const candidate of candidates ?? []) {
+      try {
+        const fetched = await getPaymentProvider("mercadopago", await getProviderAccessToken(candidate.id)).getPayment(dataId);
+        if (!fetched.externalReference) continue;
+        const { data: match } = await admin.from("payments").select("id").eq("connection_id", candidate.id).eq("external_reference", fetched.externalReference).maybeSingle();
+        if (match) { connection = candidate; payment = fetched; break; }
+      } catch { /* Outra conta não é proprietária deste pagamento. */ }
+    }
+    if (!connection || !payment?.externalReference) throw new Error("Conexão do pagamento não identificada.");
     const raw = (payment.raw ?? {}) as RawPayment;
     const providerFeeCents = Math.round((raw.fee_details ?? []).reduce((sum, item) => sum + (item.amount ?? 0), 0) * 100);
+    const { data: originalPayment, error: originalError } = await admin.from("payments").select("id,order_id,gross_amount_cents,currency,connection_id")
+      .eq("external_reference", payment.externalReference).eq("connection_id", connection.id).single();
+    if (originalError || !originalPayment) throw originalError ?? new Error("Pagamento não pertence a esta conexão.");
+    if (Number(originalPayment.gross_amount_cents) !== Math.round(payment.money.amount * 100) || originalPayment.currency !== payment.money.currency) {
+      throw new Error("Valor ou moeda do pagamento divergente do pedido.");
+    }
     const { data: storedPayment, error: paymentError } = await admin.from("payments").update({
       external_payment_id: payment.externalId,
       status: payment.status,
@@ -70,7 +97,7 @@ export async function POST(request: Request) {
       paid_at: payment.status === "approved" ? raw.date_approved ?? new Date().toISOString() : undefined,
       refunded_at: payment.status === "refunded" ? new Date().toISOString() : undefined,
       raw_provider_data: payment.raw as never,
-    }).eq("external_reference", payment.externalReference).select("id, order_id, status").single();
+    }).eq("id", originalPayment.id).select("id, order_id, status").single();
     if (paymentError || !storedPayment) throw paymentError ?? new Error("Pagamento interno nao encontrado.");
 
     await admin.from("payment_transactions").insert({
@@ -93,13 +120,21 @@ export async function POST(request: Request) {
       if (error) throw error;
       if (entries?.length) {
         const entryType = payment.status === "refunded" ? "refund" : "chargeback";
-        await admin.from("ledger_entries").insert(entries.map((entry) => ({
+        const byAccount = new Map<string, { amount: number; ids: string[]; entry: (typeof entries)[number] }>();
+        for (const entry of entries) {
+          const group = byAccount.get(entry.account_id) ?? { amount: 0, ids: [], entry };
+          group.amount += Number(entry.amount_cents);
+          group.ids.push(entry.id);
+          byAccount.set(entry.account_id, group);
+        }
+        const reversal = await admin.from("ledger_entries").upsert([...byAccount.values()].map(({ amount, ids, entry }) => ({
           account_id: entry.account_id, order_id: entry.order_id, payment_id: entry.payment_id,
           settlement_model: entry.settlement_model, entry_type: entryType,
-          amount_cents: -entry.amount_cents, currency: entry.currency, available_at: new Date().toISOString(),
-          source_type: entryType, source_id: event.id, reference: `${entryType}:${payment.externalId}`,
-          metadata: { reversesEntryId: entry.id },
-        })));
+          amount_cents: -amount, currency: entry.currency, available_at: new Date().toISOString(),
+          source_type: entryType, source_id: storedPayment.id, reference: `${entryType}:${payment.externalId}`,
+          metadata: { reversesEntryIds: ids },
+        })), { onConflict: "account_id,source_type,source_id,entry_type", ignoreDuplicates: true });
+        if (reversal.error) throw reversal.error;
       }
       await Promise.all([
         admin.from("orders").update({ status: payment.status === "refunded" ? "refunded" : "charged_back" }).eq("id", storedPayment.order_id),

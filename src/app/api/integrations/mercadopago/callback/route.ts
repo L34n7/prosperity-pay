@@ -63,6 +63,6 @@ export async function GET(request: Request) {
 
     cookieStore.delete("mp_oauth_state");
     cookieStore.delete("mp_oauth_verifier");
-    return NextResponse.redirect(new URL("/dashboard1?mercadopago=connected", requestUrl.origin));
+    return NextResponse.redirect(new URL("/integracoes?mercadopago=connected", requestUrl.origin));
   } catch (error) { return jsonError(error); }
 }

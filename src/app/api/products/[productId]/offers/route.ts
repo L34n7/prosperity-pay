@@ -23,18 +23,18 @@ export async function POST(request: Request, context: Context) {
     const name = requiredString(body, "name", 180);
     const priceCents = requiredInteger(body, "priceCents", 1);
     const billingType = body.billingType === "recurring" ? "recurring" : "one_time";
+    if (billingType === "recurring") return NextResponse.json({ error: "Cobrança recorrente exige integração de assinaturas e ainda não está disponível." }, { status: 409 });
     const maxInstallments = body.maxInstallments == null ? 1 : requiredInteger(body, "maxInstallments", 1);
     if (maxInstallments > 24) return NextResponse.json({ error: "Parcelamento maximo de 24 vezes." }, { status: 400 });
 
-    const recurring = billingType === "recurring";
     const { data, error } = await supabase.from("offers").insert({
       product_id: productId,
       name,
       checkout_slug: `${toSlug(name)}-${crypto.randomUUID().slice(0, 8)}`,
       price_cents: priceCents,
       billing_type: billingType,
-      billing_interval: recurring ? "month" : null,
-      billing_interval_count: recurring ? 1 : null,
+      billing_interval: null,
+      billing_interval_count: null,
       max_installments: maxInstallments,
     }).select().single();
     if (error) throw error;

@@ -2,18 +2,15 @@
 
 import {
   BadgeDollarSign,
-  ChartNoAxesCombined,
   ChevronLeft,
-  CircleDollarSign,
   CreditCard,
   HandCoins,
   LayoutDashboard,
-  Link2,
   PlugZap,
-  ReceiptText,
   Settings,
   Users,
   X,
+  Package, Wallet, Landmark, UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -21,18 +18,18 @@ import { Brand } from "@/components/ui/brand";
 
 const primaryItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Produtos", href: "/produtos", icon: Package },
   { label: "Pagamentos", href: "/pagamentos", icon: CreditCard },
-  { label: "Assinaturas", icon: ReceiptText },
   { label: "Afiliados", href: "/afiliados", icon: Users },
+  { label: "Coproduções", href: "/coproducoes", icon: UserRound },
   { label: "Comissões", href: "/comissoes", icon: BadgeDollarSign },
-  { label: "Repasses", icon: HandCoins },
-  { label: "Checkout", href: "/checkout/basico", icon: Link2 },
-  { label: "Clientes", icon: CircleDollarSign },
+  { label: "Saldo", href: "/saldo", icon: Wallet },
+  { label: "Saques", href: "/saques", icon: HandCoins },
 ];
 
 const secondaryItems = [
-  { label: "Integrações", icon: PlugZap },
-  { label: "Configurações", icon: Settings },
+  { label: "Integrações", href: "/integracoes", icon: PlugZap },
+  { label: "Configurações", href: "/conta", icon: Settings },
 ];
 
 type SidebarProps = {
@@ -40,18 +37,18 @@ type SidebarProps = {
   mobileOpen: boolean;
   onCollapse: () => void;
   onMobileClose: () => void;
+  admin: boolean;
 };
 
-export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose }: SidebarProps) {
+export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admin }: SidebarProps) {
   const pathname = usePathname();
 
   const renderItem = ({ label, href, icon: Icon }: (typeof primaryItems)[number]) => {
-    const active = href ? pathname === href : false;
+    const active = href ? pathname === href || pathname.startsWith(`${href}/`) : false;
     const content = (
       <>
         <Icon size={19} strokeWidth={active ? 2.2 : 1.8} />
         {!collapsed && <span>{label}</span>}
-        {!href && !collapsed && <small>Em breve</small>}
       </>
     );
 
@@ -91,16 +88,11 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose }: Si
           <div className="nav-group nav-secondary">
             {!collapsed && <p>Conta</p>}
             {secondaryItems.map(renderItem)}
+            {admin && renderItem({ label: "Admin", href: "/admin", icon: Landmark })}
           </div>
         </nav>
 
         <div className="sidebar-foot">
-          {!collapsed && (
-            <div className="provider-status">
-              <span className="provider-icon"><ChartNoAxesCombined size={17} /></span>
-              <div><strong>Mercado Pago</strong><small><i /> Operacional</small></div>
-            </div>
-          )}
           <button className="collapse-button" onClick={onCollapse} aria-label={collapsed ? "Expandir menu" : "Recolher menu"}>
             <ChevronLeft size={18} />
             {!collapsed && <span>Recolher menu</span>}

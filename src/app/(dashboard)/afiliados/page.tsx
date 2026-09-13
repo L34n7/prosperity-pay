@@ -1,25 +1,16 @@
-import { BadgeDollarSign, CircleDollarSign, Plus, UserRoundCheck, WalletCards } from "lucide-react";
-import { AffiliatesView } from "@/components/affiliates/affiliates-view";
-import { StatCard } from "@/components/dashboard/stat-card";
+import { requireUser } from "@/lib/auth/require-user";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { PageHeader } from "@/components/ui/page-header";
-import { affiliates } from "@/lib/dashboard/mock-data";
-
-export default function AffiliatesPage() {
-  return (
-    <>
-      <PageHeader
-        eyebrow="Programa de parceiros"
-        title="Afiliados"
-        description="Acompanhe indicações, vendas e valores de comissão de cada parceiro."
-        action={<button className="primary-button"><Plus size={17} /> Novo afiliado</button>}
-      />
-      <section className="stats-grid affiliate-kpis">
-        <StatCard title="Afiliados ativos" value="28" change={12} icon={UserRoundCheck} description="Parceiros habilitados para indicar novos clientes." />
-        <StatCard title="Vendas geradas" value="117" change={21.5} icon={WalletCards} description="Quantidade de vendas atribuídas aos afiliados no período." />
-        <StatCard title="Volume vendido" value="R$ 34.184" change={18.7} icon={CircleDollarSign} description="Valor bruto vendido por todos os afiliados." />
-        <StatCard title="Comissão disponível" value="R$ 1.515" change={8.2} icon={BadgeDollarSign} accent="gold" description="Valor já liberado para o próximo repasse." />
-      </section>
-      <AffiliatesView data={affiliates} />
-    </>
-  );
+import { AffiliateLinks, AvailablePrograms } from "@/components/affiliate-links";
+export const dynamic="force-dynamic";
+export default async function Page(){
+ const {user}=await requireUser(),admin=createAdminClient();
+ const [{data:memberships,error},{data:programs,error:programError}]=await Promise.all([
+  admin.from("affiliate_memberships").select("id,code,status,affiliate_programs(product_id,products(name,offers(name,checkout_slug,status)))").eq("user_id",user.id),
+  admin.from("affiliate_programs").select("id,mode,products(id,name,producer_id)").eq("active",true).neq("mode","invite").limit(100),
+ ]);
+ if(error||programError)throw error||programError;
+ const joined=new Set((memberships??[]).map(m=>m.affiliate_programs?.product_id));
+ const available=(programs??[]).filter(p=>p.products?.producer_id!==user.id&&!joined.has(p.products?.id));
+ return <><PageHeader title="Minhas afiliações" description="Indique ofertas e acompanhe suas comissões."/><section className="panel operational-panel"><h2>Suas afiliações</h2>{memberships?.length?<AffiliateLinks memberships={memberships}/>:<p>Você ainda não participa de programas de afiliados.</p>}</section><section className="panel operational-panel"><h2>Programas disponíveis</h2>{available.length?<AvailablePrograms programs={available}/>:<p>Nenhum programa público disponível no momento.</p>}</section></>;
 }
