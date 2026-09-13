@@ -14,10 +14,16 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName } },
+      options: {
+        data: { full_name: fullName },
+        emailRedirectTo: `${new URL(request.url).origin}/auth/confirm?next=/dashboard`,
+      },
     });
-    if (error) throw error;
-    return NextResponse.json({ user: data.user, session: Boolean(data.session) }, { status: 201 });
+    if (error) {
+      console.error("Falha no cadastro Supabase Auth", { code: error.code, status: error.status });
+      return NextResponse.json({ error: error.message }, { status: error.status && error.status < 500 ? error.status : 502 });
+    }
+    return NextResponse.json({ session: Boolean(data.session) }, { status: 201 });
   } catch (error) {
     return jsonError(error);
   }
