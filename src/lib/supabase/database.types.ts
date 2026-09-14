@@ -1425,6 +1425,7 @@ export type Database = {
           currency: string
           description: string | null
           id: string
+          image_path: string | null
           name: string
           producer_id: string
           prosperity_fee_bps: number
@@ -1440,6 +1441,7 @@ export type Database = {
           currency?: string
           description?: string | null
           id?: string
+          image_path?: string | null
           name: string
           producer_id: string
           prosperity_fee_bps?: number
@@ -1455,6 +1457,7 @@ export type Database = {
           currency?: string
           description?: string | null
           id?: string
+          image_path?: string | null
           name?: string
           producer_id?: string
           prosperity_fee_bps?: number

@@ -1,10 +1,11 @@
 "use client";
+import Image from "next/image";
 import { FormEvent, useRef, useState } from "react";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import { Brand } from "@/components/ui/brand";
 import { formatCents } from "@/lib/operational";
 
-type Offer = { slug: string; name: string; productName: string; description: string | null; priceCents: number; billingType: string };
+type Offer = { slug: string; name: string; productName: string; description: string | null; imageUrl: string | null; priceCents: number; billingType: string };
 export function CheckoutFlow({ offer, affiliate }: { offer: Offer; affiliate?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -22,7 +23,7 @@ export function CheckoutFlow({ offer, affiliate }: { offer: Offer; affiliate?: s
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha no pagamento."); setBusy(false); }
   }
   return <main className="checkout-page"><header className="checkout-header"><Brand href="/"/><span><LockKeyhole size={14}/> Ambiente seguro</span></header>
-    <div className="checkout-layout"><section className="checkout-product"><span className="checkout-badge">{offer.productName}</span><h1>{offer.name}</h1><p>{offer.description}</p><div className="security-note"><ShieldCheck size={22}/><div><strong>Pagamento protegido</strong><span>Você será redirecionado para o Mercado Pago.</span></div></div></section>
+    <div className="checkout-layout"><section className="checkout-product">{offer.imageUrl && <Image className="checkout-product-image" src={offer.imageUrl} alt={offer.productName} width={640} height={360} unoptimized/>}<span className="checkout-badge">{offer.productName}</span><h1>{offer.name}</h1><p>{offer.description}</p><div className="security-note"><ShieldCheck size={22}/><div><strong>Pagamento protegido</strong><span>Você será redirecionado para o Mercado Pago.</span></div></div></section>
     <section className="checkout-card"><div className="checkout-card-head"><div><span>Resumo do pedido</span><h2>{offer.name}</h2></div><div className="checkout-price"><strong>{formatCents(offer.priceCents)}</strong></div></div>
     {affiliate && <div className="referral-note">Indicação aplicada</div>}
     <form onSubmit={submit} className="checkout-form"><div className="checkout-divider"><span>Dados do comprador</span></div><label>Nome completo<input name="name" required autoComplete="name"/></label><label>E-mail<input name="email" type="email" required autoComplete="email"/></label>

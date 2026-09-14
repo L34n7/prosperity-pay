@@ -1,9 +1,11 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatCents, requestJson } from "@/lib/operational";
-type Product = { id: string; name: string; description: string | null; status: string; settlement_model: string };
+import { MAX_PRODUCT_IMAGE_BYTES, productImageUrl } from "@/lib/product-images";
+type Product = { id: string; name: string; description: string | null; image_path: string | null; status: string; settlement_model: string };
 type Offer = { id: string; name: string; price_cents: number; billing_type: string; status: string; checkout_slug: string; affiliate_commission_bps: number; max_installments: number; affiliate_hold_days: number; prosperity_fee_bps: number | null };
 const tabs = ["Visão geral", "Ofertas", "Checkout", "Afiliados", "Coprodutores", "Vendas", "Configurações"];
 export function ProductDetail({ id }: { id: string }) {
@@ -13,12 +15,38 @@ export function ProductDetail({ id }: { id: string }) {
  async function mutate(path: string, method: string, body: object) { setBusy(true); setError(""); setMessage(""); try { await requestJson(path, {method,body:JSON.stringify(body)}); await load(); setMessage("Alterações salvas."); } catch(cause) { setError(cause instanceof Error ? cause.message : "Erro ao salvar."); } finally {setBusy(false);} }
  async function createOffer(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = event.currentTarget; const d = new FormData(form); await mutate(`/api/products/${id}/offers`, "POST", {name:d.get("name"),priceCents:Math.round(Number(d.get("price"))*100),billingType:"one_time",maxInstallments:Number(d.get("installments"))}); form.reset(); }
  async function editProduct(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const d = new FormData(event.currentTarget); await mutate(`/api/products/${id}`, "PATCH", { name:d.get("name"), description:d.get("description"), status:d.get("status") }); }
+ async function changeImage(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const file = new FormData(form).get("image");
+  if (!(file instanceof File) || !file.size) { setError("Selecione uma imagem."); return; }
+  if (file.size > MAX_PRODUCT_IMAGE_BYTES || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setError("Escolha uma imagem JPEG, PNG ou WebP com até 3 MB."); return; }
+  setBusy(true); setError(""); setMessage("");
+  try {
+   const data = new FormData(); data.set("image", file);
+   const response = await fetch(`/api/products/${id}/image`, { method:"POST", body:data });
+   const result = await response.json();
+   if (!response.ok) throw new Error(result.error || "Falha ao enviar imagem.");
+   form.reset(); await load(); setMessage("Imagem salva.");
+  } catch(cause) { setError(cause instanceof Error ? cause.message : "Falha ao enviar imagem."); }
+  finally { setBusy(false); }
+ }
+ async function removeImage() {
+  setBusy(true); setError(""); setMessage("");
+  try {
+   const response = await fetch(`/api/products/${id}/image`, { method:"DELETE" });
+   const result = await response.json();
+   if (!response.ok) throw new Error(result.error || "Falha ao remover imagem.");
+   await load(); setMessage("Imagem removida.");
+  } catch(cause) { setError(cause instanceof Error ? cause.message : "Falha ao remover imagem."); }
+  finally { setBusy(false); }
+ }
  return <><PageHeader title={product?.name ?? "Produto"} description={product?.settlement_model === "connected_account" ? "Recebimento direto no Mercado Pago" : "Recebimento no saldo Prosperity Pay"}/>
  <nav className="detail-tabs" aria-label="Gestão do produto">{tabs.map(item => <button key={item} className={tab === item ? "active" : ""} onClick={()=>setTab(item)}>{item}</button>)}</nav>
  {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success" role="status">{message}</p>}
  {!product ? <p>Carregando...</p> : <section className="panel operational-panel">
- {tab === "Visão geral" && <><h2>{product.name}</h2><p>{product.description || "Sem descrição."}</p><p>Status: {product.status} · {offers.length} ofertas</p><p>O modelo de recebimento foi definido na criação e não pode ser alterado.</p>{product.settlement_model === "connected_account" && <Link href="/integracoes">Ver conexão Mercado Pago →</Link>}</>}
- {tab === "Configurações" && <form className="operational-form" onSubmit={editProduct}><label>Nome<input name="name" defaultValue={product.name} required minLength={2}/></label><label>Descrição<textarea name="description" defaultValue={product.description ?? ""}/></label><label>Status<select name="status" defaultValue={product.status}>{["draft","active","inactive","archived"].map(s=><option key={s} value={s}>{s}</option>)}</select></label><button className="primary-button" disabled={busy}>Salvar produto</button></form>}
+ {tab === "Visão geral" && <>{productImageUrl(product.image_path) && <Image className="product-detail-image" src={productImageUrl(product.image_path)!} alt={product.name} width={640} height={360} unoptimized/>}<h2>{product.name}</h2><p>{product.description || "Sem descrição."}</p><p>Status: {product.status} · {offers.length} ofertas</p><p>O modelo de recebimento foi definido na criação e não pode ser alterado.</p>{product.settlement_model === "connected_account" && <Link href="/integracoes">Ver conexão Mercado Pago →</Link>}</>}
+ {tab === "Configurações" && <><form className="operational-form" onSubmit={editProduct}><label>Nome<input name="name" defaultValue={product.name} required minLength={2}/></label><label>Descrição<textarea name="description" defaultValue={product.description ?? ""}/></label><label>Status<select name="status" defaultValue={product.status}>{["draft","active","inactive","archived"].map(s=><option key={s} value={s}>{s}</option>)}</select></label><button className="primary-button" disabled={busy}>Salvar produto</button></form><div className="product-image-settings"><h2>Imagem do produto</h2>{productImageUrl(product.image_path) && <Image className="product-image-preview" src={productImageUrl(product.image_path)!} alt={product.name} width={320} height={180} unoptimized/>}<form className="operational-form" onSubmit={changeImage}><label>Selecionar imagem JPEG, PNG ou WebP (até 3 MB)<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required/></label><button className="secondary-button" disabled={busy}>Enviar imagem</button></form>{product.image_path && <button className="secondary-button" disabled={busy} onClick={() => void removeImage()}>Remover imagem</button>}</div></>}
  {tab === "Ofertas" && <><h2>Ofertas</h2><form className="operational-form form-grid" onSubmit={createOffer}><label>Nome<input name="name" required minLength={2}/></label><label>Preço (R$)<input name="price" type="number" min="0.01" step="0.01" required/></label><label>Parcelas máximas<input name="installments" type="number" min="1" max="24" defaultValue="1" required/></label><button className="primary-button" disabled={busy}>Criar oferta</button></form>{offers.map(offer => <div key={offer.id} className="offer-editor"><h3>{offer.name} · {formatCents(offer.price_cents)}</h3><form className="operational-form form-grid" onSubmit={e=>{e.preventDefault(); const d=new FormData(e.currentTarget); void mutate(`/api/products/${id}/offers/${offer.id}`,"PATCH",{name:d.get("name"),priceCents:Math.round(Number(d.get("price"))*100),status:d.get("status"),affiliateCommissionBps:Math.round(Number(d.get("commission"))*100),affiliateHoldDays:Number(d.get("hold")),maxInstallments:Number(d.get("installments")),prosperityFeeBps:d.get("fee")===""?null:Math.round(Number(d.get("fee"))*100)});}}><label>Nome<input name="name" defaultValue={offer.name} required/></label><label>Preço (R$)<input name="price" type="number" step="0.01" min="0.01" defaultValue={offer.price_cents/100} required/></label><label>Status<select name="status" defaultValue={offer.status}>{["draft","active","inactive","archived"].map(s=><option key={s}>{s}</option>)}</select></label><label>Comissão de afiliado (%)<input name="commission" type="number" min="0" max="100" step="0.01" defaultValue={offer.affiliate_commission_bps/100}/></label><label>Hold (dias)<input name="hold" type="number" min="0" defaultValue={offer.affiliate_hold_days}/></label><label>Parcelas<input name="installments" type="number" min="1" max="24" defaultValue={offer.max_installments}/></label><label>Taxa Prosperity personalizada (%)<input name="fee" type="number" min="0" max="100" step="0.01" defaultValue={offer.prosperity_fee_bps==null?"":offer.prosperity_fee_bps/100} placeholder="Taxa padrão"/></label><button disabled={busy} className="secondary-button">Salvar oferta</button></form></div>)}</>}
  {tab === "Checkout" && <><h2>Links de checkout</h2>{offers.filter(o=>o.status==="active").length ? offers.filter(o=>o.status==="active").map(o=><div className="record-row" key={o.id}><strong>{o.name}</strong><Link href={`/checkout/${o.checkout_slug}`} target="_blank">Abrir checkout</Link><button className="secondary-button" onClick={async()=>{await navigator.clipboard.writeText(`${location.origin}/checkout/${o.checkout_slug}`); setMessage("Link copiado.");}}>Copiar link</button></div>) : <p>Ative uma oferta para gerar seu link.</p>}</>}
  {tab === "Afiliados" && <AffiliateManagement id={id}/>}
