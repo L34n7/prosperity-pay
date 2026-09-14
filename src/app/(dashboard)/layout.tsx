@@ -10,5 +10,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle(),
     supabase.from("user_roles").select("role").eq("user_id", user.id),
   ]);
-  return <AppShell profile={{ name: profile?.full_name ?? user.email?.split("@")[0] ?? "Usuário", email: user.email ?? "", admin: Boolean(roles?.some((item) => item.role === "admin" || item.role === "finance_operator")) }}>{children}</AppShell>;
+  const platformAdmin = Boolean(roles?.some((item) => item.role === "admin"));
+  const financeAdmin = platformAdmin || Boolean(roles?.some((item) => item.role === "finance_operator"));
+  return <AppShell profile={{ name: profile?.full_name ?? user.email?.split("@")[0] ?? "Usuário", email: user.email ?? "", admin: financeAdmin, platformAdmin }}>{children}</AppShell>;
 }

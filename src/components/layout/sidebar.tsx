@@ -6,11 +6,15 @@ import {
   CreditCard,
   HandCoins,
   LayoutDashboard,
+  Landmark,
+  Package,
   PlugZap,
+  ServerCog,
   Settings,
+  UserRound,
   Users,
+  Wallet,
   X,
-  Package, Wallet, Landmark, UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -32,27 +36,22 @@ const secondaryItems = [
   { label: "Configurações", href: "/conta", icon: Settings },
 ];
 
+type SidebarItem = { label: string; href: string; icon: typeof LayoutDashboard };
 type SidebarProps = {
   collapsed: boolean;
   mobileOpen: boolean;
   onCollapse: () => void;
   onMobileClose: () => void;
   admin: boolean;
+  platformAdmin: boolean;
 };
 
-export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admin }: SidebarProps) {
+export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admin, platformAdmin }: SidebarProps) {
   const pathname = usePathname();
 
-  const renderItem = ({ label, href, icon: Icon }: (typeof primaryItems)[number]) => {
-    const active = href ? pathname === href || pathname.startsWith(`${href}/`) : false;
-    const content = (
-      <>
-        <Icon size={19} strokeWidth={active ? 2.2 : 1.8} />
-        {!collapsed && <span>{label}</span>}
-      </>
-    );
-
-    return href ? (
+  const renderItem = ({ label, href, icon: Icon }: SidebarItem) => {
+    const active = pathname === href || pathname.startsWith(`${href}/`);
+    return (
       <Link
         key={label}
         href={href}
@@ -60,12 +59,9 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admi
         onClick={onMobileClose}
         title={collapsed ? label : undefined}
       >
-        {content}
+        <Icon size={19} strokeWidth={active ? 2.2 : 1.8} />
+        {!collapsed && <span>{label}</span>}
       </Link>
-    ) : (
-      <span key={label} className="sidebar-link disabled" title={collapsed ? `${label} — em breve` : undefined}>
-        {content}
-      </span>
     );
   };
 
@@ -89,6 +85,7 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admi
             {!collapsed && <p>Conta</p>}
             {secondaryItems.map(renderItem)}
             {admin && renderItem({ label: "Admin", href: "/admin", icon: Landmark })}
+            {platformAdmin && renderItem({ label: "Plataforma", href: "/admin/plataforma", icon: ServerCog })}
           </div>
         </nav>
 
