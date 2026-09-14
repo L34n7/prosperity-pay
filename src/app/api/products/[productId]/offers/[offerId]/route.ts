@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
+import { calculateMaxInstallments } from "@/lib/domain/offer-rules";
 import type { Database } from "@/lib/supabase/database.types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -12,9 +13,27 @@ export async function PATCH(request: Request, context: Context) {
     const { productId, offerId } = await context.params;
     const { supabase } = await requireUser();
     const body = asObject(await request.json());
+
+    if (body.maxInstallments !== undefined) {
+      return NextResponse.json({ error: "Parcelamento é calculado automaticamente pela Prosperity Pay." }, { status: 400 });
+    }
+    if (body.affiliateHoldDays !== undefined) {
+      return NextResponse.json({ error: "A liberação da comissão é definida pela Prosperity Pay." }, { status: 400 });
+    }
+    if (body.prosperityFeeBps !== undefined) {
+      return NextResponse.json({ error: "A taxa da Prosperity só pode ser alterada pela administração." }, { status: 403 });
+    }
+
     const update: OfferUpdate = {};
     if (typeof body.name === "string") update.name = body.name.trim().slice(0, 180);
-    if (Number.isSafeInteger(body.priceCents) && Number(body.priceCents) > 0) update.price_cents = Number(body.priceCents);
+    if (body.priceCents !== undefined) {
+      if (!Number.isSafeInteger(body.priceCents) || Number(body.priceCents) <= 0) {
+        return NextResponse.json({ error: "Preço inválido." }, { status: 400 });
+      }
+      const priceCents = Number(body.priceCents);
+      update.price_cents = priceCents;
+      update.max_installments = calculateMaxInstallments(priceCents);
+    }
     if (["draft", "active", "inactive", "archived"].includes(String(body.status))) update.status = body.status as OfferUpdate["status"];
     if (update.status === "active") {
       const { data: currentOffer } = await supabase.from("offers").select("billing_type").eq("id", offerId).eq("product_id", productId).single();
@@ -28,18 +47,6 @@ export async function PATCH(request: Request, context: Context) {
         const { data: platform } = await createAdminClient().from("payment_provider_connections").select("id").eq("connection_kind", "prosperity_balance").eq("status", "active").maybeSingle();
         if (!platform) return NextResponse.json({ error: "A conta central Prosperity ainda não foi configurada." }, { status: 409 });
       }
-    }
-    if (body.maxInstallments !== undefined) {
-      if (typeof body.maxInstallments !== "number" || !Number.isInteger(body.maxInstallments) || body.maxInstallments < 1 || body.maxInstallments > 24) return NextResponse.json({ error: "Parcelamento inválido." }, { status: 400 });
-      update.max_installments = body.maxInstallments;
-    }
-    if (body.affiliateHoldDays !== undefined) {
-      if (typeof body.affiliateHoldDays !== "number" || !Number.isInteger(body.affiliateHoldDays) || body.affiliateHoldDays < 0 || body.affiliateHoldDays > 365) return NextResponse.json({ error: "Prazo de liberação inválido." }, { status: 400 });
-      update.affiliate_hold_days = body.affiliateHoldDays;
-    }
-    if (body.prosperityFeeBps !== undefined) {
-      if (body.prosperityFeeBps !== null && (typeof body.prosperityFeeBps !== "number" || !Number.isInteger(body.prosperityFeeBps) || body.prosperityFeeBps < 0 || body.prosperityFeeBps > 10000)) return NextResponse.json({ error: "Taxa inválida." }, { status: 400 });
-      update.prosperity_fee_bps = body.prosperityFeeBps as number | null;
     }
     if (Number.isInteger(body.affiliateCommissionBps) && Number(body.affiliateCommissionBps) >= 0 && Number(body.affiliateCommissionBps) <= 10_000) {
       update.affiliate_commission_bps = Number(body.affiliateCommissionBps);

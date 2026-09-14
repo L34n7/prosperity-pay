@@ -28,7 +28,7 @@ export async function createCheckout(input: CheckoutRequest) {
       : existing.payment_provider_checkouts;
     if (checkout?.checkout_url) return { orderId: existing.id, checkoutUrl: checkout.checkout_url, reused: true };
     const [orderResult, paymentResult, checkoutResult] = await Promise.all([
-      admin.from("orders").select("id,gross_amount_cents,settlement_model,products(name),offers!orders_offer_id_fkey(name),customers(email),financial_snapshots(prosperity_split_amount_cents)").eq("id", existing.id).single(),
+      admin.from("orders").select("id,gross_amount_cents,settlement_model,products(name),offers!orders_offer_id_fkey(name,max_installments),customers(email),financial_snapshots(prosperity_split_amount_cents)").eq("id", existing.id).single(),
       admin.from("payments").select("id,connection_id,external_reference").eq("order_id", existing.id).single(),
       admin.from("payment_provider_checkouts").select("id,idempotency_key,connection_id").eq("order_id", existing.id).single(),
     ]);
@@ -48,6 +48,7 @@ export async function createCheckout(input: CheckoutRequest) {
       failureUrl: `${appUrl}/checkout/falha?order=${order.id}`,
       pendingUrl: `${appUrl}/checkout/pendente?order=${order.id}`,
       marketplaceFeeAmount: order.settlement_model === "connected_account" ? Number(order.financial_snapshots?.prosperity_split_amount_cents ?? 0) / 100 : undefined,
+      maxInstallments: Number(order.offers.max_installments),
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
     const save = await admin.from("payment_provider_checkouts").update({ external_checkout_id: created.externalId, checkout_url: created.checkoutUrl }).eq("id", record.id);
@@ -186,6 +187,7 @@ export async function createCheckout(input: CheckoutRequest) {
     failureUrl: `${appUrl}/checkout/falha?order=${order.id}`,
     pendingUrl: `${appUrl}/checkout/pendente?order=${order.id}`,
     marketplaceFeeAmount: product.settlement_model === "connected_account" ? result.prosperitySplitCents / 100 : undefined,
+    maxInstallments: Number(offer.max_installments),
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
   const updates = await Promise.all([

@@ -58,6 +58,7 @@ export type CreateCheckoutInput = {
   failureUrl: string;
   pendingUrl: string;
   marketplaceFeeAmount?: number;
+  maxInstallments?: number;
   expiresAt?: Date;
 };
 

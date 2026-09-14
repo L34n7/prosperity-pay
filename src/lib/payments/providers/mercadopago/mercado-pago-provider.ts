@@ -75,6 +75,9 @@ export class MercadoPagoProvider implements PaymentProvider {
           }],
           payer: input.payerEmail ? { email: input.payerEmail } : undefined,
           marketplace_fee: input.marketplaceFeeAmount,
+          payment_methods: input.maxInstallments
+            ? { installments: input.maxInstallments }
+            : undefined,
           notification_url: input.notificationUrl,
           back_urls: {
             success: input.successUrl,
