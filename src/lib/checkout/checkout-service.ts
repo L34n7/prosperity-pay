@@ -13,8 +13,24 @@ type CheckoutRequest = {
   idempotencyKey: string;
 };
 
+type CheckoutOfferSettings = {
+  max_installments: number;
+  payment_card_enabled: boolean;
+  payment_pix_enabled: boolean;
+  primary_payment_method: "card" | "pix";
+  affiliate_enabled: boolean;
+};
+
 function rule(type: "percentage" | "fixed" | "hybrid", basisPoints: number, fixedCents: number): FeeRule {
   return { type, basisPoints, fixedCents };
+}
+
+function paymentMethods(offer: CheckoutOfferSettings) {
+  return {
+    card: offer.payment_card_enabled,
+    pix: offer.payment_pix_enabled,
+    primary: offer.primary_payment_method,
+  };
 }
 
 export async function createCheckout(input: CheckoutRequest) {
@@ -23,12 +39,10 @@ export async function createCheckout(input: CheckoutRequest) {
     .select("id, payment_provider_checkouts(checkout_url, external_checkout_id)")
     .eq("idempotency_key", input.idempotencyKey).maybeSingle();
   if (existing) {
-    const checkout = Array.isArray(existing.payment_provider_checkouts)
-      ? existing.payment_provider_checkouts[0]
-      : existing.payment_provider_checkouts;
+    const checkout = Array.isArray(existing.payment_provider_checkouts) ? existing.payment_provider_checkouts[0] : existing.payment_provider_checkouts;
     if (checkout?.checkout_url) return { orderId: existing.id, checkoutUrl: checkout.checkout_url, reused: true };
     const [orderResult, paymentResult, checkoutResult] = await Promise.all([
-      admin.from("orders").select("id,gross_amount_cents,settlement_model,products(name),offers!orders_offer_id_fkey(name,max_installments),customers(email),financial_snapshots(prosperity_split_amount_cents)").eq("id", existing.id).single(),
+      admin.from("orders").select("id,gross_amount_cents,settlement_model,products(name),offers!orders_offer_id_fkey(*),customers(email),financial_snapshots(prosperity_split_amount_cents)").eq("id", existing.id).single(),
       admin.from("payments").select("id,connection_id,external_reference").eq("order_id", existing.id).single(),
       admin.from("payment_provider_checkouts").select("id,idempotency_key,connection_id").eq("order_id", existing.id).single(),
     ]);
@@ -36,11 +50,13 @@ export async function createCheckout(input: CheckoutRequest) {
     const storedPayment = paymentResult.data;
     const record = checkoutResult.data;
     if (!order || !storedPayment || !record) throw new HttpError(409, "O pedido não foi concluído. Inicie outra tentativa de pagamento.");
+    const storedOffer = order.offers as unknown as CheckoutOfferSettings & { name: string };
     const provider = getPaymentProvider("mercadopago", await getProviderAccessToken(record.connection_id));
     const appUrl = requireEnv(env.appUrl, "NEXT_PUBLIC_APP_URL");
     const created = await provider.createCheckout({
-      externalReference: storedPayment.external_reference, idempotencyKey: record.idempotency_key,
-      title: `${order.products.name} — ${order.offers.name}`,
+      externalReference: storedPayment.external_reference,
+      idempotencyKey: record.idempotency_key,
+      title: `${order.products.name} — ${storedOffer.name}`,
       money: { amount: Number(order.gross_amount_cents) / 100, currency: "BRL" },
       payerEmail: order.customers.email,
       notificationUrl: `${appUrl}/api/webhooks/mercadopago?source_news=webhooks`,
@@ -48,7 +64,8 @@ export async function createCheckout(input: CheckoutRequest) {
       failureUrl: `${appUrl}/checkout/falha?order=${order.id}`,
       pendingUrl: `${appUrl}/checkout/pendente?order=${order.id}`,
       marketplaceFeeAmount: order.settlement_model === "connected_account" ? Number(order.financial_snapshots?.prosperity_split_amount_cents ?? 0) / 100 : undefined,
-      maxInstallments: Number(order.offers.max_installments),
+      maxInstallments: Number(storedOffer.max_installments),
+      paymentMethods: paymentMethods(storedOffer),
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
     const save = await admin.from("payment_provider_checkouts").update({ external_checkout_id: created.externalId, checkout_url: created.checkoutUrl }).eq("id", record.id);
@@ -58,12 +75,11 @@ export async function createCheckout(input: CheckoutRequest) {
     return { orderId: order.id, checkoutUrl: created.checkoutUrl, reused: true };
   }
 
-  const { data: offer, error: offerError } = await admin.from("offers")
+  const { data: rawOffer, error: offerError } = await admin.from("offers")
     .select("*, products(*)").eq("checkout_slug", input.offerSlug)
     .eq("status", "active").single();
-  if (offerError || !offer || !offer.products || Array.isArray(offer.products)) {
-    throw new HttpError(404, "Oferta ativa nao encontrada.");
-  }
+  if (offerError || !rawOffer || !rawOffer.products || Array.isArray(rawOffer.products)) throw new HttpError(404, "Oferta ativa nao encontrada.");
+  const offer = rawOffer as typeof rawOffer & CheckoutOfferSettings;
   const product = offer.products;
   if (product.status !== "active") throw new HttpError(409, "Produto indisponível para venda.");
   if (offer.billing_type === "recurring") throw new HttpError(409, "Cobrança recorrente ainda não está habilitada no processador.");
@@ -75,7 +91,7 @@ export async function createCheckout(input: CheckoutRequest) {
   if (participantError) throw participantError;
 
   let affiliate: { userId: string; rule: FeeRule; membershipId: string; linkId: string } | undefined;
-  if (input.refCode) {
+  if (input.refCode && offer.affiliate_enabled) {
     const { data: link } = await admin.from("affiliate_links")
       .select("id, membership_id, affiliate_memberships!inner(user_id, status, affiliate_programs!inner(product_id, active))")
       .eq("ref_code", input.refCode).eq("active", true).maybeSingle();
@@ -188,6 +204,7 @@ export async function createCheckout(input: CheckoutRequest) {
     pendingUrl: `${appUrl}/checkout/pendente?order=${order.id}`,
     marketplaceFeeAmount: product.settlement_model === "connected_account" ? result.prosperitySplitCents / 100 : undefined,
     maxInstallments: Number(offer.max_installments),
+    paymentMethods: paymentMethods(offer),
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
   const updates = await Promise.all([

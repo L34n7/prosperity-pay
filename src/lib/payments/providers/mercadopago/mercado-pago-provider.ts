@@ -17,11 +17,7 @@ type MercadoPagoPaymentResponse = {
   external_reference?: string | null;
   transaction_amount?: number;
   currency_id?: string;
-  point_of_interaction?: {
-    transaction_data?: {
-      ticket_url?: string;
-    };
-  };
+  point_of_interaction?: { transaction_data?: { ticket_url?: string } };
   init_point?: string;
   sandbox_init_point?: string;
 };
@@ -34,22 +30,30 @@ type MercadoPagoPreferenceResponse = {
 
 function mapStatus(status?: string): PaymentStatus {
   switch (status) {
-    case "approved":
-      return "approved";
-    case "rejected":
-      return "rejected";
-    case "cancelled":
-      return "cancelled";
-    case "refunded":
-      return "refunded";
-    case "charged_back":
-      return "charged_back";
+    case "approved": return "approved";
+    case "rejected": return "rejected";
+    case "cancelled": return "cancelled";
+    case "refunded": return "refunded";
+    case "charged_back": return "charged_back";
     case "in_process":
-    case "in_mediation":
-      return "processing";
-    default:
-      return "pending";
+    case "in_mediation": return "processing";
+    default: return "pending";
   }
+}
+
+function checkoutPaymentMethods(input: CreateCheckoutInput) {
+  const excludedPaymentTypes: { id: string }[] = [];
+  if (input.paymentMethods) {
+    // The product only exposes card and PIX. Mercado Pago account balance is a provider-controlled exception.
+    excludedPaymentTypes.push({ id: "ticket" }, { id: "atm" }, { id: "debit_card" }, { id: "prepaid_card" }, { id: "digital_currency" });
+    if (!input.paymentMethods.card) excludedPaymentTypes.push({ id: "credit_card" });
+    if (!input.paymentMethods.pix) excludedPaymentTypes.push({ id: "bank_transfer" });
+  }
+  if (!input.maxInstallments && !excludedPaymentTypes.length) return undefined;
+  return {
+    installments: input.maxInstallments,
+    excluded_payment_types: excludedPaymentTypes.length ? excludedPaymentTypes : undefined,
+  };
 }
 
 export class MercadoPagoProvider implements PaymentProvider {
@@ -75,9 +79,7 @@ export class MercadoPagoProvider implements PaymentProvider {
           }],
           payer: input.payerEmail ? { email: input.payerEmail } : undefined,
           marketplace_fee: input.marketplaceFeeAmount,
-          payment_methods: input.maxInstallments
-            ? { installments: input.maxInstallments }
-            : undefined,
+          payment_methods: checkoutPaymentMethods(input),
           notification_url: input.notificationUrl,
           back_urls: {
             success: input.successUrl,
@@ -91,9 +93,7 @@ export class MercadoPagoProvider implements PaymentProvider {
       input.idempotencyKey,
     );
 
-    if (!body.id || !body.init_point) {
-      throw new Error("Mercado Pago retornou preferencia incompleta.");
-    }
+    if (!body.id || !body.init_point) throw new Error("Mercado Pago retornou preferencia incompleta.");
     return {
       provider: "mercadopago",
       externalId: body.id,
@@ -102,11 +102,7 @@ export class MercadoPagoProvider implements PaymentProvider {
     };
   }
 
-  private async request<T>(
-    path: string,
-    init?: RequestInit,
-    idempotencyKey?: string,
-  ): Promise<T> {
+  private async request<T>(path: string, init?: RequestInit, idempotencyKey?: string): Promise<T> {
     const response = await fetch(`${API_URL}${path}`, {
       ...init,
       headers: {
@@ -117,14 +113,8 @@ export class MercadoPagoProvider implements PaymentProvider {
       },
       cache: "no-store",
     });
-
     const body = (await response.json()) as T & { message?: string };
-
-    if (!response.ok) {
-      const message = body?.message || `Mercado Pago respondeu HTTP ${response.status}`;
-      throw new Error(message);
-    }
-
+    if (!response.ok) throw new Error(body?.message || `Mercado Pago respondeu HTTP ${response.status}`);
     return body;
   }
 
@@ -138,62 +128,36 @@ export class MercadoPagoProvider implements PaymentProvider {
           description: input.description,
           external_reference: input.externalReference,
           notification_url: input.notificationUrl,
-          payer: input.payer
-            ? {
-                email: input.payer.email,
-                identification: input.payer.document
-                  ? { number: input.payer.document }
-                  : undefined,
-              }
-            : undefined,
+          payer: input.payer ? { email: input.payer.email, identification: input.payer.document ? { number: input.payer.document } : undefined } : undefined,
           metadata: input.metadata,
         }),
       },
       input.idempotencyKey,
     );
-
     return this.normalize(body);
   }
 
   async getPayment(externalPaymentId: string): Promise<ProviderPayment> {
-    const body = await this.request<MercadoPagoPaymentResponse>(
-      `/v1/payments/${encodeURIComponent(externalPaymentId)}`,
-    );
-
-    return this.normalize(body);
+    return this.normalize(await this.request<MercadoPagoPaymentResponse>(`/v1/payments/${encodeURIComponent(externalPaymentId)}`));
   }
 
   async refundPayment(input: RefundPaymentInput): Promise<ProviderPayment> {
-    await this.request(
-      `/v1/payments/${encodeURIComponent(input.externalPaymentId)}/refunds`,
-      {
-        method: "POST",
-        body: JSON.stringify(input.amount ? { amount: input.amount } : {}),
-      },
-      input.idempotencyKey,
-    );
-
+    await this.request(`/v1/payments/${encodeURIComponent(input.externalPaymentId)}/refunds`, {
+      method: "POST",
+      body: JSON.stringify(input.amount ? { amount: input.amount } : {}),
+    }, input.idempotencyKey);
     return this.getPayment(input.externalPaymentId);
   }
 
   private normalize(body: MercadoPagoPaymentResponse): ProviderPayment {
-    if (!body.id) {
-      throw new Error("Mercado Pago retornou pagamento sem identificador.");
-    }
-
+    if (!body.id) throw new Error("Mercado Pago retornou pagamento sem identificador.");
     return {
       provider: "mercadopago",
       externalId: String(body.id),
       externalReference: body.external_reference || undefined,
       status: mapStatus(body.status),
-      checkoutUrl:
-        body.point_of_interaction?.transaction_data?.ticket_url ||
-        body.init_point ||
-        body.sandbox_init_point,
-      money: {
-        amount: body.transaction_amount || 0,
-        currency: "BRL",
-      },
+      checkoutUrl: body.point_of_interaction?.transaction_data?.ticket_url || body.init_point || body.sandbox_init_point,
+      money: { amount: body.transaction_amount || 0, currency: "BRL" },
       raw: body,
     };
   }

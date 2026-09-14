@@ -59,6 +59,11 @@ export type CreateCheckoutInput = {
   pendingUrl: string;
   marketplaceFeeAmount?: number;
   maxInstallments?: number;
+  paymentMethods?: {
+    card: boolean;
+    pix: boolean;
+    primary: "card" | "pix";
+  };
   expiresAt?: Date;
 };
 

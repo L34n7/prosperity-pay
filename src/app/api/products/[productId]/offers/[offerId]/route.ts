@@ -2,58 +2,150 @@ import { NextResponse } from "next/server";
 import { asObject, jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { calculateMaxInstallments } from "@/lib/domain/offer-rules";
+import { isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import type { Database } from "@/lib/supabase/database.types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ productId: string; offerId: string }> };
-type OfferUpdate = Database["public"]["Tables"]["offers"]["Update"];
+type OfferUpdate = Database["public"]["Tables"]["offers"]["Update"] & {
+  payment_card_enabled?: boolean;
+  payment_pix_enabled?: boolean;
+  primary_payment_method?: "card" | "pix";
+  first_charge_cents?: number | null;
+  affiliate_enabled?: boolean;
+};
+type OfferRow = Database["public"]["Tables"]["offers"]["Row"] & {
+  payment_card_enabled: boolean;
+  payment_pix_enabled: boolean;
+  primary_payment_method: "card" | "pix";
+  first_charge_cents: number | null;
+  affiliate_enabled: boolean;
+};
+type ProductRow = Database["public"]["Tables"]["products"]["Row"] & {
+  payment_type: "one_time" | "recurring";
+  recurrence_frequency: RecurrenceFrequency | null;
+  different_first_charge: boolean;
+  first_charge_cents: number | null;
+};
+
+function positiveInteger(value: unknown) {
+  return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null;
+}
+
+async function activationError(product: ProductRow, supabase: Awaited<ReturnType<typeof requireUser>>["supabase"]) {
+  if (product.payment_type === "recurring") return "A oferta recorrente pode ser configurada, mas a cobrança recorrente ainda não está disponível no checkout.";
+  if (product.status !== "active") return "Ative o produto antes da oferta.";
+  if (product.settlement_model === "connected_account") {
+    const { data } = await supabase.from("payment_provider_connections").select("id").eq("owner_user_id", product.producer_id).eq("status", "active").maybeSingle();
+    return data ? null : "Conecte o Mercado Pago antes de ativar a oferta.";
+  }
+  const { data } = await createAdminClient().from("payment_provider_connections").select("id").eq("connection_kind", "prosperity_balance").eq("status", "active").maybeSingle();
+  return data ? null : "A conta central Prosperity ainda não foi configurada.";
+}
 
 export async function PATCH(request: Request, context: Context) {
   try {
     const { productId, offerId } = await context.params;
     const { supabase } = await requireUser();
     const body = asObject(await request.json());
+    if (body.affiliateHoldDays !== undefined) return NextResponse.json({ error: "A liberação da comissão é definida pela Prosperity Pay." }, { status: 400 });
+    if (body.prosperityFeeBps !== undefined) return NextResponse.json({ error: "A taxa da Prosperity só pode ser alterada pela administração." }, { status: 403 });
 
-    if (body.maxInstallments !== undefined) {
-      return NextResponse.json({ error: "Parcelamento é calculado automaticamente pela Prosperity Pay." }, { status: 400 });
-    }
-    if (body.affiliateHoldDays !== undefined) {
-      return NextResponse.json({ error: "A liberação da comissão é definida pela Prosperity Pay." }, { status: 400 });
-    }
-    if (body.prosperityFeeBps !== undefined) {
-      return NextResponse.json({ error: "A taxa da Prosperity só pode ser alterada pela administração." }, { status: 403 });
-    }
+    const [offerResult, productResult] = await Promise.all([
+      supabase.from("offers").select("*").eq("id", offerId).eq("product_id", productId).single(),
+      supabase.from("products").select("*").eq("id", productId).single(),
+    ]);
+    if (offerResult.error || !offerResult.data) throw offerResult.error ?? new Error("Oferta não encontrada.");
+    if (productResult.error || !productResult.data) throw productResult.error ?? new Error("Produto não encontrado.");
+    const offer = offerResult.data as OfferRow;
+    const product = productResult.data as ProductRow;
 
     const update: OfferUpdate = {};
-    if (typeof body.name === "string") update.name = body.name.trim().slice(0, 180);
-    if (body.priceCents !== undefined) {
-      if (!Number.isSafeInteger(body.priceCents) || Number(body.priceCents) <= 0) {
-        return NextResponse.json({ error: "Preço inválido." }, { status: 400 });
+    if (typeof body.name === "string") {
+      const name = body.name.trim();
+      if (name.length < 2 || name.length > 180) return NextResponse.json({ error: "Nome inválido." }, { status: 400 });
+      update.name = name;
+    }
+
+    const priceCents = body.priceCents === undefined ? Number(offer.price_cents) : positiveInteger(body.priceCents);
+    if (!priceCents) return NextResponse.json({ error: "Preço inválido." }, { status: 400 });
+    update.price_cents = priceCents;
+
+    const cardEnabled = body.paymentCardEnabled === undefined ? offer.payment_card_enabled : body.paymentCardEnabled === true;
+    const pixEnabled = body.paymentPixEnabled === undefined ? offer.payment_pix_enabled : body.paymentPixEnabled === true;
+    if (!cardEnabled && !pixEnabled) return NextResponse.json({ error: "Selecione Cartão e/ou PIX." }, { status: 400 });
+    const primary = body.primaryPaymentMethod === undefined
+      ? offer.primary_payment_method
+      : body.primaryPaymentMethod === "pix" ? "pix" : "card";
+    if ((primary === "card" && !cardEnabled) || (primary === "pix" && !pixEnabled)) return NextResponse.json({ error: "O método principal precisa estar habilitado." }, { status: 400 });
+    update.payment_card_enabled = cardEnabled;
+    update.payment_pix_enabled = pixEnabled;
+    update.primary_payment_method = primary;
+
+    const allowedMax = calculateMaxInstallments(priceCents);
+    const requestedInstallments = body.maxInstallments === undefined ? Math.min(offer.max_installments, allowedMax) : positiveInteger(body.maxInstallments);
+    if (!requestedInstallments || requestedInstallments > allowedMax) return NextResponse.json({ error: `Escolha entre 1x e ${allowedMax}x.` }, { status: 400 });
+    update.max_installments = cardEnabled ? requestedInstallments : 1;
+
+    if (product.payment_type === "recurring") {
+      if (!isRecurrenceFrequency(product.recurrence_frequency)) return NextResponse.json({ error: "Configure a frequência de recorrência do produto." }, { status: 409 });
+      const billing = recurrenceToBilling(product.recurrence_frequency);
+      update.billing_type = "recurring";
+      update.billing_interval = billing.interval;
+      update.billing_interval_count = billing.count;
+      if (product.different_first_charge) {
+        const firstChargeCents = body.firstChargeCents === undefined
+          ? positiveInteger(offer.first_charge_cents ?? product.first_charge_cents)
+          : positiveInteger(body.firstChargeCents);
+        if (!firstChargeCents) return NextResponse.json({ error: "Valor da primeira cobrança inválido." }, { status: 400 });
+        update.first_charge_cents = firstChargeCents;
+      } else update.first_charge_cents = null;
+    } else {
+      update.billing_type = "one_time";
+      update.billing_interval = null;
+      update.billing_interval_count = null;
+      update.first_charge_cents = null;
+    }
+
+    const affiliateEnabled = body.affiliateEnabled === undefined ? offer.affiliate_enabled : body.affiliateEnabled === true;
+    update.affiliate_enabled = affiliateEnabled;
+    if (body.affiliateCommissionBps !== undefined) {
+      const commission = Number(body.affiliateCommissionBps);
+      if (!Number.isInteger(commission) || commission < 0 || commission > 10_000) return NextResponse.json({ error: "Comissão de afiliado inválida." }, { status: 400 });
+      update.affiliate_commission_bps = commission;
+    }
+
+    if (body.active !== undefined) {
+      const active = body.active === true;
+      if (active) {
+        const problem = await activationError(product, supabase);
+        if (problem) return NextResponse.json({ error: problem }, { status: 409 });
       }
-      const priceCents = Number(body.priceCents);
-      update.price_cents = priceCents;
-      update.max_installments = calculateMaxInstallments(priceCents);
+      update.status = active ? "active" : "draft";
     }
-    if (["draft", "active", "inactive", "archived"].includes(String(body.status))) update.status = body.status as OfferUpdate["status"];
-    if (update.status === "active") {
-      const { data: currentOffer } = await supabase.from("offers").select("billing_type").eq("id", offerId).eq("product_id", productId).single();
-      if (currentOffer?.billing_type === "recurring") return NextResponse.json({ error: "Cobrança recorrente ainda não está disponível." }, { status: 409 });
-      const { data: product } = await supabase.from("products").select("producer_id, settlement_model, status").eq("id", productId).single();
-      if (!product || product.status !== "active") return NextResponse.json({ error: "Ative o produto antes da oferta." }, { status: 409 });
-      if (product.settlement_model === "connected_account") {
-        const { data: connection } = await supabase.from("payment_provider_connections").select("id").eq("owner_user_id", product.producer_id).eq("status", "active").maybeSingle();
-        if (!connection) return NextResponse.json({ error: "Conecte o Mercado Pago antes de ativar a oferta." }, { status: 409 });
-      } else {
-        const { data: platform } = await createAdminClient().from("payment_provider_connections").select("id").eq("connection_kind", "prosperity_balance").eq("status", "active").maybeSingle();
-        if (!platform) return NextResponse.json({ error: "A conta central Prosperity ainda não foi configurada." }, { status: 409 });
-      }
-    }
-    if (Number.isInteger(body.affiliateCommissionBps) && Number(body.affiliateCommissionBps) >= 0 && Number(body.affiliateCommissionBps) <= 10_000) {
-      update.affiliate_commission_bps = Number(body.affiliateCommissionBps);
-    }
-    const { data, error } = await supabase.from("offers").update(update)
-      .eq("id", offerId).eq("product_id", productId).select().single();
+
+    const { data, error } = await supabase.from("offers").update(update).eq("id", offerId).eq("product_id", productId).select().single();
     if (error) throw error;
     return NextResponse.json({ offer: data });
+  } catch (error) { return jsonError(error); }
+}
+
+export async function DELETE(_: Request, context: Context) {
+  try {
+    const { productId, offerId } = await context.params;
+    const { supabase } = await requireUser();
+    const [{ count: orderCount, error: orderError }, { count: subscriptionCount, error: subscriptionError }] = await Promise.all([
+      supabase.from("orders").select("id", { count: "exact", head: true }).eq("offer_id", offerId).eq("product_id", productId),
+      supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("offer_id", offerId),
+    ]);
+    if (orderError) throw orderError;
+    if (subscriptionError) throw subscriptionError;
+    if ((orderCount ?? 0) > 0 || (subscriptionCount ?? 0) > 0) {
+      return NextResponse.json({ error: "Esta oferta possui histórico financeiro e não pode ser excluída. Desative-a para preservar os registros." }, { status: 409 });
+    }
+    const { data, error } = await supabase.from("offers").delete().eq("id", offerId).eq("product_id", productId).select("id").maybeSingle();
+    if (error) throw error;
+    if (!data) return NextResponse.json({ error: "Oferta não encontrada." }, { status: 404 });
+    return NextResponse.json({ deleted: true });
   } catch (error) { return jsonError(error); }
 }

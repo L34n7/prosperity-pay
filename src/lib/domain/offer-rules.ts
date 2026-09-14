@@ -9,3 +9,7 @@ export function calculateMaxInstallments(priceCents: number) {
     Math.min(MAX_INSTALLMENTS, Math.floor(priceCents / MIN_INSTALLMENT_AMOUNT_CENTS)),
   );
 }
+
+export function getInstallmentOptions(priceCents: number) {
+  return Array.from({ length: calculateMaxInstallments(priceCents) }, (_, index) => index + 1);
+}
