@@ -222,7 +222,7 @@ function ProductSettings({ product, busy, onSave, onChangeImage, onRemoveImage }
         <label>E-mail do SAC<input name="supportEmail" type="email" defaultValue={product.support_email ?? ""} maxLength={320}/></label>
         <label>WhatsApp do SAC<input name="supportWhatsapp" defaultValue={product.support_whatsapp ?? ""} maxLength={32}/></label>
       </div>
-      {paymentType === "recurring" && <p className="form-hint">As ofertas passam a usar esta frequência. A cobrança recorrente ainda precisa do processador de assinaturas para ser ativada no checkout.</p>}
+      {paymentType === "recurring" && <p className="form-hint">A cobrança recorrente é processada pela API oficial de Assinaturas do Mercado Pago. O cliente autoriza a recorrência no checkout hospedado.</p>}
       <button className="primary-button" disabled={busy}>Salvar produto</button>
     </form>
     <div className="product-image-settings"><h2>Imagem do produto</h2>{productImageUrl(product.image_path) && <Image className="product-image-preview" src={productImageUrl(product.image_path)!} alt={product.name} width={320} height={180} unoptimized/>}<form className="operational-form" onSubmit={onChangeImage}><label>Selecionar imagem JPEG, PNG ou WebP (até 3 MB)<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required/></label><button className="secondary-button" disabled={busy}>Enviar imagem</button></form>{product.image_path && <button className="secondary-button" disabled={busy} onClick={() => void onRemoveImage()}>Remover imagem</button>}</div>
@@ -242,7 +242,7 @@ function OffersList({ product, offers, onNew, onEdit, onDelete }: { product: Pro
         <div className="button-row"><button className="secondary-button" onClick={() => onEdit(offer)}>Editar</button><button className="secondary-button" onClick={() => onDelete(offer)}>Excluir</button></div>
       </div>)}
     </div>}
-    {product.payment_type === "recurring" && <p className="form-hint">Você já pode montar todas as ofertas recorrentes. A ativação ficará disponível quando o processador de assinaturas estiver implementado.</p>}
+    {product.payment_type === "recurring" && <p className="form-hint">Ofertas recorrentes ativas geram uma assinatura no Mercado Pago. Cada renovação aprovada é registrada como um novo ciclo de venda.</p>}
   </>;
 }
 
@@ -253,7 +253,8 @@ function OfferDialog({ product, offer, busy, onClose, onSave }: { product: Produ
   const [cardEnabled, setCardEnabled] = useState(offer?.payment_card_enabled ?? true);
   const [pixEnabled, setPixEnabled] = useState(offer?.payment_pix_enabled ?? true);
   const [primary, setPrimary] = useState<"card" | "pix">(offer?.primary_payment_method ?? "card");
-  const [affiliateEnabled, setAffiliateEnabled] = useState(offer?.affiliate_enabled ?? false);
+  const connectedRecurring = product.payment_type === "recurring" && product.settlement_model === "connected_account";
+  const [affiliateEnabled, setAffiliateEnabled] = useState(connectedRecurring ? false : offer?.affiliate_enabled ?? false);
   const allowedInstallments = getInstallmentOptions(Math.round(Number(price || 0) * 100));
   const allowedMaximum = allowedInstallments[allowedInstallments.length - 1] ?? 1;
   const [maxInstallments, setMaxInstallments] = useState(Math.min(offer?.max_installments ?? allowedMaximum, allowedMaximum));
@@ -283,10 +284,11 @@ function OfferDialog({ product, offer, busy, onClose, onSave }: { product: Produ
     const data = new FormData(event.currentTarget);
     await onSave({
       name: data.get("name"), priceCents: cents(data.get("price")), paymentCardEnabled: cardEnabled, paymentPixEnabled: pixEnabled,
-      primaryPaymentMethod: primary, maxInstallments: cardEnabled ? maxInstallments : 1,
+      primaryPaymentMethod: primary, maxInstallments: product.payment_type === "recurring" ? 1 : cardEnabled ? maxInstallments : 1,
       firstChargeCents: product.payment_type === "recurring" && product.different_first_charge ? cents(data.get("firstCharge")) : null,
-      active: product.payment_type === "one_time" && data.get("active") === "on",
-      affiliateEnabled, affiliateCommissionBps: affiliateEnabled ? Math.round(Number(data.get("commission") || 0) * 100) : (offer?.affiliate_commission_bps ?? 0),
+      active: data.get("active") === "on",
+      affiliateEnabled: connectedRecurring ? false : affiliateEnabled,
+      affiliateCommissionBps: !connectedRecurring && affiliateEnabled ? Math.round(Number(data.get("commission") || 0) * 100) : (offer?.affiliate_commission_bps ?? 0),
     });
   }
 
@@ -300,11 +302,12 @@ function OfferDialog({ product, offer, busy, onClose, onSave }: { product: Produ
       <fieldset className="form-fieldset"><legend>Métodos de pagamento disponíveis</legend><label className="checkbox-line"><input type="checkbox" checked={cardEnabled} onChange={event => changeCard(event.target.checked)}/> Cartão</label><label className="checkbox-line"><input type="checkbox" checked={pixEnabled} onChange={event => changePix(event.target.checked)}/> PIX</label></fieldset>
       <fieldset className="form-fieldset"><legend>Método de pagamento principal</legend><label className="checkbox-line"><input type="radio" name="primary" checked={primary === "card"} disabled={!cardEnabled} onChange={() => setPrimary("card")}/> Cartão</label><label className="checkbox-line"><input type="radio" name="primary" checked={primary === "pix"} disabled={!pixEnabled} onChange={() => setPrimary("pix")}/> PIX</label></fieldset>
       {product.payment_type === "recurring" && product.different_first_charge && <label>Valor da primeira cobrança (R$)<input name="firstCharge" type="number" min="0.01" step="0.01" defaultValue={moneyInput(offer?.first_charge_cents ?? product.first_charge_cents)} required/></label>}
-      <label>Quantidade máxima de parcelas<select value={maxInstallments} disabled={!cardEnabled} onChange={event => setMaxInstallments(Number(event.target.value))}>{allowedInstallments.map(value => <option value={value} key={value}>{value}x</option>)}</select><small>Parcela mínima de R$ 50, limitado a 12x.</small></label>
-      <label className="checkbox-line"><input type="checkbox" name="active" defaultChecked={offer?.status === "active"} disabled={product.payment_type === "recurring"}/> Oferta ativa</label>
-      {product.payment_type === "recurring" && <p className="form-hint">A oferta recorrente será salva como rascunho até a integração de assinaturas estar habilitada.</p>}
-      <label className="checkbox-line"><input type="checkbox" checked={affiliateEnabled} onChange={event => setAffiliateEnabled(event.target.checked)}/> Disponível para afiliado</label>
-      {affiliateEnabled && <label>Comissão padrão de afiliado (%)<input name="commission" type="number" min="0" max="100" step="0.01" defaultValue={(offer?.affiliate_commission_bps ?? 0) / 100}/></label>}
+      {product.payment_type === "recurring" ? <p className="form-hint">Assinaturas não usam parcelamento. Para cobrança automática, mantenha Cartão habilitado; o Mercado Pago gerencia a autorização e as renovações.</p> : <label>Quantidade máxima de parcelas<select value={maxInstallments} disabled={!cardEnabled} onChange={event => setMaxInstallments(Number(event.target.value))}>{allowedInstallments.map(value => <option value={value} key={value}>{value}x</option>)}</select><small>Parcela mínima de R$ 50, limitado a 12x.</small></label>}
+      <label className="checkbox-line"><input type="checkbox" name="active" defaultChecked={offer?.status === "active"}/> Oferta ativa</label>
+      {product.payment_type === "recurring" && <p className="form-hint">Ao ativar, o link desta oferta passa a criar assinaturas reais na API do Mercado Pago.</p>}
+      <label className="checkbox-line"><input type="checkbox" checked={affiliateEnabled} disabled={connectedRecurring} onChange={event => setAffiliateEnabled(event.target.checked)}/> Disponível para afiliado</label>
+      {connectedRecurring && <p className="form-hint">No recebimento direto, a API de Assinaturas do Mercado Pago não oferece split 1:1. Para comissão automática recorrente, use o modelo Saldo Prosperity.</p>}
+      {!connectedRecurring && affiliateEnabled && <label>Comissão padrão de afiliado (%)<input name="commission" type="number" min="0" max="100" step="0.01" defaultValue={(offer?.affiliate_commission_bps ?? 0) / 100}/></label>}
       <div className="record-row"><strong>Liberação da comissão</strong><span>{AFFILIATE_HOLD_DAYS} dias após a aprovação</span></div>
       <div className="product-dialog-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button className="primary-button" disabled={busy || (!cardEnabled && !pixEnabled)}>{busy ? "Salvando..." : offer ? "Salvar oferta" : "Criar oferta"}</button></div>
     </form>

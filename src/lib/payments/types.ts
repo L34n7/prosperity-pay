@@ -73,3 +73,39 @@ export type ProviderCheckout = {
   checkoutUrl: string;
   sandboxCheckoutUrl?: string;
 };
+
+export type ProviderSubscriptionStatus = "pending" | "authorized" | "paused" | "cancelled";
+
+export type CreateSubscriptionInput = {
+  externalReference: string;
+  idempotencyKey: string;
+  reason: string;
+  payerEmail: string;
+  money: Money;
+  frequency: number;
+  frequencyType: "days" | "months";
+  backUrl: string;
+};
+
+export type ProviderSubscription = {
+  provider: PaymentProviderCode;
+  externalId: string;
+  externalReference?: string;
+  status: ProviderSubscriptionStatus;
+  checkoutUrl?: string;
+  nextPaymentDate?: string;
+  money?: Money;
+  raw?: unknown;
+};
+
+export type ProviderAuthorizedPayment = {
+  provider: PaymentProviderCode;
+  externalId: string;
+  subscriptionExternalId: string;
+  externalReference?: string;
+  paymentExternalId?: string;
+  paymentStatus?: PaymentStatus;
+  money: Money;
+  debitDate?: string;
+  raw?: unknown;
+};

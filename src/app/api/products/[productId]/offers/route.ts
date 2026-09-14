@@ -28,8 +28,22 @@ function positiveInteger(value: unknown) {
   return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null;
 }
 
-async function ensureCanActivate(product: ProductRow, supabase: Awaited<ReturnType<typeof requireUser>>["supabase"]) {
+async function ensureCanActivate(
+  product: ProductRow,
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  productId: string,
+  affiliateEnabled: boolean,
+  cardEnabled: boolean,
+) {
   if (product.status !== "active") return "Ative o produto antes da oferta.";
+  if (product.payment_type === "recurring" && !cardEnabled) return "Assinaturas automáticas precisam ter Cartão habilitado.";
+  if (product.payment_type === "recurring" && product.settlement_model === "connected_account") {
+    if (affiliateEnabled) return "Assinaturas com recebimento direto no Mercado Pago não suportam comissão automática de afiliado. Use o Saldo Prosperity para dividir recorrências.";
+    const { count, error } = await supabase.from("product_participants").select("id", { count: "exact", head: true })
+      .eq("product_id", productId).eq("active", true).is("offer_id", null);
+    if (error) throw error;
+    if ((count ?? 0) > 0) return "Assinaturas com recebimento direto no Mercado Pago não suportam divisão automática com coprodutores. Use o Saldo Prosperity para dividir recorrências.";
+  }
   if (product.settlement_model === "connected_account") {
     const { data } = await supabase.from("payment_provider_connections").select("id").eq("owner_user_id", product.producer_id).eq("status", "active").maybeSingle();
     return data ? null : "Conecte o Mercado Pago antes de ativar a oferta.";
@@ -73,7 +87,7 @@ export async function POST(request: Request, context: Context) {
     const allowedMax = calculateMaxInstallments(priceCents);
     const requestedInstallments = body.maxInstallments === undefined ? allowedMax : positiveInteger(body.maxInstallments);
     if (!requestedInstallments || requestedInstallments > allowedMax) return NextResponse.json({ error: `Escolha entre 1x e ${allowedMax}x.` }, { status: 400 });
-    const maxInstallments = cardEnabled ? requestedInstallments : 1;
+    const maxInstallments = product.payment_type === "recurring" ? 1 : cardEnabled ? requestedInstallments : 1;
 
     let billingInterval: string | null = null;
     let billingIntervalCount: number | null = null;
@@ -94,8 +108,7 @@ export async function POST(request: Request, context: Context) {
     if (!Number.isInteger(affiliateCommissionBps) || affiliateCommissionBps < 0 || affiliateCommissionBps > 10_000) return NextResponse.json({ error: "Comissão de afiliado inválida." }, { status: 400 });
     const active = body.active === true;
     if (active) {
-      if (product.payment_type === "recurring") return NextResponse.json({ error: "A oferta recorrente pode ser configurada, mas a cobrança recorrente ainda não está disponível no checkout." }, { status: 409 });
-      const activationError = await ensureCanActivate(product, supabase);
+      const activationError = await ensureCanActivate(product, supabase, productId, affiliateEnabled, cardEnabled);
       if (activationError) return NextResponse.json({ error: activationError }, { status: 409 });
     }
 

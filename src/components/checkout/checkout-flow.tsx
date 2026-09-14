@@ -5,28 +5,63 @@ import { LockKeyhole, ShieldCheck } from "lucide-react";
 import { Brand } from "@/components/ui/brand";
 import { formatCents } from "@/lib/operational";
 
-type Offer = { slug: string; name: string; productName: string; description: string | null; imageUrl: string | null; priceCents: number; billingType: string };
+type Offer = {
+  slug: string;
+  name: string;
+  productName: string;
+  description: string | null;
+  imageUrl: string | null;
+  priceCents: number;
+  firstChargeCents: number | null;
+  billingType: string;
+  billingInterval: string | null;
+  billingIntervalCount: number | null;
+};
+
+function recurrenceLabel(offer: Offer) {
+  const count = Number(offer.billingIntervalCount ?? 1);
+  if (offer.billingInterval === "week") return count === 1 ? "semanal" : `a cada ${count} semanas`;
+  if (offer.billingInterval === "year") return count === 1 ? "anual" : `a cada ${count} anos`;
+  if (offer.billingInterval === "month") {
+    if (count === 1) return "mensal";
+    if (count === 3) return "trimestral";
+    if (count === 6) return "semestral";
+    if (count === 12) return "anual";
+    return `a cada ${count} meses`;
+  }
+  return "recorrente";
+}
+
 export function CheckoutFlow({ offer, affiliate }: { offer: Offer; affiliate?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const key = useRef<string | null>(null);
+  const recurring = offer.billingType === "recurring";
+  const initialPrice = recurring && offer.firstChargeCents ? offer.firstChargeCents : offer.priceCents;
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     const data = new FormData(event.currentTarget);
     key.current ??= crypto.randomUUID();
     try {
-      const response = await fetch("/api/checkout/orders", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": key.current }, body: JSON.stringify({ offerSlug: offer.slug, customerName: data.get("name"), customerEmail: data.get("email"), refCode: affiliate }) });
+      const response = await fetch("/api/checkout/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": key.current },
+        body: JSON.stringify({ offerSlug: offer.slug, customerName: data.get("name"), customerEmail: data.get("email"), refCode: affiliate }),
+      });
       const result = await response.json();
       if (response.status === 409) key.current = crypto.randomUUID();
       if (!response.ok || !result.checkoutUrl) throw new Error(result.error || "Não foi possível abrir o pagamento.");
       window.location.assign(result.checkoutUrl);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha no pagamento."); setBusy(false); }
   }
+
   return <main className="checkout-page"><header className="checkout-header"><Brand href="/"/><span><LockKeyhole size={14}/> Ambiente seguro</span></header>
-    <div className="checkout-layout"><section className="checkout-product">{offer.imageUrl && <Image className="checkout-product-image" src={offer.imageUrl} alt={offer.productName} width={640} height={360} unoptimized/>}<span className="checkout-badge">{offer.productName}</span><h1>{offer.name}</h1><p>{offer.description}</p><div className="security-note"><ShieldCheck size={22}/><div><strong>Pagamento protegido</strong><span>Você será redirecionado para o Mercado Pago.</span></div></div></section>
-    <section className="checkout-card"><div className="checkout-card-head"><div><span>Resumo do pedido</span><h2>{offer.name}</h2></div><div className="checkout-price"><strong>{formatCents(offer.priceCents)}</strong></div></div>
+    <div className="checkout-layout"><section className="checkout-product">{offer.imageUrl && <Image className="checkout-product-image" src={offer.imageUrl} alt={offer.productName} width={640} height={360} unoptimized/>}<span className="checkout-badge">{offer.productName}</span><h1>{offer.name}</h1><p>{offer.description}</p><div className="security-note"><ShieldCheck size={22}/><div><strong>{recurring ? "Assinatura protegida" : "Pagamento protegido"}</strong><span>{recurring ? "Você será redirecionado ao Mercado Pago para autorizar as cobranças recorrentes." : "Você será redirecionado para o Mercado Pago."}</span></div></div></section>
+    <section className="checkout-card"><div className="checkout-card-head"><div><span>{recurring ? "Resumo da assinatura" : "Resumo do pedido"}</span><h2>{offer.name}</h2></div><div className="checkout-price"><strong>{formatCents(initialPrice)}</strong>{recurring && <small>{offer.firstChargeCents && offer.firstChargeCents !== offer.priceCents ? ` na 1ª cobrança · depois ${formatCents(offer.priceCents)} ${recurrenceLabel(offer)}` : ` ${recurrenceLabel(offer)}`}</small>}</div></div>
     {affiliate && <div className="referral-note">Indicação aplicada</div>}
     <form onSubmit={submit} className="checkout-form"><div className="checkout-divider"><span>Dados do comprador</span></div><label>Nome completo<input name="name" required autoComplete="name"/></label><label>E-mail<input name="email" type="email" required autoComplete="email"/></label>
+    {recurring && <p className="form-hint">Ao continuar, você autoriza o Mercado Pago a cadastrar a assinatura e realizar as próximas cobranças conforme a frequência informada. A assinatura pode ser gerenciada no Mercado Pago.</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <button className="checkout-submit" disabled={busy}>{busy ? "Abrindo Mercado Pago..." : "Continuar para pagamento →"}</button></form><footer className="checkout-card-footer"><LockKeyhole size={13}/> Pagamento processado pelo Mercado Pago</footer></section></div></main>;
+    <button className="checkout-submit" disabled={busy}>{busy ? "Abrindo Mercado Pago..." : recurring ? "Continuar para assinatura →" : "Continuar para pagamento →"}</button></form><footer className="checkout-card-footer"><LockKeyhole size={13}/> {recurring ? "Assinatura processada pelo Mercado Pago" : "Pagamento processado pelo Mercado Pago"}</footer></section></div></main>;
 }

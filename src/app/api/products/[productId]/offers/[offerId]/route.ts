@@ -32,9 +32,23 @@ function positiveInteger(value: unknown) {
   return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null;
 }
 
-async function activationError(product: ProductRow, supabase: Awaited<ReturnType<typeof requireUser>>["supabase"]) {
-  if (product.payment_type === "recurring") return "A oferta recorrente pode ser configurada, mas a cobrança recorrente ainda não está disponível no checkout.";
+async function activationError(
+  product: ProductRow,
+  supabase: Awaited<ReturnType<typeof requireUser>>["supabase"],
+  productId: string,
+  offerId: string,
+  affiliateEnabled: boolean,
+  cardEnabled: boolean,
+) {
   if (product.status !== "active") return "Ative o produto antes da oferta.";
+  if (product.payment_type === "recurring" && !cardEnabled) return "Assinaturas automáticas precisam ter Cartão habilitado.";
+  if (product.payment_type === "recurring" && product.settlement_model === "connected_account") {
+    if (affiliateEnabled) return "Assinaturas com recebimento direto no Mercado Pago não suportam comissão automática de afiliado. Use o Saldo Prosperity para dividir recorrências.";
+    const { count, error } = await supabase.from("product_participants").select("id", { count: "exact", head: true })
+      .eq("product_id", productId).eq("active", true).or(`offer_id.is.null,offer_id.eq.${offerId}`);
+    if (error) throw error;
+    if ((count ?? 0) > 0) return "Assinaturas com recebimento direto no Mercado Pago não suportam divisão automática com coprodutores. Use o Saldo Prosperity para dividir recorrências.";
+  }
   if (product.settlement_model === "connected_account") {
     const { data } = await supabase.from("payment_provider_connections").select("id").eq("owner_user_id", product.producer_id).eq("status", "active").maybeSingle();
     return data ? null : "Conecte o Mercado Pago antes de ativar a oferta.";
@@ -85,7 +99,7 @@ export async function PATCH(request: Request, context: Context) {
     const allowedMax = calculateMaxInstallments(priceCents);
     const requestedInstallments = body.maxInstallments === undefined ? Math.min(offer.max_installments, allowedMax) : positiveInteger(body.maxInstallments);
     if (!requestedInstallments || requestedInstallments > allowedMax) return NextResponse.json({ error: `Escolha entre 1x e ${allowedMax}x.` }, { status: 400 });
-    update.max_installments = cardEnabled ? requestedInstallments : 1;
+    update.max_installments = product.payment_type === "recurring" ? 1 : cardEnabled ? requestedInstallments : 1;
 
     if (product.payment_type === "recurring") {
       if (!isRecurrenceFrequency(product.recurrence_frequency)) return NextResponse.json({ error: "Configure a frequência de recorrência do produto." }, { status: 409 });
@@ -118,7 +132,7 @@ export async function PATCH(request: Request, context: Context) {
     if (body.active !== undefined) {
       const active = body.active === true;
       if (active) {
-        const problem = await activationError(product, supabase);
+        const problem = await activationError(product, supabase, productId, offerId, affiliateEnabled, cardEnabled);
         if (problem) return NextResponse.json({ error: problem }, { status: 409 });
       }
       update.status = active ? "active" : "draft";
