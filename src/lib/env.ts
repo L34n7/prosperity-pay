@@ -8,6 +8,7 @@ export const env = {
   supabaseUrl: readOptional(process.env.NEXT_PUBLIC_SUPABASE_URL),
   supabaseAnonKey: readOptional(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
   supabaseServiceRoleKey: readOptional(process.env.SUPABASE_SERVICE_ROLE_KEY),
+  supabaseSecretKey: readOptional(process.env.SUPABASE_SECRET_KEY),
   mercadoPagoAccessToken: readOptional(process.env.MERCADO_PAGO_ACCESS_TOKEN),
   mercadoPagoWebhookSecret: readOptional(process.env.MERCADO_PAGO_WEBHOOK_SECRET),
   mercadoPagoClientId: readOptional(process.env.MERCADO_PAGO_CLIENT_ID),
