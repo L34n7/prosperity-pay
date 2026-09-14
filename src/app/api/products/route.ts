@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError, optionalString, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
-import { isProductKind, isProductPaymentType, isRecurrenceFrequency } from "@/lib/domain/product-rules";
+import { isProductKind, isProductPaymentType, isRecurrenceFrequency, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { toSlug } from "@/lib/domain/slug";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -12,7 +12,7 @@ type ProductInsert = Database["public"]["Tables"]["products"]["Insert"] & {
   support_display_name: string | null;
   support_email: string | null;
   support_whatsapp: string | null;
-  recurrence_frequency: string | null;
+  recurrence_frequency: RecurrenceFrequency | null;
   different_first_charge: boolean;
   first_charge_cents: number | null;
   recurring_price_cents: number | null;
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
 
     const paymentType = requestedPaymentType;
     const differentFirstCharge = paymentType === "recurring" && body.differentFirstCharge === true;
-    let recurrenceFrequency: string | null = null;
+    let recurrenceFrequency: RecurrenceFrequency | null = null;
     let firstChargeCents: number | null = null;
     let recurringPriceCents: number | null = null;
     let mainOfferPriceCents: number | null = null;
