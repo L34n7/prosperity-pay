@@ -4,6 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function ensureInitialPlatformAdmin(userId: string) {
   try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("bootstrap_initial_platform_admin");
+    if (!error) return Boolean(data);
+  } catch {
+    // The database migration may not be available yet. Fall back to the
+    // server-only administrative credential when configured.
+  }
+
+  try {
     const admin = createAdminClient();
     const { data: currentRole, error: currentRoleError } = await admin
       .from("user_roles")
@@ -36,7 +45,6 @@ export async function ensureInitialPlatformAdmin(userId: string) {
       role: "admin",
       granted_by: userId,
     });
-
     if (insertError && insertError.code !== "23505") return false;
 
     await admin.from("audit_events").insert({
