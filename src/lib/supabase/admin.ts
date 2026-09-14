@@ -3,9 +3,11 @@ import { env, requireEnv } from "@/lib/env";
 import type { Database } from "./database.current.types";
 
 export function createAdminClient() {
+  const adminKey = env.supabaseServiceRoleKey ?? env.supabaseSecretKey;
+
   return createClient<Database>(
     requireEnv(env.supabaseUrl, "NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv(env.supabaseServiceRoleKey, "SUPABASE_SERVICE_ROLE_KEY"),
+    requireEnv(adminKey, "SUPABASE_SERVICE_ROLE_KEY ou SUPABASE_SECRET_KEY"),
     {
       auth: {
         autoRefreshToken: false,
