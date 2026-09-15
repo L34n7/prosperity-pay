@@ -38,6 +38,10 @@ type OfferCommercialColumns = {
   affiliate_enabled: boolean;
 };
 
+type SubscriptionTransparentColumns = {
+  payment_profile_id: string | null;
+};
+
 type PublicSchema = GeneratedDatabase["public"];
 type GeneratedTables = PublicSchema["Tables"];
 type GeneratedFunctions = PublicSchema["Functions"];
@@ -45,17 +49,18 @@ type GeneratedFunctions = PublicSchema["Functions"];
 /**
  * Database type used by Supabase clients.
  *
- * The checked-in generated file predates the latest product/offer and platform
- * bootstrap migrations. This layer keeps the client strictly typed against the
- * live schema without weakening mutations with `any`/`never` casts. When
- * database.types.ts is regenerated from Supabase, these additions can be folded
- * back into it.
+ * The checked-in generated file predates the latest product/offer, transparent
+ * checkout and platform bootstrap migrations. This layer keeps the client
+ * strictly typed against the live schema without weakening mutations with
+ * `any`/`never` casts. When database.types.ts is regenerated from Supabase,
+ * these additions can be folded back into it.
  */
 export type Database = Omit<GeneratedDatabase, "public"> & {
   public: Omit<PublicSchema, "Tables" | "Functions"> & {
-    Tables: Omit<GeneratedTables, "products" | "offers"> & {
+    Tables: Omit<GeneratedTables, "products" | "offers" | "subscriptions"> & {
       products: ExtendTable<GeneratedTables["products"], ProductCommercialColumns>;
       offers: ExtendTable<GeneratedTables["offers"], OfferCommercialColumns>;
+      subscriptions: ExtendTable<GeneratedTables["subscriptions"], SubscriptionTransparentColumns>;
     };
     Functions: GeneratedFunctions & {
       bootstrap_initial_platform_admin: {
