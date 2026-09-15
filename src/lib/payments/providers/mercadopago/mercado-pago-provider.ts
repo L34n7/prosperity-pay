@@ -193,9 +193,6 @@ export class MercadoPagoProvider implements PaymentProvider {
             transaction_amount: input.money.amount,
             currency_id: input.money.currency,
           },
-          payment_methods_allowed: {
-            payment_types: [{ id: "credit_card" }],
-          },
           back_url: input.backUrl,
         }),
       },
