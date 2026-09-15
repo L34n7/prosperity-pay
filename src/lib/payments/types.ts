@@ -87,10 +87,30 @@ export type CreateSubscriptionInput = {
   backUrl: string;
 };
 
+export type CreateSubscriptionPlanInput = {
+  externalReference: string;
+  idempotencyKey: string;
+  reason: string;
+  money: Money;
+  frequency: number;
+  frequencyType: "days" | "months";
+  backUrl: string;
+};
+
+export type ProviderSubscriptionPlan = {
+  provider: PaymentProviderCode;
+  externalId: string;
+  externalReference?: string;
+  checkoutUrl: string;
+  money?: Money;
+  raw?: unknown;
+};
+
 export type ProviderSubscription = {
   provider: PaymentProviderCode;
   externalId: string;
   externalReference?: string;
+  planExternalId?: string;
   status: ProviderSubscriptionStatus;
   checkoutUrl?: string;
   nextPaymentDate?: string;
@@ -103,6 +123,7 @@ export type ProviderAuthorizedPayment = {
   externalId: string;
   subscriptionExternalId: string;
   externalReference?: string;
+  planExternalId?: string;
   paymentExternalId?: string;
   paymentStatus?: PaymentStatus;
   money: Money;

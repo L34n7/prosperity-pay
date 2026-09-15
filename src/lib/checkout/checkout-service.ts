@@ -6,11 +6,14 @@ import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { createRecurringSnapshot } from "@/lib/subscriptions/recurring-financials";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+type CheckoutPaymentMethod = "card" | "pix";
+
 type CheckoutRequest = {
   offerSlug: string;
   customerName?: string;
   customerEmail: string;
   refCode?: string;
+  paymentMethod?: CheckoutPaymentMethod;
   idempotencyKey: string;
 };
 
@@ -18,7 +21,7 @@ type CheckoutOfferSettings = {
   max_installments: number;
   payment_card_enabled: boolean;
   payment_pix_enabled: boolean;
-  primary_payment_method: "card" | "pix";
+  primary_payment_method: CheckoutPaymentMethod;
   affiliate_enabled: boolean;
 };
 
@@ -57,11 +60,18 @@ function rule(type: "percentage" | "fixed" | "hybrid", basisPoints: number, fixe
   return { type, basisPoints, fixedCents };
 }
 
-function paymentMethods(offer: CheckoutOfferSettings) {
+function resolvePaymentMethod(offer: CheckoutOfferSettings, requested?: CheckoutPaymentMethod) {
+  const method = requested ?? offer.primary_payment_method;
+  if (method === "card" && !offer.payment_card_enabled) throw new HttpError(400, "Cartão não está habilitado nesta oferta.");
+  if (method === "pix" && !offer.payment_pix_enabled) throw new HttpError(400, "PIX não está habilitado nesta oferta.");
+  return method;
+}
+
+function paymentMethods(method: CheckoutPaymentMethod) {
   return {
-    card: offer.payment_card_enabled,
-    pix: offer.payment_pix_enabled,
-    primary: offer.primary_payment_method,
+    card: method === "card",
+    pix: method === "pix",
+    primary: method,
   };
 }
 
@@ -70,13 +80,6 @@ function subscriptionFrequency(offer: Pick<CommercialOffer, "billing_interval" |
   if (offer.billing_interval === "week") return { frequency: count * 7, frequencyType: "days" as const };
   if (offer.billing_interval === "year") return { frequency: count * 12, frequencyType: "months" as const };
   return { frequency: count, frequencyType: "months" as const };
-}
-
-function internalSubscriptionStatus(status: "pending" | "authorized" | "paused" | "cancelled") {
-  if (status === "authorized") return "active" as const;
-  if (status === "paused") return "paused" as const;
-  if (status === "cancelled") return "cancelled" as const;
-  return "pending" as const;
 }
 
 async function selectConnection(admin: ReturnType<typeof createAdminClient>, product: CommercialProduct) {
@@ -104,13 +107,12 @@ async function resolveAffiliate(admin: ReturnType<typeof createAdminClient>, inp
   return { linkId: link.id, membershipId: link.membership_id };
 }
 
-async function createRecurringCheckout(
+async function createRecurringOrderBase(
   admin: ReturnType<typeof createAdminClient>,
   input: CheckoutRequest,
   offer: CommercialOffer,
   product: CommercialProduct,
 ) {
-  if (!offer.billing_interval || !offer.billing_interval_count) throw new HttpError(409, "Frequência da assinatura não configurada.");
   const selectedConnection = await selectConnection(admin, product);
   const initialAmountCents = Number(offer.first_charge_cents ?? offer.price_cents);
   const affiliate = await resolveAffiliate(admin, input, offer, product);
@@ -155,6 +157,18 @@ async function createRecurringCheckout(
     offer,
   });
 
+  return { selectedConnection, customer, order, initialAmountCents };
+}
+
+async function createRecurringCardCheckout(
+  admin: ReturnType<typeof createAdminClient>,
+  input: CheckoutRequest,
+  offer: CommercialOffer,
+  product: CommercialProduct,
+) {
+  if (!offer.billing_interval || !offer.billing_interval_count) throw new HttpError(409, "Frequência da assinatura não configurada.");
+  const { selectedConnection, customer, order, initialAmountCents } = await createRecurringOrderBase(admin, input, offer, product);
+
   const { data: subscription, error: subscriptionError } = await admin.from("subscriptions").insert({
     order_id: order.id,
     customer_id: customer.id,
@@ -167,7 +181,7 @@ async function createRecurringCheckout(
   }).select("id").single();
   if (subscriptionError || !subscription) throw subscriptionError ?? new Error("Falha ao criar assinatura.");
 
-  const checkoutIdempotency = `${input.idempotencyKey}:subscription`;
+  const checkoutIdempotency = `${input.idempotencyKey}:subscription-plan`;
   const { data: checkoutRecord, error: checkoutRecordError } = await admin.from("payment_provider_checkouts").insert({
     order_id: order.id,
     provider_id: selectedConnection.provider_id,
@@ -179,32 +193,92 @@ async function createRecurringCheckout(
   const provider = getPaymentProvider("mercadopago", await getProviderAccessToken(selectedConnection.id));
   const appUrl = requireEnv(env.appUrl, "NEXT_PUBLIC_APP_URL");
   const frequency = subscriptionFrequency(offer);
-  const created = await provider.createSubscription({
+  const plan = await provider.createSubscriptionPlan({
     externalReference: `prosperity-subscription:${subscription.id}`,
     idempotencyKey: checkoutIdempotency,
     reason: `${product.name} — ${offer.name}`,
-    payerEmail: input.customerEmail,
     money: { amount: initialAmountCents / 100, currency: "BRL" },
     frequency: frequency.frequency,
     frequencyType: frequency.frequencyType,
     backUrl: `${appUrl}/checkout/sucesso?order=${order.id}`,
   });
-  if (!created.checkoutUrl) throw new Error("Mercado Pago não retornou o link da assinatura.");
 
   const updates = await Promise.all([
-    admin.from("subscriptions").update({
-      external_subscription_id: created.externalId,
-      status: internalSubscriptionStatus(created.status),
-      current_period_end: created.nextPaymentDate,
-    }).eq("id", subscription.id),
     admin.from("payment_provider_checkouts").update({
-      external_checkout_id: created.externalId,
-      checkout_url: created.checkoutUrl,
+      external_checkout_id: plan.externalId,
+      checkout_url: plan.checkoutUrl,
     }).eq("id", checkoutRecord.id),
     admin.from("orders").update({ status: "pending_payment" }).eq("id", order.id),
   ]);
   for (const update of updates) if (update.error) throw update.error;
-  return { orderId: order.id, checkoutUrl: created.checkoutUrl, reused: false };
+  return { orderId: order.id, checkoutUrl: plan.checkoutUrl, reused: false };
+}
+
+async function createRecurringPixCheckout(
+  admin: ReturnType<typeof createAdminClient>,
+  input: CheckoutRequest,
+  offer: CommercialOffer,
+  product: CommercialProduct,
+) {
+  const { selectedConnection, order, initialAmountCents } = await createRecurringOrderBase(admin, input, offer, product);
+  const paymentId = crypto.randomUUID();
+  const externalReference = `prosperity:${paymentId}`;
+  const { error: paymentError } = await admin.from("payments").insert({
+    id: paymentId,
+    order_id: order.id,
+    provider_id: selectedConnection.provider_id,
+    connection_id: selectedConnection.id,
+    external_reference: externalReference,
+    idempotency_key: `${input.idempotencyKey}:payment`,
+    gross_amount_cents: initialAmountCents,
+    currency: offer.currency,
+  });
+  if (paymentError) throw paymentError;
+
+  const checkoutIdempotency = `${input.idempotencyKey}:checkout`;
+  const { error: checkoutRecordError } = await admin.from("payment_provider_checkouts").insert({
+    order_id: order.id,
+    provider_id: selectedConnection.provider_id,
+    connection_id: selectedConnection.id,
+    idempotency_key: checkoutIdempotency,
+  });
+  if (checkoutRecordError) throw checkoutRecordError;
+
+  const { data: snapshot } = await admin.from("financial_snapshots").select("prosperity_split_amount_cents").eq("order_id", order.id).single();
+  const provider = getPaymentProvider("mercadopago", await getProviderAccessToken(selectedConnection.id));
+  const appUrl = requireEnv(env.appUrl, "NEXT_PUBLIC_APP_URL");
+  const checkout = await provider.createCheckout({
+    externalReference,
+    idempotencyKey: checkoutIdempotency,
+    title: `${product.name} — ${offer.name}`,
+    money: { amount: initialAmountCents / 100, currency: "BRL" },
+    notificationUrl: `${appUrl}/api/webhooks/mercadopago?source_news=webhooks`,
+    successUrl: `${appUrl}/checkout/sucesso?order=${order.id}`,
+    failureUrl: `${appUrl}/checkout/falha?order=${order.id}`,
+    pendingUrl: `${appUrl}/checkout/pendente?order=${order.id}`,
+    marketplaceFeeAmount: product.settlement_model === "connected_account" ? Number(snapshot?.prosperity_split_amount_cents ?? 0) / 100 : undefined,
+    maxInstallments: 1,
+    paymentMethods: paymentMethods("pix"),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+
+  const updates = await Promise.all([
+    admin.from("payment_provider_checkouts").update({ external_checkout_id: checkout.externalId, checkout_url: checkout.checkoutUrl }).eq("order_id", order.id),
+    admin.from("orders").update({ status: "pending_payment" }).eq("id", order.id),
+  ]);
+  for (const update of updates) if (update.error) throw update.error;
+  return { orderId: order.id, checkoutUrl: checkout.checkoutUrl, reused: false };
+}
+
+async function createRecurringCheckout(
+  admin: ReturnType<typeof createAdminClient>,
+  input: CheckoutRequest,
+  offer: CommercialOffer,
+  product: CommercialProduct,
+) {
+  const method = resolvePaymentMethod(offer, input.paymentMethod);
+  if (method === "pix") return createRecurringPixCheckout(admin, input, offer, product);
+  return createRecurringCardCheckout(admin, input, offer, product);
 }
 
 export async function createCheckout(input: CheckoutRequest) {
@@ -218,42 +292,37 @@ export async function createCheckout(input: CheckoutRequest) {
 
     const [orderResult, checkoutResult] = await Promise.all([
       admin.from("orders").select("id,gross_amount_cents,settlement_model,products(name),offers!orders_offer_id_fkey(*),customers(email),financial_snapshots(prosperity_split_amount_cents)").eq("id", existing.id).single(),
-      admin.from("payment_provider_checkouts").select("id,idempotency_key,connection_id").eq("order_id", existing.id).single(),
+      admin.from("payment_provider_checkouts").select("id,idempotency_key,connection_id,external_checkout_id").eq("order_id", existing.id).single(),
     ]);
     const order = orderResult.data;
     const record = checkoutResult.data;
     if (!order || !record) throw new HttpError(409, "O pedido não foi concluído. Inicie outra tentativa de pagamento.");
     const storedOffer = order.offers as unknown as CommercialOffer;
+    const method = resolvePaymentMethod(storedOffer, input.paymentMethod);
     const provider = getPaymentProvider("mercadopago", await getProviderAccessToken(record.connection_id));
     const appUrl = requireEnv(env.appUrl, "NEXT_PUBLIC_APP_URL");
 
-    if (storedOffer.billing_type === "recurring") {
-      const { data: subscription } = await admin.from("subscriptions").select("id,external_subscription_id,status").eq("order_id", existing.id).single();
+    if (storedOffer.billing_type === "recurring" && method === "card") {
+      const { data: subscription } = await admin.from("subscriptions").select("id").eq("order_id", existing.id).single();
       if (!subscription) throw new HttpError(409, "Assinatura não encontrada para este pedido.");
-      let created;
-      if (subscription.external_subscription_id) {
-        created = await provider.getSubscription(subscription.external_subscription_id);
-      } else {
-        const frequency = subscriptionFrequency(storedOffer);
-        created = await provider.createSubscription({
-          externalReference: `prosperity-subscription:${subscription.id}`,
-          idempotencyKey: record.idempotency_key,
-          reason: `${order.products.name} — ${storedOffer.name}`,
-          payerEmail: order.customers.email,
-          money: { amount: Number(order.gross_amount_cents) / 100, currency: "BRL" },
-          frequency: frequency.frequency,
-          frequencyType: frequency.frequencyType,
-          backUrl: `${appUrl}/checkout/sucesso?order=${order.id}`,
-        });
-      }
-      if (!created.checkoutUrl) throw new HttpError(409, "Link da assinatura indisponível. Inicie outra tentativa.");
+      const frequency = subscriptionFrequency(storedOffer);
+      const plan = record.external_checkout_id
+        ? await provider.getSubscriptionPlan(record.external_checkout_id)
+        : await provider.createSubscriptionPlan({
+            externalReference: `prosperity-subscription:${subscription.id}`,
+            idempotencyKey: record.idempotency_key,
+            reason: `${order.products.name} — ${storedOffer.name}`,
+            money: { amount: Number(order.gross_amount_cents) / 100, currency: "BRL" },
+            frequency: frequency.frequency,
+            frequencyType: frequency.frequencyType,
+            backUrl: `${appUrl}/checkout/sucesso?order=${order.id}`,
+          });
       const updates = await Promise.all([
-        admin.from("subscriptions").update({ external_subscription_id: created.externalId, status: internalSubscriptionStatus(created.status), current_period_end: created.nextPaymentDate }).eq("id", subscription.id),
-        admin.from("payment_provider_checkouts").update({ external_checkout_id: created.externalId, checkout_url: created.checkoutUrl }).eq("id", record.id),
+        admin.from("payment_provider_checkouts").update({ external_checkout_id: plan.externalId, checkout_url: plan.checkoutUrl }).eq("id", record.id),
         admin.from("orders").update({ status: "pending_payment" }).eq("id", order.id),
       ]);
       for (const update of updates) if (update.error) throw update.error;
-      return { orderId: order.id, checkoutUrl: created.checkoutUrl, reused: true };
+      return { orderId: order.id, checkoutUrl: plan.checkoutUrl, reused: true };
     }
 
     const { data: storedPayment } = await admin.from("payments").select("id,connection_id,external_reference").eq("order_id", existing.id).single();
@@ -263,14 +332,13 @@ export async function createCheckout(input: CheckoutRequest) {
       idempotencyKey: record.idempotency_key,
       title: `${order.products.name} — ${storedOffer.name}`,
       money: { amount: Number(order.gross_amount_cents) / 100, currency: "BRL" },
-      payerEmail: order.customers.email,
       notificationUrl: `${appUrl}/api/webhooks/mercadopago?source_news=webhooks`,
       successUrl: `${appUrl}/checkout/sucesso?order=${order.id}`,
       failureUrl: `${appUrl}/checkout/falha?order=${order.id}`,
       pendingUrl: `${appUrl}/checkout/pendente?order=${order.id}`,
       marketplaceFeeAmount: order.settlement_model === "connected_account" ? Number(order.financial_snapshots?.prosperity_split_amount_cents ?? 0) / 100 : undefined,
-      maxInstallments: Number(storedOffer.max_installments),
-      paymentMethods: paymentMethods(storedOffer),
+      maxInstallments: storedOffer.billing_type === "recurring" || method === "pix" ? 1 : Number(storedOffer.max_installments),
+      paymentMethods: paymentMethods(method),
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
     const save = await admin.from("payment_provider_checkouts").update({ external_checkout_id: created.externalId, checkout_url: created.checkoutUrl }).eq("id", record.id);
@@ -287,7 +355,8 @@ export async function createCheckout(input: CheckoutRequest) {
   const offer = rawOffer as unknown as CommercialOffer & { products: CommercialProduct };
   const product = offer.products;
   if (product.status !== "active") throw new HttpError(409, "Produto indisponível para venda.");
-  if (offer.billing_type === "recurring") return createRecurringCheckout(admin, input, offer, product);
+  const selectedMethod = resolvePaymentMethod(offer, input.paymentMethod);
+  if (offer.billing_type === "recurring") return createRecurringCheckout(admin, { ...input, paymentMethod: selectedMethod }, offer, product);
 
   const { data: participants, error: participantError } = await admin.from("product_participants")
     .select("user_id, participation_bps, offer_id")
@@ -387,14 +456,13 @@ export async function createCheckout(input: CheckoutRequest) {
   const checkout = await provider.createCheckout({
     externalReference, idempotencyKey: checkoutIdempotency, title: `${product.name} — ${offer.name}`,
     money: { amount: Number(offer.price_cents) / 100, currency: "BRL" },
-    payerEmail: input.customerEmail,
     notificationUrl: `${appUrl}/api/webhooks/mercadopago?source_news=webhooks`,
     successUrl: `${appUrl}/checkout/sucesso?order=${order.id}`,
     failureUrl: `${appUrl}/checkout/falha?order=${order.id}`,
     pendingUrl: `${appUrl}/checkout/pendente?order=${order.id}`,
     marketplaceFeeAmount: product.settlement_model === "connected_account" ? result.prosperitySplitCents / 100 : undefined,
-    maxInstallments: Number(offer.max_installments),
-    paymentMethods: paymentMethods(offer),
+    maxInstallments: selectedMethod === "card" ? Number(offer.max_installments) : 1,
+    paymentMethods: paymentMethods(selectedMethod),
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
   const updates = await Promise.all([
