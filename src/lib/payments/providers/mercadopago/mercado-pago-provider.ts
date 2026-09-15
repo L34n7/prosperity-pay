@@ -4,11 +4,13 @@ import type {
   CreateCheckoutInput,
   CreatePaymentInput,
   CreateSubscriptionInput,
+  CreateSubscriptionPlanInput,
   PaymentStatus,
   ProviderAuthorizedPayment,
   ProviderCheckout,
   ProviderPayment,
   ProviderSubscription,
+  ProviderSubscriptionPlan,
   ProviderSubscriptionStatus,
   RefundPaymentInput,
 } from "../../types";
@@ -34,10 +36,22 @@ type MercadoPagoPreferenceResponse = {
 
 type MercadoPagoSubscriptionResponse = {
   id?: string;
+  preapproval_plan_id?: string | null;
   external_reference?: string | null;
   status?: string;
   init_point?: string;
   next_payment_date?: string;
+  auto_recurring?: {
+    transaction_amount?: number | string;
+    currency_id?: string;
+  };
+};
+
+type MercadoPagoSubscriptionPlanResponse = {
+  id?: string;
+  external_reference?: string | number | null;
+  status?: string;
+  init_point?: string;
   auto_recurring?: {
     transaction_amount?: number | string;
     currency_id?: string;
@@ -165,8 +179,42 @@ export class MercadoPagoProvider implements PaymentProvider {
     return this.normalizeSubscription(body);
   }
 
+  async createSubscriptionPlan(input: CreateSubscriptionPlanInput): Promise<ProviderSubscriptionPlan> {
+    const body = await this.request<MercadoPagoSubscriptionPlanResponse>(
+      "/preapproval_plan",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          reason: input.reason,
+          external_reference: input.externalReference,
+          auto_recurring: {
+            frequency: input.frequency,
+            frequency_type: input.frequencyType,
+            transaction_amount: input.money.amount,
+            currency_id: input.money.currency,
+          },
+          payment_methods_allowed: {
+            payment_types: [{ id: "credit_card" }],
+          },
+          back_url: input.backUrl,
+        }),
+      },
+      input.idempotencyKey,
+    );
+    return this.normalizeSubscriptionPlan(body);
+  }
+
+  async getSubscriptionPlan(externalPlanId: string): Promise<ProviderSubscriptionPlan> {
+    return this.normalizeSubscriptionPlan(await this.request<MercadoPagoSubscriptionPlanResponse>(`/preapproval_plan/${encodeURIComponent(externalPlanId)}`));
+  }
+
   async getSubscription(externalSubscriptionId: string): Promise<ProviderSubscription> {
-    return this.normalizeSubscription(await this.request<MercadoPagoSubscriptionResponse>(`/preapproval/${encodeURIComponent(externalSubscriptionId)}`));
+    const body = await this.request<MercadoPagoSubscriptionResponse>(`/preapproval/${encodeURIComponent(externalSubscriptionId)}`);
+    if (!body.external_reference && body.preapproval_plan_id) {
+      const plan = await this.getSubscriptionPlan(body.preapproval_plan_id);
+      body.external_reference = plan.externalReference ?? null;
+    }
+    return this.normalizeSubscription(body);
   }
 
   async updateSubscriptionAmount(externalSubscriptionId: string, amount: number, currency: "BRL" = "BRL"): Promise<ProviderSubscription> {
@@ -183,11 +231,13 @@ export class MercadoPagoProvider implements PaymentProvider {
   async getAuthorizedPayment(externalAuthorizedPaymentId: string): Promise<ProviderAuthorizedPayment> {
     const body = await this.request<MercadoPagoAuthorizedPaymentResponse>(`/authorized_payments/${encodeURIComponent(externalAuthorizedPaymentId)}`);
     if (!body.id || !body.preapproval_id) throw new Error("Mercado Pago retornou fatura recorrente incompleta.");
+    const subscription = await this.getSubscription(body.preapproval_id);
     return {
       provider: "mercadopago",
       externalId: String(body.id),
       subscriptionExternalId: body.preapproval_id,
-      externalReference: body.external_reference || undefined,
+      externalReference: body.external_reference || subscription.externalReference,
+      planExternalId: subscription.planExternalId,
       paymentExternalId: body.payment?.id ? String(body.payment.id) : undefined,
       paymentStatus: body.payment?.status ? mapStatus(body.payment.status) : undefined,
       money: { amount: Number(body.transaction_amount ?? 0), currency: "BRL" },
@@ -250,9 +300,23 @@ export class MercadoPagoProvider implements PaymentProvider {
       provider: "mercadopago",
       externalId: body.id,
       externalReference: body.external_reference || undefined,
+      planExternalId: body.preapproval_plan_id || undefined,
       status: mapSubscriptionStatus(body.status),
       checkoutUrl: body.init_point,
       nextPaymentDate: body.next_payment_date,
+      money: amount == null ? undefined : { amount: Number(amount), currency: "BRL" },
+      raw: body,
+    };
+  }
+
+  private normalizeSubscriptionPlan(body: MercadoPagoSubscriptionPlanResponse): ProviderSubscriptionPlan {
+    if (!body.id || !body.init_point) throw new Error("Mercado Pago retornou plano de assinatura incompleto.");
+    const amount = body.auto_recurring?.transaction_amount;
+    return {
+      provider: "mercadopago",
+      externalId: body.id,
+      externalReference: body.external_reference == null ? undefined : String(body.external_reference),
+      checkoutUrl: body.init_point,
       money: amount == null ? undefined : { amount: Number(amount), currency: "BRL" },
       raw: body,
     };
