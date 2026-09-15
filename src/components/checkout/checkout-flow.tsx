@@ -1,9 +1,14 @@
 "use client";
+
 import Image from "next/image";
-import { FormEvent, useRef, useState } from "react";
-import { LockKeyhole, ShieldCheck } from "lucide-react";
+import Script from "next/script";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { Check, Copy, CreditCard, LockKeyhole, QrCode, ShieldCheck } from "lucide-react";
 import { Brand } from "@/components/ui/brand";
 import { formatCents } from "@/lib/operational";
+import styles from "./transparent-checkout.module.css";
+
+type PaymentMethod = "card" | "pix";
 
 type Offer = {
   slug: string;
@@ -16,62 +21,331 @@ type Offer = {
   billingType: string;
   billingInterval: string | null;
   billingIntervalCount: number | null;
+  maxInstallments: number;
+  paymentCardEnabled: boolean;
+  paymentPixEnabled: boolean;
+};
+
+type CardFormData = {
+  paymentMethodId?: string;
+  issuerId?: string;
+  cardholderEmail?: string;
+  token?: string;
+  installments?: string | number;
+  identificationNumber?: string;
+  identificationType?: string;
+};
+
+type CardFormInstance = {
+  getCardFormData: () => CardFormData;
+  unmount?: () => void;
+};
+
+type MercadoPagoInstance = {
+  cardForm: (config: Record<string, unknown>) => CardFormInstance;
+};
+
+declare global {
+  interface Window {
+    MercadoPago?: new (publicKey: string, options?: { locale?: string }) => MercadoPagoInstance;
+  }
+}
+
+type CheckoutResult = {
+  orderId: string;
+  status: string;
+  providerOrderId?: string;
+  qrCode?: string;
+  qrCodeBase64?: string;
+  ticketUrl?: string;
 };
 
 function recurrenceLabel(offer: Offer) {
   const count = Number(offer.billingIntervalCount ?? 1);
-  if (offer.billingInterval === "week") return count === 1 ? "semanal" : `a cada ${count} semanas`;
-  if (offer.billingInterval === "year") return count === 1 ? "anual" : `a cada ${count} anos`;
+  if (offer.billingInterval === "week") return count === 1 ? "por semana" : `a cada ${count} semanas`;
+  if (offer.billingInterval === "year") return count === 1 ? "por ano" : `a cada ${count} anos`;
   if (offer.billingInterval === "month") {
-    if (count === 1) return "mensal";
-    if (count === 3) return "trimestral";
-    if (count === 6) return "semestral";
-    if (count === 12) return "anual";
+    if (count === 1) return "por mês";
+    if (count === 3) return "a cada 3 meses";
+    if (count === 6) return "a cada 6 meses";
+    if (count === 12) return "por ano";
     return `a cada ${count} meses`;
   }
   return "recorrente";
 }
 
-export function CheckoutFlow({ offer, affiliate }: { offer: Offer; affiliate?: string }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const key = useRef<string | null>(null);
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, "").slice(0, 11);
+}
+
+export function CheckoutFlow({
+  offer,
+  affiliate,
+  mercadoPagoPublicKey,
+}: {
+  offer: Offer;
+  affiliate?: string;
+  mercadoPagoPublicKey?: string;
+}) {
   const recurring = offer.billingType === "recurring";
   const initialPrice = recurring && offer.firstChargeCents ? offer.firstChargeCents : offer.priceCents;
+  const defaultMethod: PaymentMethod = offer.paymentCardEnabled ? "card" : "pix";
+  const [method, setMethod] = useState<PaymentMethod>(defaultMethod);
+  const [sdkReady, setSdkReady] = useState(false);
+  const [cardReady, setCardReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<CheckoutResult | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [buyer, setBuyer] = useState({ name: "", email: "", document: "" });
+  const buyerRef = useRef(buyer);
+  const cardFormRef = useRef<CardFormInstance | null>(null);
+  const keyRef = useRef<string | null>(null);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function updateBuyer(field: keyof typeof buyer, value: string) {
+    const next = { ...buyerRef.current, [field]: field === "document" ? onlyDigits(value) : value };
+    buyerRef.current = next;
+    setBuyer(next);
+  }
+
+  function newAttempt() {
+    keyRef.current = crypto.randomUUID();
+    return keyRef.current;
+  }
+
+  async function sendPayment(payload: Record<string, unknown>) {
     setBusy(true);
     setError("");
-    const data = new FormData(event.currentTarget);
-    key.current ??= crypto.randomUUID();
+    const idempotencyKey = keyRef.current ?? newAttempt();
     try {
-      const response = await fetch("/api/checkout/orders", {
+      const response = await fetch("/api/checkout/transparent", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Idempotency-Key": key.current },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
         body: JSON.stringify({
           offerSlug: offer.slug,
-          customerName: data.get("name"),
-          customerEmail: data.get("email"),
+          customerName: buyerRef.current.name,
+          customerEmail: buyerRef.current.email,
+          customerDocument: buyerRef.current.document,
           refCode: affiliate,
+          ...payload,
         }),
       });
-      const result = await response.json();
-      if (response.status === 409) key.current = crypto.randomUUID();
-      if (!response.ok || !result.checkoutUrl) throw new Error(result.error || "Não foi possível abrir o pagamento.");
-      window.location.assign(result.checkoutUrl);
+      const body = await response.json() as CheckoutResult & { error?: string };
+      if (!response.ok) {
+        if (response.status === 409) newAttempt();
+        throw new Error(body.error || "Não foi possível processar o pagamento.");
+      }
+      setResult(body);
+      if (body.status === "rejected" || body.status === "cancelled") {
+        newAttempt();
+        throw new Error("Pagamento não aprovado. Confira os dados e tente novamente.");
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha no pagamento.");
+      setError(cause instanceof Error ? cause.message : "Falha ao processar o pagamento.");
+    } finally {
       setBusy(false);
     }
   }
 
-  return <main className="checkout-page"><header className="checkout-header"><Brand href="/"/><span><LockKeyhole size={14}/> Ambiente seguro</span></header>
-    <div className="checkout-layout"><section className="checkout-product">{offer.imageUrl && <Image className="checkout-product-image" src={offer.imageUrl} alt={offer.productName} width={640} height={360} unoptimized/>}<span className="checkout-badge">{offer.productName}</span><h1>{offer.name}</h1><p>{offer.description}</p><div className="security-note"><ShieldCheck size={22}/><div><strong>Pagamento protegido</strong><span>Os meios de pagamento disponíveis serão apresentados pelo Mercado Pago.</span></div></div></section>
-    <section className="checkout-card"><div className="checkout-card-head"><div><span>{recurring ? "Resumo da assinatura" : "Resumo do pedido"}</span><h2>{offer.name}</h2></div><div className="checkout-price"><strong>{formatCents(initialPrice)}</strong>{recurring && <small>{offer.firstChargeCents && offer.firstChargeCents !== offer.priceCents ? ` na 1ª cobrança · depois ${formatCents(offer.priceCents)} ${recurrenceLabel(offer)}` : ` ${recurrenceLabel(offer)}`}</small>}</div></div>
-    {affiliate && <div className="referral-note">Indicação aplicada</div>}
-    <form onSubmit={submit} className="checkout-form"><div className="checkout-divider"><span>Dados do comprador</span></div><label>Nome completo<input name="name" required autoComplete="name"/></label><label>E-mail<input name="email" type="email" required autoComplete="email"/></label>
-    <p className="form-hint">Ao continuar, você será direcionado ao ambiente seguro do Mercado Pago para escolher a forma de pagamento e concluir a compra.{recurring ? " A recorrência e os meios disponíveis serão gerenciados pelo Mercado Pago." : ""}</p>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    <button className="checkout-submit" disabled={busy}>{busy ? "Abrindo Mercado Pago..." : "Continuar para pagamento →"}</button></form><footer className="checkout-card-footer"><LockKeyhole size={13}/> Pagamento processado pelo Mercado Pago</footer></section></div></main>;
+  async function submitCard(cardForm: CardFormInstance) {
+    const data = cardForm.getCardFormData();
+    if (!buyerRef.current.name.trim() || !buyerRef.current.email.trim() || buyerRef.current.document.length !== 11) {
+      setError("Preencha nome, e-mail e CPF antes de continuar.");
+      return;
+    }
+    if (!data.token || !data.paymentMethodId) {
+      setError("Confira os dados do cartão e tente novamente.");
+      return;
+    }
+    await sendPayment({
+      paymentMethod: "card",
+      card: {
+        token: data.token,
+        paymentMethodId: data.paymentMethodId,
+        issuerId: data.issuerId,
+        installments: recurring ? 1 : Number(data.installments || 1),
+      },
+    });
+  }
+
+  async function submitPix(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!buyer.name.trim() || !buyer.email.trim() || buyer.document.length !== 11) {
+      setError("Preencha nome, e-mail e CPF antes de gerar o PIX.");
+      return;
+    }
+    await sendPayment({ paymentMethod: "pix" });
+  }
+
+  useEffect(() => {
+    if (!sdkReady || !mercadoPagoPublicKey || !offer.paymentCardEnabled || !window.MercadoPago || cardFormRef.current) return;
+    const mp = new window.MercadoPago(mercadoPagoPublicKey, { locale: "pt-BR" });
+    const cardForm = mp.cardForm({
+      amount: (initialPrice / 100).toFixed(2),
+      iframe: true,
+      form: {
+        id: "prosperity-card-form",
+        cardNumber: { id: "form-checkout__cardNumber", placeholder: "1234 5678 9012 3456" },
+        expirationDate: { id: "form-checkout__expirationDate", placeholder: "MM/AA" },
+        securityCode: { id: "form-checkout__securityCode", placeholder: "CVV" },
+        cardholderName: { id: "form-checkout__cardholderName", placeholder: "Nome impresso no cartão" },
+        issuer: { id: "form-checkout__issuer", placeholder: "Banco emissor" },
+        installments: { id: "form-checkout__installments", placeholder: "Parcelas" },
+        identificationType: { id: "form-checkout__identificationType", placeholder: "Documento" },
+        identificationNumber: { id: "form-checkout__identificationNumber", placeholder: "CPF" },
+        cardholderEmail: { id: "form-checkout__cardholderEmail", placeholder: "seu@email.com" },
+      },
+      callbacks: {
+        onFormMounted: (mountError: unknown) => {
+          if (mountError) {
+            setError("Não foi possível carregar o formulário seguro do cartão.");
+            return;
+          }
+          setCardReady(true);
+        },
+        onSubmit: (event: Event) => {
+          event.preventDefault();
+          void submitCard(cardForm);
+        },
+      },
+    });
+    cardFormRef.current = cardForm;
+    return () => {
+      cardForm.unmount?.();
+      cardFormRef.current = null;
+    };
+  }, [sdkReady, mercadoPagoPublicKey, offer.paymentCardEnabled, initialPrice]);
+
+  useEffect(() => {
+    if (!result?.orderId || !["pending", "processing"].includes(result.status)) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await fetch(`/api/checkout/orders/${encodeURIComponent(result.orderId)}`, { cache: "no-store" });
+        const body = await response.json() as { status?: string };
+        if (body.status === "paid") setResult((current) => current ? { ...current, status: "approved" } : current);
+        if (["cancelled", "expired", "refunded", "charged_back"].includes(body.status ?? "")) {
+          setResult((current) => current ? { ...current, status: body.status ?? "cancelled" } : current);
+        }
+      } catch {
+        // O webhook continua sendo a fonte de verdade; o polling é apenas feedback visual.
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [result?.orderId, result?.status]);
+
+  async function copyPix() {
+    if (!result?.qrCode) return;
+    await navigator.clipboard.writeText(result.qrCode);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  if (result?.status === "approved") {
+    return <main className={styles.page}>
+      <header className={styles.header}><Brand href="/"/><span><LockKeyhole size={14}/> Ambiente seguro</span></header>
+      <section className={styles.successCard}>
+        <span className={styles.successIcon}><Check size={34}/></span>
+        <p className={styles.eyebrow}>Pagamento confirmado</p>
+        <h1>Compra aprovada.</h1>
+        <p>Recebemos o pagamento de <strong>{formatCents(initialPrice)}</strong> para <strong>{offer.name}</strong>.</p>
+        {recurring && method === "card" && <div className={styles.successNote}>Seu cartão foi autorizado para as próximas cobranças recorrentes deste plano.</div>}
+        <a className={styles.primaryLink} href="/login">Ir para minha conta</a>
+      </section>
+    </main>;
+  }
+
+  if (method === "pix" && result?.qrCode) {
+    return <main className={styles.page}>
+      <header className={styles.header}><Brand href="/"/><span><LockKeyhole size={14}/> Ambiente seguro</span></header>
+      <div className={styles.pixResultLayout}>
+        <section className={styles.pixResultCard}>
+          <p className={styles.eyebrow}>PIX gerado</p>
+          <h1>Finalize o pagamento</h1>
+          <p>Abra o app do seu banco e escaneie o QR Code ou copie o código PIX.</p>
+          {result.qrCodeBase64 && <div className={styles.qrBox}><Image src={`data:image/jpeg;base64,${result.qrCodeBase64}`} alt="QR Code PIX" width={230} height={230} unoptimized/></div>}
+          <div className={styles.copyBox}><span>{result.qrCode}</span><button type="button" onClick={copyPix}>{copied ? <Check size={17}/> : <Copy size={17}/>} {copied ? "Copiado" : "Copiar"}</button></div>
+          <div className={styles.waiting}><span></span>Aguardando confirmação do Mercado Pago...</div>
+        </section>
+      </div>
+    </main>;
+  }
+
+  return <main className={styles.page}>
+    <Script src="https://sdk.mercadopago.com/js/v2" strategy="afterInteractive" onLoad={() => setSdkReady(true)}/>
+    <header className={styles.header}><Brand href="/"/><span><LockKeyhole size={14}/> Ambiente seguro</span></header>
+
+    <div className={styles.layout}>
+      <section className={styles.productPane}>
+        <div className={styles.productContent}>
+          {offer.imageUrl && <Image className={styles.productImage} src={offer.imageUrl} alt={offer.productName} width={720} height={400} unoptimized/>}
+          <span className={styles.productBadge}>{offer.productName}</span>
+          <h1>{offer.name}</h1>
+          {offer.description && <p className={styles.description}>{offer.description}</p>}
+          <div className={styles.priceBlock}>
+            <span>Total {recurring ? "da primeira cobrança" : ""}</span>
+            <strong>{formatCents(initialPrice)}</strong>
+            {recurring && <small>{offer.firstChargeCents && offer.firstChargeCents !== offer.priceCents ? `Depois ${formatCents(offer.priceCents)} ${recurrenceLabel(offer)}` : `${formatCents(offer.priceCents)} ${recurrenceLabel(offer)}`}</small>}
+          </div>
+          <div className={styles.securityNote}><ShieldCheck size={22}/><div><strong>Pagamento protegido</strong><span>Os dados do cartão são enviados diretamente ao Mercado Pago e não passam pelos servidores da Prosperity Pay.</span></div></div>
+        </div>
+      </section>
+
+      <section className={styles.checkoutPane}>
+        <div className={styles.checkoutCard}>
+          <div className={styles.cardHeader}>
+            <div><span>Checkout Prosperity Pay</span><h2>Finalizar compra</h2></div>
+            <div className={styles.amount}><strong>{formatCents(initialPrice)}</strong>{recurring && <small>{recurrenceLabel(offer)}</small>}</div>
+          </div>
+
+          {affiliate && <div className={styles.referral}>Indicação de afiliado aplicada</div>}
+
+          <div className={styles.methodLabel}>Forma de pagamento</div>
+          <div className={styles.methods}>
+            {offer.paymentCardEnabled && <button type="button" className={method === "card" ? styles.methodActive : styles.method} onClick={() => { setMethod("card"); setError(""); setResult(null); }}><CreditCard size={20}/><span><strong>Cartão de crédito</strong><small>{recurring ? "Renovação automática" : `Até ${offer.maxInstallments}x`}</small></span></button>}
+            {offer.paymentPixEnabled && <button type="button" className={method === "pix" ? styles.methodActive : styles.method} onClick={() => { setMethod("pix"); setError(""); setResult(null); }}><QrCode size={20}/><span><strong>PIX</strong><small>{recurring ? "Pagamento deste período" : "Aprovação rápida"}</small></span></button>}
+          </div>
+
+          <form id="prosperity-card-form" className={`${styles.form} ${method !== "card" ? styles.hiddenForm : ""}`}>
+            <div className={styles.sectionTitle}><span>1</span><div><strong>Dados do comprador</strong><small>Usaremos esses dados para identificar sua compra.</small></div></div>
+            <div className={styles.fieldGrid}>
+              <label className={styles.full}>Nome completo<input value={buyer.name} onChange={(event) => updateBuyer("name", event.target.value)} autoComplete="name" required/></label>
+              <label className={styles.full}>E-mail<input id="form-checkout__cardholderEmail" value={buyer.email} onChange={(event) => updateBuyer("email", event.target.value)} type="email" autoComplete="email" required/></label>
+              <label className={styles.full}>CPF<input id="form-checkout__identificationNumber" value={buyer.document} onChange={(event) => updateBuyer("document", event.target.value)} inputMode="numeric" placeholder="000.000.000-00" required/></label>
+            </div>
+            <select id="form-checkout__identificationType" className={styles.hiddenControl} defaultValue="CPF"><option value="CPF">CPF</option></select>
+
+            <div className={styles.sectionTitle}><span>2</span><div><strong>Dados do cartão</strong><small>Preenchimento seguro processado pelo Mercado Pago.</small></div></div>
+            {!mercadoPagoPublicKey && <div className={styles.configWarning}>Falta configurar <code>NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY</code> na Vercel para habilitar o cartão.</div>}
+            <div className={styles.fieldGrid}>
+              <label className={styles.full}>Número do cartão<div id="form-checkout__cardNumber" className={styles.secureField}/></label>
+              <label className={styles.half}>Validade<div id="form-checkout__expirationDate" className={styles.secureField}/></label>
+              <label className={styles.half}>Código de segurança<div id="form-checkout__securityCode" className={styles.secureField}/></label>
+              <label className={styles.full}>Nome no cartão<input id="form-checkout__cardholderName" placeholder="Como está impresso no cartão" autoComplete="cc-name"/></label>
+              <label className={`${styles.full} ${recurring ? styles.hiddenControl : ""}`}>Parcelas<select id="form-checkout__installments"/></label>
+            </div>
+            <select id="form-checkout__issuer" className={styles.hiddenControl}/>
+
+            {recurring && <div className={styles.recurrenceInfo}><CreditCard size={18}/><span><strong>Cobrança recorrente</strong><small>Esta primeira cobrança será feita em 1x. O cartão ficará autorizado no Mercado Pago para as próximas mensalidades.</small></span></div>}
+            {error && method === "card" && <p className={styles.error} role="alert">{error}</p>}
+            <button id="form-checkout__submit" className={styles.submit} type="submit" disabled={busy || !mercadoPagoPublicKey || !cardReady}>{busy ? "Processando..." : cardReady ? `Pagar ${formatCents(initialPrice)}` : "Carregando pagamento seguro..."}</button>
+          </form>
+
+          <form className={`${styles.form} ${method !== "pix" ? styles.hiddenForm : ""}`} onSubmit={submitPix}>
+            <div className={styles.sectionTitle}><span>1</span><div><strong>Dados do comprador</strong><small>Preencha os dados para gerar o PIX.</small></div></div>
+            <div className={styles.fieldGrid}>
+              <label className={styles.full}>Nome completo<input value={buyer.name} onChange={(event) => updateBuyer("name", event.target.value)} autoComplete="name" required/></label>
+              <label className={styles.full}>E-mail<input value={buyer.email} onChange={(event) => updateBuyer("email", event.target.value)} type="email" autoComplete="email" required/></label>
+              <label className={styles.full}>CPF<input value={buyer.document} onChange={(event) => updateBuyer("document", event.target.value)} inputMode="numeric" placeholder="000.000.000-00" required/></label>
+            </div>
+            <div className={styles.pixInfo}><QrCode size={21}/><span><strong>PIX copia e cola</strong><small>O QR Code será exibido nesta página. Não haverá redirecionamento.</small></span></div>
+            {recurring && <p className={styles.manualRenewal}>O PIX paga somente o período atual. A renovação seguinte precisará de uma nova cobrança.</p>}
+            {error && method === "pix" && <p className={styles.error} role="alert">{error}</p>}
+            <button className={styles.submit} type="submit" disabled={busy}>{busy ? "Gerando PIX..." : `Gerar PIX de ${formatCents(initialPrice)}`}</button>
+          </form>
+
+          <footer className={styles.footer}><LockKeyhole size={13}/> Processamento seguro pelo Mercado Pago</footer>
+        </div>
+      </section>
+    </div>
+  </main>;
 }
