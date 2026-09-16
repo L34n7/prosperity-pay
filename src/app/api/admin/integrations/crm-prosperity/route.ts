@@ -57,7 +57,7 @@ export async function POST(request: Request) {
         webhook_url: webhookUrl,
         secret_encrypted: encryptCrmProsperitySecret(secret),
         secret_last_four: secret.slice(-4),
-        status: "active",
+        status: "pending",
         created_by: user.id,
         last_updated_by: user.id,
       })
@@ -79,10 +79,20 @@ export async function PATCH(request: Request) {
     const name = requiredString(body, "name", 80);
     const webhookUrl = safeWebhookUrl(requiredString(body, "webhookUrl", 2048));
 
+    const admin = createAdminClient();
+    const existing = await getManagedCrmProsperityIntegration(admin);
+    if (!existing) throw new HttpError(404, "Integração com o CRM Prosperity não encontrada.");
+    const urlChanged = existing.webhook_url !== webhookUrl;
+
     const { data, error } = await integrationTable()
       .update({
         name,
         webhook_url: webhookUrl,
+        status: existing.status === "disconnected" ? "disconnected" : (urlChanged ? "pending" : existing.status),
+        last_tested_at: urlChanged ? null : existing.last_tested_at,
+        last_test_status: urlChanged ? null : existing.last_test_status,
+        last_test_http_status: urlChanged ? null : existing.last_test_http_status,
+        last_test_message: urlChanged ? null : existing.last_test_message,
         last_updated_by: user.id,
         updated_at: new Date().toISOString(),
       })

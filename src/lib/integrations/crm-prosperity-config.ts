@@ -15,7 +15,7 @@ type ManagedIntegrationRow = {
   webhook_url: string;
   secret_encrypted: string;
   secret_last_four: string;
-  status: "active" | "disconnected";
+  status: "pending" | "active" | "disconnected";
   created_by: string | null;
   last_updated_by: string | null;
   last_tested_at: string | null;
@@ -35,6 +35,7 @@ export type CrmProsperityRuntimeConfig = {
   webhookUrl?: string;
   secret?: string;
   secretLastFour?: string;
+  status?: "pending" | "active" | "disconnected";
 };
 
 function integrationTable(admin: AdminClient) {
@@ -61,6 +62,7 @@ export async function getCrmProsperityRuntimeConfig(admin: AdminClient): Promise
         name: managed.name,
         webhookUrl: managed.webhook_url,
         secretLastFour: managed.secret_last_four,
+        status: managed.status,
       };
     }
 
@@ -72,6 +74,7 @@ export async function getCrmProsperityRuntimeConfig(admin: AdminClient): Promise
       webhookUrl: managed.webhook_url,
       secret: decryptSecret(managed.secret_encrypted),
       secretLastFour: managed.secret_last_four,
+      status: managed.status,
     };
   }
 

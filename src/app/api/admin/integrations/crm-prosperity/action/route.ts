@@ -51,16 +51,17 @@ export async function POST(request: Request) {
 
     if (action === "reconnect") {
       await updateIntegration({
-        status: "active",
+        status: "pending",
         disconnected_at: null,
         last_updated_by: user.id,
       });
-      return NextResponse.json({ ok: true, status: "active" });
+      return NextResponse.json({ ok: true, status: "pending" });
     }
 
     if (action === "rotate_secret") {
       const secret = generateCrmProsperitySecret();
       await updateIntegration({
+        status: "pending",
         secret_encrypted: encryptCrmProsperitySecret(secret),
         secret_last_four: secret.slice(-4),
         last_tested_at: null,
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "test") {
-      if (integration.status !== "active") {
+      if (integration.status === "disconnected") {
         throw new HttpError(409, "Reconecte a integração antes de testar.");
       }
 
@@ -128,6 +129,8 @@ export async function POST(request: Request) {
       }
 
       await updateIntegration({
+        status: response.ok ? "active" : integration.status,
+        disconnected_at: response.ok ? null : integration.disconnected_at,
         last_tested_at: new Date().toISOString(),
         last_test_status: response.ok ? "success" : "failed",
         last_test_http_status: response.status,

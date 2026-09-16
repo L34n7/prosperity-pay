@@ -8,7 +8,7 @@ type Integration = {
   id: string;
   name: string;
   webhookUrl: string;
-  status: "active" | "disconnected";
+  status: "pending" | "active" | "disconnected";
   secretLastFour: string;
   lastTestedAt: string | null;
   lastTestStatus: "success" | "failed" | null;
@@ -84,7 +84,7 @@ export function CrmProsperityIntegration({ integration, fallbackConfigured, acti
     }));
     if (!result) return;
     setSecret(result.secret);
-    setMessage("Integração criada. Copie o token abaixo e cadastre-o no CRM Prosperity antes de testar.");
+    setMessage("Integração criada em modo de configuração. Copie o token, cadastre-o no CRM Prosperity e depois use Testar conexão para ativar.");
     router.refresh();
   }
 
@@ -110,13 +110,13 @@ export function CrmProsperityIntegration({ integration, fallbackConfigured, acti
 
     if (actionName === "rotate_secret") {
       setSecret(result.secret);
-      setMessage("Novo token gerado. Copie-o agora e substitua PROSPERITY_PAY_WEBHOOK_SECRET no CRM Prosperity.");
+      setMessage("Novo token gerado. O envio ficou pausado até você atualizar o CRM e concluir um teste com sucesso.");
     } else if (actionName === "test") {
       setMessage(result.message || "Conexão testada com sucesso.");
     } else if (actionName === "disconnect") {
       setMessage("Integração desconectada. Nenhum novo webhook será enviado ao CRM.");
     } else {
-      setMessage("Integração reconectada.");
+      setMessage("Integração preparada para reconexão. Faça um teste com sucesso para reativar os webhooks.");
     }
     router.refresh();
   }
@@ -133,8 +133,8 @@ export function CrmProsperityIntegration({ integration, fallbackConfigured, acti
   return <section className="panel operational-panel">
     <h2>CRM Prosperity</h2>
     <p>Envie eventos de pagamento do Prosperity Pay para ativação e renovação automática de planos no CRM.</p>
-    <span className={`status-badge ${integration?.status === "active" ? "status-active" : "status-inactive"}`}>
-      {integration ? (integration.status === "active" ? "Conectado" : "Desconectado") : "Não configurado"}
+    <span className={`status-badge ${integration?.status === "active" ? "status-active" : integration?.status === "pending" ? "status-pending" : "status-inactive"}`}>
+      {integration ? (integration.status === "active" ? "Conectado" : integration.status === "pending" ? "Aguardando teste" : "Desconectado") : "Não configurado"}
     </span>
 
     {!integration && fallbackConfigured && <p className="muted">Existe uma configuração legada pela Vercel. Ao criar esta integração, o gerenciamento pelo painel passa a ter prioridade e a opção Desconectar prevalece sobre as variáveis de ambiente.</p>}
@@ -179,11 +179,11 @@ export function CrmProsperityIntegration({ integration, fallbackConfigured, acti
     </div> : <>
       <div className="button-row">
         <button type="button" className="primary-button" disabled={Boolean(busy) || !name.trim() || !webhookUrl.trim()} onClick={() => void saveIntegration()}>{busy === "save" ? "Salvando..." : "Salvar alterações"}</button>
-        <button type="button" className="secondary-button" disabled={Boolean(busy) || integration.status !== "active"} onClick={() => void action("test")}>{busy === "test" ? "Testando..." : "Testar conexão"}</button>
+        <button type="button" className="secondary-button" disabled={Boolean(busy) || integration.status === "disconnected"} onClick={() => void action("test")}>{busy === "test" ? "Testando..." : "Testar conexão"}</button>
       </div>
       <div className="button-row" style={{ marginTop: 8 }}>
         <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void action("rotate_secret")}>{busy === "rotate_secret" ? "Gerando..." : "Gerar novo token"}</button>
-        {integration.status === "active"
+        {integration.status !== "disconnected"
           ? <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void action("disconnect")}>{busy === "disconnect" ? "Desconectando..." : "Desconectar"}</button>
           : <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void action("reconnect")}>{busy === "reconnect" ? "Reconectando..." : "Reconectar"}</button>}
       </div>

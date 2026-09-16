@@ -114,7 +114,7 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
     return { sent: false, reason: "integration_not_configured" as const };
   }
   if (!integration.active) {
-    return { sent: false, reason: "integration_disconnected" as const };
+    return { sent: false, reason: integration.status === "pending" ? "integration_pending" as const : "integration_disconnected" as const };
   }
   if (!integration.webhookUrl || !integration.secret) {
     throw new Error("Integração com o CRM Prosperity está ativa, mas incompleta.");
