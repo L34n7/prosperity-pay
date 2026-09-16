@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ProductOverviewReport } from "@/components/product-overview-report";
 import { PageHeader } from "@/components/ui/page-header";
 import { AFFILIATE_HOLD_DAYS, getInstallmentOptions } from "@/lib/domain/offer-rules";
 import { RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
@@ -163,20 +164,7 @@ export function ProductDetail({ id }: { id: string }) {
 }
 
 function ProductOverview({ product, offers }: { product: Product; offers: Offer[] }) {
-  const price = productPrice(product);
-  return <>
-    {productImageUrl(product.image_path) && <Image className="product-detail-image" src={productImageUrl(product.image_path)!} alt={product.name} width={640} height={360} unoptimized/>}
-    <h2>{product.name}</h2><p>{product.description || "Sem descrição."}</p>
-    <div className="records-list">
-      <div className="record-row"><strong>Pagamento</strong><span>{product.payment_type === "recurring" ? "Recorrente" : "Único"}</span><span>{price ? formatCents(price) : "Sem preço"}</span></div>
-      <div className="record-row"><strong>Produto</strong><span>{product.product_type === "physical" ? "Físico" : "Digital"}</span><span>{product.category || "Sem categoria"}</span></div>
-      <div className="record-row"><strong>Status</strong><span>{product.status}</span><span>{offers.length} oferta(s)</span></div>
-      {product.payment_type === "recurring" && <div className="record-row"><strong>Recorrência</strong><span>{RECURRENCE_OPTIONS.find(item => item.value === product.recurrence_frequency)?.label ?? "—"}</span><span>{product.different_first_charge ? `1ª cobrança ${formatCents(product.first_charge_cents ?? 0)}` : "Mesmo valor na 1ª cobrança"}</span></div>}
-      <div className="record-row"><strong>SAC</strong><span>{product.support_display_name || "Não informado"}</span><span>{product.support_email || product.support_whatsapp || "Sem contato"}</span></div>
-    </div>
-    <p>O modelo de recebimento foi definido na criação e não pode ser alterado.</p>
-    {product.settlement_model === "connected_account" && <Link href="/integracoes">Ver conexão Mercado Pago →</Link>}
-  </>;
+  return <ProductOverviewReport product={product} offers={offers}/>;
 }
 
 function ProductSettings({ product, busy, onSave, onChangeImage, onRemoveImage }: {
