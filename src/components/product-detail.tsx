@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ProductOfferDialog } from "@/components/product-offer-dialog";
 import { ProductOffersList } from "@/components/product-offers-list";
 import { ProductOverviewReport } from "@/components/product-overview-report";
+import { ProductAffiliateManagement, ProductCoproducerManagement } from "@/components/product-partner-management";
 import { PageHeader } from "@/components/ui/page-header";
 import { RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { requestJson } from "@/lib/operational";
@@ -148,8 +149,8 @@ export function ProductDetail({ id }: { id: string }) {
       {tab === "Visão geral" && <ProductOverview product={product} offers={offers}/>} 
       {tab === "Configurações" && <ProductSettings key={product.updated_at} product={product} busy={busy} onSave={body => mutate(`/api/products/${id}`, "PATCH", body)} onChangeImage={changeImage} onRemoveImage={removeImage}/>} 
       {tab === "Ofertas" && <ProductOffersList paymentType={product.payment_type} offers={offers} onNew={() => setEditingOffer(null)} onEdit={setEditingOffer} onDelete={setDeletingOffer}/>} 
-      {tab === "Afiliados" && <AffiliateManagement id={id}/>} 
-      {tab === "Coprodutores" && <CoproducerManagement id={id} offers={offers}/>} 
+      {tab === "Afiliados" && <ProductAffiliateManagement id={id}/>} 
+      {tab === "Coprodutores" && <ProductCoproducerManagement id={id} offers={offers.map(offer => ({ id: offer.id, name: offer.name }))}/>} 
       {tab === "Vendas" && <p>Consulte as vendas e os detalhes financeiros em <Link href="/pagamentos">Pagamentos →</Link></p>}
     </section>}
     {product && editingOffer !== undefined && <ProductOfferDialog product={product} offer={editingOffer} busy={busy} onClose={() => setEditingOffer(undefined)} onSave={saveOffer}/>} 
@@ -218,21 +219,4 @@ function ConfirmDeleteDialog({ offer, busy, onClose, onConfirm }: { offer: Offer
     <div className="product-dialog-heading"><div><h2>Excluir oferta?</h2><p>Esta ação remove a oferta <strong>{offer.name}</strong>. Ofertas com histórico financeiro não podem ser excluídas.</p></div></div>
     <div className="product-dialog-actions"><button className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button className="primary-button" disabled={busy} onClick={() => void onConfirm()}>{busy ? "Excluindo..." : "Excluir oferta"}</button></div>
   </dialog>;
-}
-
-function AffiliateManagement({ id }: { id: string }) {
-  const [mode, setMode] = useState("approval"), [active, setActive] = useState(false), [members, setMembers] = useState<{ id: string; code: string; status: string; profiles: { full_name: string } }[]>([]), [error, setError] = useState("");
-  useEffect(() => { const run = async () => { try { const data = await requestJson<{ program: { mode: string; active: boolean } | null; memberships: typeof members }>(`/api/products/${id}/affiliates`); if (data.program) { setMode(data.program.mode); setActive(data.program.active); } setMembers(data.memberships); } catch (cause) { setError(String(cause)); } }; void run(); }, [id]);
-  return <><h2>Programa de afiliados</h2><form className="operational-form" onSubmit={async e => { e.preventDefault(); try { await requestJson(`/api/products/${id}/affiliate-program`, { method: "PUT", body: JSON.stringify({ mode, active, cookieDays: 30 }) }); setError(""); } catch (cause) { setError(String(cause)); } }}><label>Modo<select value={mode} onChange={e => setMode(e.target.value)}><option value="public">Público</option><option value="approval">Sob aprovação</option><option value="invite">Convite</option></select></label><label className="checkbox-line"><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)}/> Programa ativo</label><button className="primary-button">Salvar programa</button></form>{error && <p className="form-error">{error}</p>}{members.map(m => <div className="record-row" key={m.id}>{m.profiles?.full_name} · {m.code} · {m.status}{m.status === "pending" && <button className="secondary-button" onClick={async () => { await requestJson(`/api/products/${id}/affiliates/${m.id}`, { method: "PATCH", body: JSON.stringify({ status: "active" }) }); setMembers(items => items.map(item => item.id === m.id ? { ...item, status: "active" } : item)); }}>Aprovar</button>}</div>)}</>;
-}
-
-function CoproducerManagement({ id, offers }: { id: string; offers: Offer[] }) {
-  const [link, setLink] = useState(""), [error, setError] = useState("");
-  const [invitations, setInvitations] = useState<{ id: string; invited_email: string; participation_bps: number; status: string }[]>([]);
-  const [participants, setParticipants] = useState<{ id: string; user_id: string; participation_bps: number; active: boolean }[]>([]);
-  const load = useCallback(async () => { try { const data = await requestJson<{ invitations: typeof invitations; participants: typeof participants }>(`/api/products/${id}/coproducers/invitations`); setInvitations(data.invitations); setParticipants(data.participants); } catch (cause) { setError(String(cause)); } }, [id]);
-  useEffect(() => { void Promise.resolve().then(load); }, [load]);
-  return <><h2>Convidar coprodutor</h2><form className="operational-form form-grid" onSubmit={async e => { e.preventDefault(); const d = new FormData(e.currentTarget); try { const result = await requestJson<{ invitationUrl: string }>(`/api/products/${id}/coproducers/invitations`, { method: "POST", body: JSON.stringify({ email: d.get("email"), participationBps: Math.round(Number(d.get("share")) * 100), offerId: d.get("offerId") || undefined }) }); setLink(result.invitationUrl); setError(""); await load(); } catch (cause) { setError(String(cause)); } }}><label>E-mail<input name="email" type="email" required/></label><label>Participação (%)<input name="share" type="number" min="0.01" max="100" step="0.01" required/></label><label>Aplicação<select name="offerId"><option value="">Produto inteiro</option>{offers.map(o => <option value={o.id} key={o.id}>{o.name}</option>)}</select></label><button className="primary-button">Criar convite</button></form>{link && <p>Envie este link ao convidado: <button className="secondary-button" onClick={() => navigator.clipboard.writeText(link)}>Copiar convite</button></p>}{error && <p className="form-error">{error}</p>}
-    <h3>Convites</h3>{invitations.length ? invitations.map(item => <div className="record-row" key={item.id}><strong>{item.invited_email}</strong><span>{item.participation_bps / 100}% · {item.status}</span></div>) : <p>Nenhum convite.</p>}
-    <h3>Participações ativas</h3>{participants.filter(p => p.active).length ? participants.filter(p => p.active).map(item => <div className="record-row" key={item.id}><strong>{item.user_id}</strong><span>{item.participation_bps / 100}%</span></div>) : <p>Nenhuma participação ativa.</p>}</>;
 }
