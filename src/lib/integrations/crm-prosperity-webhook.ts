@@ -60,12 +60,12 @@ async function hydratePayment(admin: AdminClient, paymentId: string) {
   };
 }
 
-async function isOfferRoutedToCrm(admin: AdminClient, offerId: string) {
+async function isOfferRoutedToCrm(admin: AdminClient, offerReference: string) {
   const { data, error } = await admin
     .from("integration_webhook_routes")
     .select("id")
     .eq("integration", "crm_prosperity")
-    .eq("offer_id", offerId)
+    .eq("offer_reference", offerReference)
     .eq("active", true)
     .maybeSingle();
   if (error) throw error;
@@ -121,7 +121,7 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
   }
 
   const hydrated = await hydratePayment(input.admin, input.paymentId);
-  if (!(await isOfferRoutedToCrm(input.admin, hydrated.offer.id))) {
+  if (!(await isOfferRoutedToCrm(input.admin, hydrated.offer.checkout_slug))) {
     return { sent: false, reason: "offer_not_routed" as const };
   }
 
