@@ -16,6 +16,8 @@ export const env = {
   mercadoPagoClientSecret: readOptional(process.env.MERCADO_PAGO_CLIENT_SECRET),
   mercadoPagoRedirectUri: readOptional(process.env.MERCADO_PAGO_REDIRECT_URI),
   financialEncryptionKey: readOptional(process.env.FINANCIAL_ENCRYPTION_KEY),
+  crmProsperityWebhookUrl: readOptional(process.env.CRM_PROSPERITY_WEBHOOK_URL),
+  crmProsperityWebhookSecret: readOptional(process.env.CRM_PROSPERITY_WEBHOOK_SECRET),
 };
 
 export function requireEnv(value: string | undefined, name: string) {
