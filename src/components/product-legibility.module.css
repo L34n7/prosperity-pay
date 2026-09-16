@@ -1,0 +1,107 @@
+.scope {
+  min-width: 0;
+}
+
+/*
+ * Product management has dense operational content. Keep every secondary,
+ * interactive and supporting text at a readable 14px minimum without
+ * flattening the hierarchy of larger titles, prices and KPI values.
+ */
+.scope :global(small),
+.scope :global(p),
+.scope :global(span),
+.scope :global(label),
+.scope :global(input),
+.scope :global(select),
+.scope :global(textarea),
+.scope :global(button),
+.scope :global(a),
+.scope :global(code),
+.scope :global(dt),
+.scope :global(dd),
+.scope :global(th),
+.scope :global(td),
+.scope :global(.form-hint),
+.scope :global(.form-error),
+.scope :global(.form-success),
+.scope :global(.checkbox-line),
+.scope :global(.operational-form) {
+  font-size: 14px !important;
+}
+
+/* Small headings used as subtitles inside cards, tables and modals. */
+.scope :global([class*="blockTitle"]) h3,
+.scope :global([class*="toggleLine"]) h3,
+.scope :global([class*="cardHeader"]) h3,
+.scope :global([class*="toolbar"]) h3,
+.scope :global([class*="detailSection"]) h4,
+.scope :global([class*="sectionTitle"]) h3,
+.scope :global([class*="offerTop"]) h3,
+.scope :global([class*="panelHeading"]) h3 {
+  font-size: 14px !important;
+}
+
+/* Values whose component styles were also below 14px. */
+.scope :global([class*="dataCard"]) strong,
+.scope :global([class*="metric"]) strong,
+.scope :global([class*="fact"]) strong,
+.scope :global([class*="headerSwitch"]) strong,
+.scope :global([class*="simpleInfo"]) strong,
+.scope :global([class*="priceBlock"]) strong,
+.scope :global([class*="headingActions"]) > strong,
+.scope :global([class*="sectionHeading"]) > strong,
+.scope :global([class*="paymentLine"]) strong,
+.scope :global([class*="quickOfferList"]) strong,
+.scope :global([class*="primaryCell"]) strong,
+.scope :global([class*="statusBox"]) strong,
+.scope :global([class*="modeButton"]) strong,
+.scope :global([class*="identity"]) strong,
+.scope :global([class*="summaryGrid"]) strong,
+.scope :global([class*="events"]) strong,
+.scope :global([class*="toggleRow"]) strong,
+.scope :global([class*="empty"]) strong,
+.scope :global([class*="table"]) td strong {
+  font-size: 14px !important;
+}
+
+/* Direct text containers that are not semantic p/small/span elements. */
+.scope :global([class*="backLink"]),
+.scope :global([class*="heroError"]),
+.scope :global([class*="reportError"]),
+.scope :global([class*="empty"]),
+.scope :global([class*="meta"]),
+.scope :global([class*="detail"]),
+.scope :global([class*="badge"]),
+.scope :global([class*="notice"]),
+.scope :global([class*="error"]),
+.scope :global([class*="success"]),
+.scope :global([class*="noEvents"]),
+.scope :global([class*="methods"]),
+.scope :global([class*="status"]),
+.scope :global([class*="detailButton"]),
+.scope :global([class*="upload"]),
+.scope :global([class*="saveButton"]),
+.scope :global([class*="cancelButton"]),
+.scope :global([class*="primary"]),
+.scope :global([class*="secondary"]),
+.scope :global([class*="danger"]),
+.scope :global([class*="save"]) {
+  font-size: 14px !important;
+}
+
+/* Native product dialogs use global utility classes rather than CSS modules. */
+.scope :global(.product-dialog),
+.scope :global(.product-dialog) p,
+.scope :global(.product-dialog) label,
+.scope :global(.product-dialog) input,
+.scope :global(.product-dialog) select,
+.scope :global(.product-dialog) textarea,
+.scope :global(.product-dialog) button,
+.scope :global(.product-dialog) small,
+.scope :global(.product-dialog) span,
+.scope :global(.product-dialog) code,
+.scope :global(.primary-button),
+.scope :global(.secondary-button),
+.scope :global(.detail-tabs) button {
+  font-size: 14px !important;
+}
