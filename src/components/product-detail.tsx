@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ProductAffiliateManagement } from "@/components/product-affiliate-management";
 import { ProductOfferDialog } from "@/components/product-offer-dialog";
 import { ProductOffersList } from "@/components/product-offers-list";
 import { ProductOverviewReport } from "@/components/product-overview-report";
-import { ProductAffiliateManagement, ProductCoproducerManagement } from "@/components/product-partner-management";
+import { ProductCoproducerManagement } from "@/components/product-partner-management";
 import { ProductPaymentsManagement } from "@/components/product-payments-management";
 import { ProductSettings } from "@/components/product-settings";
 import { PageHeader } from "@/components/ui/page-header";
