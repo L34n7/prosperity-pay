@@ -12,6 +12,7 @@ export const env = {
   mercadoPagoPublicKey: readOptional(process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY),
   mercadoPagoAccessToken: readOptional(process.env.MERCADO_PAGO_ACCESS_TOKEN),
   mercadoPagoWebhookSecret: readOptional(process.env.MERCADO_PAGO_WEBHOOK_SECRET),
+  mercadoPagoTestPayerEmail: readOptional(process.env.MERCADO_PAGO_TEST_PAYER_EMAIL),
   mercadoPagoClientId: readOptional(process.env.MERCADO_PAGO_CLIENT_ID),
   mercadoPagoClientSecret: readOptional(process.env.MERCADO_PAGO_CLIENT_SECRET),
   mercadoPagoRedirectUri: readOptional(process.env.MERCADO_PAGO_REDIRECT_URI),
