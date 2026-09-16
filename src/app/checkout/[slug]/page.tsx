@@ -6,14 +6,32 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
+const OFFER_SELECT = "checkout_slug,name,price_cents,first_charge_cents,billing_type,billing_interval,billing_interval_count,max_installments,payment_card_enabled,payment_pix_enabled,products!inner(name,description,image_path,status)";
+
 export default async function Page({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ ref?: string }> }) {
   const [{ slug }, { ref }] = await Promise.all([params, searchParams]);
-  const { data: offer } = await createAdminClient().from("offers")
-    .select("checkout_slug,name,price_cents,first_charge_cents,billing_type,billing_interval,billing_interval_count,max_installments,payment_card_enabled,payment_pix_enabled,products!inner(name,description,image_path,status)")
-    .eq("checkout_slug", slug)
+  const admin = createAdminClient();
+
+  const exact = await admin.from("offers")
+    .select(OFFER_SELECT)
+    .eq("checkout_slug", slug.toLowerCase())
     .eq("status", "active")
     .eq("products.status", "active")
     .maybeSingle();
+
+  let offer = exact.data;
+
+  if (!offer && /^[a-f0-9]{8}$/i.test(slug)) {
+    const legacy = await admin.from("offers")
+      .select(OFFER_SELECT)
+      .like("checkout_slug", `%-${slug.toLowerCase()}`)
+      .eq("status", "active")
+      .eq("products.status", "active")
+      .limit(1)
+      .maybeSingle();
+    offer = legacy.data;
+  }
+
   if (!offer) notFound();
 
   return <CheckoutFlow
