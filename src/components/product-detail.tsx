@@ -3,13 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ProductOfferDialog } from "@/components/product-offer-dialog";
 import { ProductOffersList } from "@/components/product-offers-list";
 import { ProductOverviewReport } from "@/components/product-overview-report";
 import { PageHeader } from "@/components/ui/page-header";
-import { checkoutPath } from "@/lib/domain/offer-reference";
-import { AFFILIATE_HOLD_DAYS, getInstallmentOptions } from "@/lib/domain/offer-rules";
 import { RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
-import { formatCents, requestJson } from "@/lib/operational";
+import { requestJson } from "@/lib/operational";
 import { MAX_PRODUCT_IMAGE_BYTES, productImageUrl } from "@/lib/product-images";
 
 type Product = {
@@ -49,16 +48,13 @@ type Offer = {
   first_charge_cents: number | null;
 };
 
-const tabs = ["Visão geral", "Ofertas", "Checkout", "Afiliados", "Coprodutores", "Vendas", "Configurações"];
+const tabs = ["Visão geral", "Ofertas", "Afiliados", "Coprodutores", "Vendas", "Configurações"];
 
 function moneyInput(cents: number | null | undefined) {
   return cents == null ? "" : (cents / 100).toFixed(2);
 }
 function cents(value: FormDataEntryValue | null) {
   return Math.round(Number(value) * 100);
-}
-function productPrice(product: Product) {
-  return product.payment_type === "recurring" ? product.recurring_price_cents : product.main_offer_price_cents;
 }
 
 export function ProductDetail({ id }: { id: string }) {
@@ -152,12 +148,11 @@ export function ProductDetail({ id }: { id: string }) {
       {tab === "Visão geral" && <ProductOverview product={product} offers={offers}/>} 
       {tab === "Configurações" && <ProductSettings key={product.updated_at} product={product} busy={busy} onSave={body => mutate(`/api/products/${id}`, "PATCH", body)} onChangeImage={changeImage} onRemoveImage={removeImage}/>} 
       {tab === "Ofertas" && <ProductOffersList paymentType={product.payment_type} offers={offers} onNew={() => setEditingOffer(null)} onEdit={setEditingOffer} onDelete={setDeletingOffer}/>} 
-      {tab === "Checkout" && <><h2>Links de checkout</h2>{offers.filter(o => o.status === "active").length ? offers.filter(o => o.status === "active").map(o => { const path = checkoutPath(o.checkout_slug); return <div className="record-row" key={o.id}><strong>{o.name}</strong><span>{formatCents(o.price_cents)}</span><Link href={path} target="_blank">Abrir checkout</Link><button className="secondary-button" onClick={async () => { await navigator.clipboard.writeText(`${location.origin}${path}`); setMessage("Link copiado."); }}>Copiar link</button></div>; }) : <p>Ative uma oferta para gerar seu link.</p>}</>}
       {tab === "Afiliados" && <AffiliateManagement id={id}/>} 
       {tab === "Coprodutores" && <CoproducerManagement id={id} offers={offers}/>} 
       {tab === "Vendas" && <p>Consulte as vendas e os detalhes financeiros em <Link href="/pagamentos">Pagamentos →</Link></p>}
     </section>}
-    {product && editingOffer !== undefined && <OfferDialog product={product} offer={editingOffer} busy={busy} onClose={() => setEditingOffer(undefined)} onSave={saveOffer}/>} 
+    {product && editingOffer !== undefined && <ProductOfferDialog product={product} offer={editingOffer} busy={busy} onClose={() => setEditingOffer(undefined)} onSave={saveOffer}/>} 
     {deletingOffer && <ConfirmDeleteDialog offer={deletingOffer} busy={busy} onClose={() => setDeletingOffer(null)} onConfirm={deleteOffer}/>} 
   </>;
 }
@@ -214,74 +209,6 @@ function ProductSettings({ product, busy, onSave, onChangeImage, onRemoveImage }
     </form>
     <div className="product-image-settings"><h2>Imagem do produto</h2>{productImageUrl(product.image_path) && <Image className="product-image-preview" src={productImageUrl(product.image_path)!} alt={product.name} width={320} height={180} unoptimized/>}<form className="operational-form" onSubmit={onChangeImage}><label>Selecionar imagem JPEG, PNG ou WebP (até 3 MB)<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required/></label><button className="secondary-button" disabled={busy}>Enviar imagem</button></form>{product.image_path && <button className="secondary-button" disabled={busy} onClick={() => void onRemoveImage()}>Remover imagem</button>}</div>
   </>;
-}
-
-function OfferDialog({ product, offer, busy, onClose, onSave }: { product: Product; offer: Offer | null; busy: boolean; onClose: () => void; onSave: (payload: object) => Promise<void> }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const defaultPrice = offer?.price_cents ?? productPrice(product) ?? 0;
-  const [price, setPrice] = useState(moneyInput(defaultPrice));
-  const [cardEnabled, setCardEnabled] = useState(offer?.payment_card_enabled ?? true);
-  const [pixEnabled, setPixEnabled] = useState(offer?.payment_pix_enabled ?? true);
-  const [primary, setPrimary] = useState<"card" | "pix">(offer?.primary_payment_method ?? "card");
-  const connectedRecurring = product.payment_type === "recurring" && product.settlement_model === "connected_account";
-  const [affiliateEnabled, setAffiliateEnabled] = useState(connectedRecurring ? false : offer?.affiliate_enabled ?? false);
-  const allowedInstallments = getInstallmentOptions(Math.round(Number(price || 0) * 100));
-  const allowedMaximum = allowedInstallments[allowedInstallments.length - 1] ?? 1;
-  const [maxInstallments, setMaxInstallments] = useState(Math.min(offer?.max_installments ?? allowedMaximum, allowedMaximum));
-  useEffect(() => { ref.current?.showModal(); }, []);
-
-  function changeCard(enabled: boolean) {
-    setCardEnabled(enabled);
-    if (!enabled) {
-      setMaxInstallments(1);
-      if (primary === "card" && pixEnabled) setPrimary("pix");
-    } else if (!pixEnabled && primary === "pix") setPrimary("card");
-  }
-  function changePix(enabled: boolean) {
-    setPixEnabled(enabled);
-    if (!enabled && primary === "pix" && cardEnabled) setPrimary("card");
-    else if (enabled && !cardEnabled && primary === "card") setPrimary("pix");
-  }
-  function changePrice(value: string) {
-    setPrice(value);
-    const nextOptions = getInstallmentOptions(Math.round(Number(value || 0) * 100));
-    const nextMax = nextOptions[nextOptions.length - 1] ?? 1;
-    setMaxInstallments(current => Math.min(current, nextMax));
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    await onSave({
-      name: data.get("name"), priceCents: cents(data.get("price")), paymentCardEnabled: cardEnabled, paymentPixEnabled: pixEnabled,
-      primaryPaymentMethod: primary, maxInstallments: product.payment_type === "recurring" ? 1 : cardEnabled ? maxInstallments : 1,
-      firstChargeCents: product.payment_type === "recurring" && product.different_first_charge ? cents(data.get("firstCharge")) : null,
-      active: data.get("active") === "on",
-      affiliateEnabled: connectedRecurring ? false : affiliateEnabled,
-      affiliateCommissionBps: !connectedRecurring && affiliateEnabled ? Math.round(Number(data.get("commission") || 0) * 100) : (offer?.affiliate_commission_bps ?? 0),
-    });
-  }
-
-  return <dialog ref={ref} className="product-dialog offer-dialog" onClose={onClose} onCancel={event => { if (busy) event.preventDefault(); }}>
-    <div className="product-dialog-heading"><div><h2>{offer ? "Editar oferta" : "Nova oferta"}</h2><p>Configure checkout, preço e regras comerciais desta oferta.</p></div><button type="button" className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Fechar</button></div>
-    <form className="operational-form" onSubmit={submit}>
-      <div className="form-grid">
-        <label>Nome<input name="name" defaultValue={offer?.name ?? "Oferta principal"} required minLength={2}/></label>
-        <label>{product.payment_type === "recurring" ? "Preço da recorrência (R$)" : "Preço (R$)"}<input name="price" type="number" min="0.01" step="0.01" value={price} onChange={event => changePrice(event.target.value)} required/></label>
-      </div>
-      <fieldset className="form-fieldset"><legend>Métodos de pagamento disponíveis</legend><label className="checkbox-line"><input type="checkbox" checked={cardEnabled} onChange={event => changeCard(event.target.checked)}/> Cartão</label><label className="checkbox-line"><input type="checkbox" checked={pixEnabled} onChange={event => changePix(event.target.checked)}/> PIX</label></fieldset>
-      <fieldset className="form-fieldset"><legend>Método de pagamento principal</legend><label className="checkbox-line"><input type="radio" name="primary" checked={primary === "card"} disabled={!cardEnabled} onChange={() => setPrimary("card")}/> Cartão</label><label className="checkbox-line"><input type="radio" name="primary" checked={primary === "pix"} disabled={!pixEnabled} onChange={() => setPrimary("pix")}/> PIX</label></fieldset>
-      {product.payment_type === "recurring" && product.different_first_charge && <label>Valor da primeira cobrança (R$)<input name="firstCharge" type="number" min="0.01" step="0.01" defaultValue={moneyInput(offer?.first_charge_cents ?? product.first_charge_cents)} required/></label>}
-      {product.payment_type === "recurring" ? <p className="form-hint">Assinaturas não usam parcelamento. Para cobrança automática, mantenha Cartão habilitado; o Mercado Pago gerencia a autorização e as renovações.</p> : <label>Quantidade máxima de parcelas<select value={maxInstallments} disabled={!cardEnabled} onChange={event => setMaxInstallments(Number(event.target.value))}>{allowedInstallments.map(value => <option value={value} key={value}>{value}x</option>)}</select><small>Parcela mínima de R$ 50, limitado a 12x.</small></label>}
-      <label className="checkbox-line"><input type="checkbox" name="active" defaultChecked={offer?.status === "active"}/> Oferta ativa</label>
-      {product.payment_type === "recurring" && <p className="form-hint">Ao ativar, o link desta oferta passa a criar assinaturas reais na API do Mercado Pago.</p>}
-      <label className="checkbox-line"><input type="checkbox" checked={affiliateEnabled} disabled={connectedRecurring} onChange={event => setAffiliateEnabled(event.target.checked)}/> Disponível para afiliado</label>
-      {connectedRecurring && <p className="form-hint">No recebimento direto, a API de Assinaturas do Mercado Pago não oferece split 1:1. Para comissão automática recorrente, use o modelo Saldo Prosperity.</p>}
-      {!connectedRecurring && affiliateEnabled && <label>Comissão padrão de afiliado (%)<input name="commission" type="number" min="0" max="100" step="0.01" defaultValue={(offer?.affiliate_commission_bps ?? 0) / 100}/></label>}
-      <div className="record-row"><strong>Liberação da comissão</strong><span>{AFFILIATE_HOLD_DAYS} dias após a aprovação</span></div>
-      <div className="product-dialog-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button className="primary-button" disabled={busy || (!cardEnabled && !pixEnabled)}>{busy ? "Salvando..." : offer ? "Salvar oferta" : "Criar oferta"}</button></div>
-    </form>
-  </dialog>;
 }
 
 function ConfirmDeleteDialog({ offer, busy, onClose, onConfirm }: { offer: Offer; busy: boolean; onClose: () => void; onConfirm: () => Promise<void> }) {
