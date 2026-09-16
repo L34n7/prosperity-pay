@@ -2,12 +2,6 @@ import { NextResponse } from "next/server";
 import { asObject, HttpError, jsonError, optionalString, requiredInteger, requiredString } from "@/lib/api/http";
 import { createTransparentCheckout } from "@/lib/checkout/transparent-checkout-service";
 
-function normalizeMercadoPagoTestCustomerEmail(email: string) {
-  const value = email.trim().toLowerCase();
-  const match = /^test_user_(\d+)@testuser\.com$/i.exec(value);
-  return match ? `testuser${match[1]}@testuser.com` : value;
-}
-
 export async function POST(request: Request) {
   try {
     const body = asObject(await request.json());
@@ -27,10 +21,9 @@ export async function POST(request: Request) {
       };
     }
 
-    const customerEmail = normalizeMercadoPagoTestCustomerEmail(requiredString(body, "customerEmail", 320));
     const result = await createTransparentCheckout({
       offerSlug: requiredString(body, "offerSlug", 120),
-      customerEmail,
+      customerEmail: requiredString(body, "customerEmail", 320),
       customerName: optionalString(body, "customerName", 180),
       customerDocument: requiredString(body, "customerDocument", 30),
       refCode: optionalString(body, "refCode", 80),
