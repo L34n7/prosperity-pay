@@ -33,6 +33,10 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
+    console.error("[transparent-checkout] payment attempt failed", error);
+    if (error instanceof HttpError && error.status >= 500) {
+      return NextResponse.json({ error: "Não foi possível processar o pagamento. Tente novamente." }, { status: error.status });
+    }
     return jsonError(error);
   }
 }
