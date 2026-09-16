@@ -14,12 +14,18 @@ export async function GET(_: Request, context: Context) {
     const { supabase } = await requireUser();
     const { data: owns } = await supabase.rpc("owns_product", { target_product_id: productId });
     if (!owns) return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+
     const [{ data: invitations, error }, { data: participants, error: participantsError }] = await Promise.all([
-      supabase.from("coproducer_invitations").select("id,invited_email,participation_bps,status,expires_at").eq("product_id", productId).order("created_at", { ascending: false }),
-      supabase.from("product_participants").select("id,user_id,participation_bps,active,offer_id").eq("product_id", productId),
+      supabase.from("coproducer_invitations")
+        .select("id,invited_email,participation_bps,status,expires_at,offer_id")
+        .eq("product_id", productId)
+        .order("created_at", { ascending: false }),
+      supabase.from("product_participants")
+        .select("id,user_id,participation_bps,active,offer_id,profiles!product_participants_user_id_fkey(full_name,email)")
+        .eq("product_id", productId),
     ]);
     if (error || participantsError) throw error ?? participantsError;
-    return NextResponse.json({ invitations, participants });
+    return NextResponse.json({ invitations: invitations ?? [], participants: participants ?? [] });
   } catch (error) { return jsonError(error); }
 }
 
@@ -45,7 +51,7 @@ export async function POST(request: Request, context: Context) {
       token_hash: sha256(token),
       invited_by: user.id,
       expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-    }).select("id, invited_email, participation_bps, expires_at").single();
+    }).select("id, invited_email, participation_bps, expires_at, offer_id").single();
     if (error) throw error;
     return NextResponse.json({ invitation: data, invitationUrl: `${requireEnv(env.appUrl, "NEXT_PUBLIC_APP_URL")}/convites/coproducao?token=${token}` }, { status: 201 });
   } catch (error) { return jsonError(error); }
