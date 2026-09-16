@@ -1,4 +1,4 @@
-import type { Database as GeneratedDatabase } from "./database.types";
+import type { Database as GeneratedDatabase, Json } from "./database.types";
 
 type TableDefinition = {
   Row: unknown;
@@ -42,6 +42,80 @@ type SubscriptionTransparentColumns = {
   payment_profile_id: string | null;
 };
 
+type IntegrationWebhookRouteRow = {
+  id: string;
+  integration: string;
+  offer_reference: string;
+  active: boolean;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+type IntegrationWebhookRouteTable = {
+  Row: IntegrationWebhookRouteRow;
+  Insert: {
+    id?: string;
+    integration: string;
+    offer_reference: string;
+    active?: boolean;
+    metadata?: Json;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Update: Partial<IntegrationWebhookRouteRow>;
+  Relationships: [];
+};
+
+type IntegrationWebhookDeliveryRow = {
+  id: string;
+  event_id: string;
+  integration: string;
+  payment_id: string;
+  event_type: string;
+  payload: Json;
+  status: "pending" | "delivered" | "failed";
+  attempts: number;
+  response_status: number | null;
+  response_body: string | null;
+  last_error: string | null;
+  last_attempt_at: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type IntegrationWebhookDeliveryTable = {
+  Row: IntegrationWebhookDeliveryRow;
+  Insert: {
+    id?: string;
+    event_id?: string;
+    integration: string;
+    payment_id: string;
+    event_type: string;
+    payload?: Json;
+    status?: "pending" | "delivered" | "failed";
+    attempts?: number;
+    response_status?: number | null;
+    response_body?: string | null;
+    last_error?: string | null;
+    last_attempt_at?: string | null;
+    delivered_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Update: Partial<IntegrationWebhookDeliveryRow>;
+  Relationships: [
+    {
+      foreignKeyName: "integration_webhook_deliveries_payment_id_fkey";
+      columns: ["payment_id"];
+      isOneToOne: false;
+      referencedRelation: "payments";
+      referencedColumns: ["id"];
+    },
+  ];
+};
+
 type PublicSchema = GeneratedDatabase["public"];
 type GeneratedTables = PublicSchema["Tables"];
 type GeneratedFunctions = PublicSchema["Functions"];
@@ -50,10 +124,10 @@ type GeneratedFunctions = PublicSchema["Functions"];
  * Database type used by Supabase clients.
  *
  * The checked-in generated file predates the latest product/offer, transparent
- * checkout and platform bootstrap migrations. This layer keeps the client
- * strictly typed against the live schema without weakening mutations with
- * `any`/`never` casts. When database.types.ts is regenerated from Supabase,
- * these additions can be folded back into it.
+ * checkout, platform bootstrap and CRM webhook integration migrations. This
+ * layer keeps the client strictly typed against the live schema without
+ * weakening mutations with `any`/`never` casts. When database.types.ts is
+ * regenerated from Supabase, these additions can be folded back into it.
  */
 export type Database = Omit<GeneratedDatabase, "public"> & {
   public: Omit<PublicSchema, "Tables" | "Functions"> & {
@@ -61,6 +135,8 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       products: ExtendTable<GeneratedTables["products"], ProductCommercialColumns>;
       offers: ExtendTable<GeneratedTables["offers"], OfferCommercialColumns>;
       subscriptions: ExtendTable<GeneratedTables["subscriptions"], SubscriptionTransparentColumns>;
+      integration_webhook_routes: IntegrationWebhookRouteTable;
+      integration_webhook_deliveries: IntegrationWebhookDeliveryTable;
     };
     Functions: GeneratedFunctions & {
       bootstrap_initial_platform_admin: {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { env, requireEnv } from "@/lib/env";
+import { deliverCrmProsperityPaymentWebhook } from "@/lib/integrations/crm-prosperity-webhook";
 import { getPaymentProvider, type ProviderPayment } from "@/lib/payments";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { verifyMercadoPagoSignature } from "@/lib/payments/providers/mercadopago/webhook-signature";
@@ -134,6 +135,12 @@ async function applyPaymentState(input: {
     ]);
     for (const update of updates) if (update.error) throw update.error;
   }
+
+  await deliverCrmProsperityPaymentWebhook({
+    admin,
+    paymentId: storedPayment.id,
+    paymentStatus: payment.status,
+  });
 
   return { storedPayment, becameApproved };
 }
