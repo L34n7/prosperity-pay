@@ -3,8 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ProductOffersList } from "@/components/product-offers-list";
 import { ProductOverviewReport } from "@/components/product-overview-report";
 import { PageHeader } from "@/components/ui/page-header";
+import { checkoutPath } from "@/lib/domain/offer-reference";
 import { AFFILIATE_HOLD_DAYS, getInstallmentOptions } from "@/lib/domain/offer-rules";
 import { RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { formatCents, requestJson } from "@/lib/operational";
@@ -54,9 +56,6 @@ function moneyInput(cents: number | null | undefined) {
 }
 function cents(value: FormDataEntryValue | null) {
   return Math.round(Number(value) * 100);
-}
-function offerMethods(offer: Offer) {
-  return [offer.payment_card_enabled ? "Cartão" : null, offer.payment_pix_enabled ? "PIX" : null].filter(Boolean).join(" + ");
 }
 function productPrice(product: Product) {
   return product.payment_type === "recurring" ? product.recurring_price_cents : product.main_offer_price_cents;
@@ -152,8 +151,8 @@ export function ProductDetail({ id }: { id: string }) {
     {!product ? <p>Carregando...</p> : <section className="panel operational-panel">
       {tab === "Visão geral" && <ProductOverview product={product} offers={offers}/>} 
       {tab === "Configurações" && <ProductSettings key={product.updated_at} product={product} busy={busy} onSave={body => mutate(`/api/products/${id}`, "PATCH", body)} onChangeImage={changeImage} onRemoveImage={removeImage}/>} 
-      {tab === "Ofertas" && <OffersList product={product} offers={offers} onNew={() => setEditingOffer(null)} onEdit={setEditingOffer} onDelete={setDeletingOffer}/>} 
-      {tab === "Checkout" && <><h2>Links de checkout</h2>{offers.filter(o => o.status === "active").length ? offers.filter(o => o.status === "active").map(o => <div className="record-row" key={o.id}><strong>{o.name}</strong><span>{formatCents(o.price_cents)}</span><Link href={`/checkout/${o.checkout_slug}`} target="_blank">Abrir checkout</Link><button className="secondary-button" onClick={async () => { await navigator.clipboard.writeText(`${location.origin}/checkout/${o.checkout_slug}`); setMessage("Link copiado."); }}>Copiar link</button></div>) : <p>Ative uma oferta para gerar seu link.</p>}</>}
+      {tab === "Ofertas" && <ProductOffersList paymentType={product.payment_type} offers={offers} onNew={() => setEditingOffer(null)} onEdit={setEditingOffer} onDelete={setDeletingOffer}/>} 
+      {tab === "Checkout" && <><h2>Links de checkout</h2>{offers.filter(o => o.status === "active").length ? offers.filter(o => o.status === "active").map(o => { const path = checkoutPath(o.checkout_slug); return <div className="record-row" key={o.id}><strong>{o.name}</strong><span>{formatCents(o.price_cents)}</span><Link href={path} target="_blank">Abrir checkout</Link><button className="secondary-button" onClick={async () => { await navigator.clipboard.writeText(`${location.origin}${path}`); setMessage("Link copiado."); }}>Copiar link</button></div>; }) : <p>Ative uma oferta para gerar seu link.</p>}</>}
       {tab === "Afiliados" && <AffiliateManagement id={id}/>} 
       {tab === "Coprodutores" && <CoproducerManagement id={id} offers={offers}/>} 
       {tab === "Vendas" && <p>Consulte as vendas e os detalhes financeiros em <Link href="/pagamentos">Pagamentos →</Link></p>}
@@ -214,23 +213,6 @@ function ProductSettings({ product, busy, onSave, onChangeImage, onRemoveImage }
       <button className="primary-button" disabled={busy}>Salvar produto</button>
     </form>
     <div className="product-image-settings"><h2>Imagem do produto</h2>{productImageUrl(product.image_path) && <Image className="product-image-preview" src={productImageUrl(product.image_path)!} alt={product.name} width={320} height={180} unoptimized/>}<form className="operational-form" onSubmit={onChangeImage}><label>Selecionar imagem JPEG, PNG ou WebP (até 3 MB)<input type="file" name="image" accept="image/jpeg,image/png,image/webp" required/></label><button className="secondary-button" disabled={busy}>Enviar imagem</button></form>{product.image_path && <button className="secondary-button" disabled={busy} onClick={() => void onRemoveImage()}>Remover imagem</button>}</div>
-  </>;
-}
-
-function OffersList({ product, offers, onNew, onEdit, onDelete }: { product: Product; offers: Offer[]; onNew: () => void; onEdit: (offer: Offer) => void; onDelete: (offer: Offer) => void }) {
-  return <>
-    <div className="button-row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}><div><h2 style={{ marginBottom: 4 }}>Ofertas</h2><p style={{ margin: 0 }}>Gerencie preço, checkout, pagamento e afiliados.</p></div><button className="primary-button" onClick={onNew}>Nova oferta</button></div>
-    {!offers.length ? <p>Nenhuma oferta cadastrada.</p> : <div className="records-list">
-      {offers.map(offer => <div className="record-row" key={offer.id} style={{ flexWrap: "wrap", gap: 12 }}>
-        <div style={{ minWidth: 220, flex: "1 1 260px" }}><strong style={{ display: "block" }}>{offer.name}</strong><Link href={`/checkout/${offer.checkout_slug}`} target="_blank" style={{ display: "block", marginTop: 4, fontSize: ".72rem" }}>/checkout/{offer.checkout_slug}</Link></div>
-        <span><small style={{ display: "block" }}>Preço</small>{formatCents(offer.price_cents)}</span>
-        <span><small style={{ display: "block" }}>Métodos</small>{offerMethods(offer)}</span>
-        <span><small style={{ display: "block" }}>Afiliados</small>{offer.affiliate_enabled ? `Habilitado · ${offer.affiliate_commission_bps / 100}%` : "Não"}</span>
-        <span><small style={{ display: "block" }}>Status</small>{offer.status === "active" ? "Ativa" : "Rascunho"}</span>
-        <div className="button-row"><button className="secondary-button" onClick={() => onEdit(offer)}>Editar</button><button className="secondary-button" onClick={() => onDelete(offer)}>Excluir</button></div>
-      </div>)}
-    </div>}
-    {product.payment_type === "recurring" && <p className="form-hint">Ofertas recorrentes ativas geram uma assinatura no Mercado Pago. Cada renovação aprovada é registrada como um novo ciclo de venda.</p>}
   </>;
 }
 
