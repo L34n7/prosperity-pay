@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, useState } from "react";
-import { ImageIcon, LifeBuoy, PackageCog, ReceiptText, Save, Trash2, Upload } from "lucide-react";
+import { ImageIcon, LifeBuoy, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
 import { RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { productImageUrl } from "@/lib/product-images";
 import styles from "./product-settings.module.css";
@@ -75,13 +75,13 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
 
   return <div className={styles.shell}>
     <section className={styles.hero}>
-      <div className={styles.heroIcon}><PackageCog size={19}/></div>
+      <div className={styles.heroIcon}><Package size={19}/></div>
       <div><small>Produto</small><h2>Configurações</h2><p>Organize informações comerciais, cobrança e dados de atendimento.</p></div>
     </section>
 
     <form className={styles.form} onSubmit={submit}>
       <section className={styles.card}>
-        <div className={styles.cardHeader}><div><span><PackageCog size={16}/></span><div><h3>Informações principais</h3><p>Dados que identificam o produto dentro da plataforma.</p></div></div></div>
+        <div className={styles.cardHeader}><div><span><Package size={16}/></span><div><h3>Informações principais</h3><p>Dados que identificam o produto dentro da plataforma.</p></div></div></div>
         <div className={styles.stack}>
           <label className={styles.field}><span>Nome</span><input name="name" defaultValue={product.name} required minLength={2}/></label>
           <label className={styles.field}><span>Descrição</span><textarea name="description" defaultValue={product.description ?? ""} rows={4} placeholder="Descreva de forma objetiva o que este produto oferece."/></label>
