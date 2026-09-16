@@ -1,10 +1,11 @@
 .dialog {
   width: min(560px, calc(100vw - 24px));
-  height: auto;
-  max-height: calc(100dvh - 32px);
+  height: fit-content;
+  max-height: none;
   margin: auto;
   padding: 0;
   overflow: hidden;
+  box-sizing: border-box;
   border: 1px solid rgba(92,133,111,.22);
   border-radius: 20px;
   background: linear-gradient(145deg, #0d1812, #07100b 72%);
@@ -16,9 +17,11 @@
 .form {
   display: flex;
   width: 100%;
+  height: auto;
   max-height: calc(100dvh - 32px);
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .header {
@@ -104,8 +107,8 @@
 .cancelButton:disabled, .saveButton:disabled { cursor: not-allowed; opacity: .48; }
 
 @media (max-width: 640px) {
-  .dialog { width: calc(100vw - 12px); height: auto; max-height: calc(100dvh - 12px); border-radius: 16px; }
-  .form { max-height: calc(100dvh - 12px); }
+  .dialog { width: calc(100vw - 12px); height: fit-content; max-height: none; border-radius: 16px; }
+  .form { height: auto; max-height: calc(100dvh - 12px); }
   .header { align-items: flex-start; padding: 13px; }
   .headerActions { gap: 6px; }
   .headerSwitch { padding: 6px 7px; }
