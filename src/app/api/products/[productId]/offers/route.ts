@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
+import { createCheckoutReference } from "@/lib/domain/offer-reference";
 import { calculateMaxInstallments } from "@/lib/domain/offer-rules";
 import { isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
-import { toSlug } from "@/lib/domain/slug";
 import type { Database } from "@/lib/supabase/database.types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -115,7 +115,7 @@ export async function POST(request: Request, context: Context) {
     const insert: OfferInsert = {
       product_id: productId,
       name,
-      checkout_slug: `${toSlug(name)}-${crypto.randomUUID().slice(0, 8)}`,
+      checkout_slug: createCheckoutReference(),
       price_cents: priceCents,
       billing_type: product.payment_type,
       billing_interval: billingInterval,
