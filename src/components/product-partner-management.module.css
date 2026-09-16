@@ -34,7 +34,7 @@
 .danger { border: 1px solid rgba(239,100,100,.2); background: rgba(239,100,100,.055); color: #f3aaaa; }
 .primary:disabled, .secondary:disabled, .danger:disabled { cursor: not-allowed; opacity: .45; }
 .formGrid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(130px,.6fr) minmax(180px,.8fr) auto; gap: 9px; align-items: end; }
-.inviteGrid { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px; align-items: end; }
+.inviteGrid { display: grid; grid-template-columns: minmax(280px,420px) auto; gap: 9px; align-items: end; justify-content: start; max-width: 620px; }
 .field { display: grid; gap: 5px; min-width: 0; color: var(--text-muted); font-size: .6rem; font-weight: 650; }
 .field input, .field select { width: 100%; min-height: 39px; padding: 0 10px; border: 1px solid rgba(92,133,111,.18); border-radius: 9px; outline: none; background: rgba(4,10,7,.62); color: var(--text); font-size: .7rem; }
 .field input:focus, .field select:focus { border-color: rgba(34,230,161,.38); box-shadow: 0 0 0 3px rgba(34,230,161,.05); }
@@ -61,4 +61,4 @@
 .sectionTitle h3 { margin: 0; color: var(--text-secondary); font-size: .71rem; }
 .sectionTitle small { color: var(--text-subtle); font-size: .55rem; }
 @media (max-width: 900px) { .formGrid { grid-template-columns: 1fr 1fr; } .formGrid > button { width: 100%; } .row { grid-template-columns: minmax(0,1fr) minmax(120px,.65fr) auto; } .code { display: none; } }
-@media (max-width: 620px) { .hero { align-items: flex-start; } .hero p, .statusBox > span { display: none; } .modeSelector, .formGrid, .inviteGrid { grid-template-columns: 1fr; } .configFooter { align-items: stretch; flex-direction: column; } .configFooter button { width: 100%; } .row { grid-template-columns: 1fr; align-items: start; } .rowActions { justify-content: flex-start; } .linkBox { align-items: stretch; flex-direction: column; } .linkBox button { width: 100%; } }
+@media (max-width: 620px) { .hero { align-items: flex-start; } .hero p, .statusBox > span { display: none; } .modeSelector, .formGrid, .inviteGrid { grid-template-columns: 1fr; max-width:none; } .configFooter { align-items: stretch; flex-direction: column; } .configFooter button { width: 100%; } .row { grid-template-columns: 1fr; align-items: start; } .rowActions { justify-content: flex-start; } .linkBox { align-items: stretch; flex-direction: column; } .linkBox button { width: 100%; } }
