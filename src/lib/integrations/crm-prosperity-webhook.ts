@@ -1,5 +1,4 @@
-import { createHmac } from "crypto";
-import { env, requireEnv } from "@/lib/env";
+import { getCrmProsperityRuntimeConfig, signCrmProsperityPayload } from "@/lib/integrations/crm-prosperity-config";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -18,12 +17,6 @@ function eventTypeFor(status: SupportedPaymentStatus) {
   if (status === "refunded") return "payment.refunded" as const;
   if (status === "charged_back") return "payment.chargeback" as const;
   return "payment.failed" as const;
-}
-
-function signatureFor(rawBody: string, timestamp: string, secret: string) {
-  return `sha256=${createHmac("sha256", secret)
-    .update(`${timestamp}.${rawBody}`)
-    .digest("hex")}`;
 }
 
 async function hydratePayment(admin: AdminClient, paymentId: string) {
@@ -115,9 +108,16 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
     return { sent: false, reason: "status_not_supported" as const };
   }
 
-  if (!env.crmProsperityWebhookUrl || !env.crmProsperityWebhookSecret) {
+  const integration = await getCrmProsperityRuntimeConfig(input.admin);
+  if (!integration.configured) {
     console.warn("[CRM PROSPERITY WEBHOOK] Integração não configurada; evento não enviado.");
     return { sent: false, reason: "integration_not_configured" as const };
+  }
+  if (!integration.active) {
+    return { sent: false, reason: "integration_disconnected" as const };
+  }
+  if (!integration.webhookUrl || !integration.secret) {
+    throw new Error("Integração com o CRM Prosperity está ativa, mas incompleta.");
   }
 
   const hydrated = await hydratePayment(input.admin, input.paymentId);
@@ -177,17 +177,16 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
     ...basePayload,
   });
   const timestamp = String(Math.floor(Date.now() / 1000));
-  const secret = requireEnv(env.crmProsperityWebhookSecret, "CRM_PROSPERITY_WEBHOOK_SECRET");
 
   let response: Response;
   try {
-    response = await fetch(requireEnv(env.crmProsperityWebhookUrl, "CRM_PROSPERITY_WEBHOOK_URL"), {
+    response = await fetch(integration.webhookUrl, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-prosperity-event-id": delivery.event_id,
         "x-prosperity-timestamp": timestamp,
-        "x-prosperity-signature": signatureFor(body, timestamp, secret),
+        "x-prosperity-signature": signCrmProsperityPayload(body, timestamp, integration.secret),
       },
       body,
       signal: AbortSignal.timeout(10_000),
