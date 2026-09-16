@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { env, requireEnv } from "@/lib/env";
-import { getPaymentProvider, type PaymentProvider, type ProviderPayment } from "@/lib/payments";
+import { getPaymentProvider, type ProviderPayment } from "@/lib/payments";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { verifyMercadoPagoSignature } from "@/lib/payments/providers/mercadopago/webhook-signature";
 import { sha256 } from "@/lib/security/hash";
@@ -157,7 +157,6 @@ async function processPaymentEvent(input: {
         return "processed" as const;
       }
       if (subscriptionIdFromReference(payment.externalReference)) {
-        // The authorized-payment notification is the canonical event that identifies the billing cycle.
         return "ignored" as const;
       }
       if (!payment.externalReference) continue;
@@ -280,6 +279,18 @@ async function processAuthorizedPaymentEvent(input: {
       const { data: existingPayment } = await admin.from("payments").select("id,status,order_id")
         .eq("provider_id", providerId).eq("external_payment_id", payment.externalId).maybeSingle();
       let localPaymentId = existingPayment?.id;
+
+      if (!localPaymentId && subscription.cycle_number === 0) {
+        const { data: initialPayment } = await admin.from("payments").select("id")
+          .eq("order_id", orderId)
+          .eq("connection_id", candidate.id)
+          .is("external_payment_id", null)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        localPaymentId = initialPayment?.id;
+      }
+
       if (!localPaymentId) {
         const { data: createdPayment, error: createdPaymentError } = await admin.from("payments").insert({
           order_id: orderId,
