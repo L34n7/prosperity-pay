@@ -49,7 +49,9 @@
 .scope :global([class*="simpleInfo"]) strong,
 .scope :global([class*="priceBlock"]) strong,
 .scope :global([class*="headingActions"]) > strong,
+.scope :global([class*="catalogHeading"]) > strong,
 .scope :global([class*="sectionHeading"]) > strong,
+.scope :global([class*="cardFooter"]) strong,
 .scope :global([class*="paymentLine"]) strong,
 .scope :global([class*="quickOfferList"]) strong,
 .scope :global([class*="primaryCell"]) strong,
@@ -60,7 +62,8 @@
 .scope :global([class*="events"]) strong,
 .scope :global([class*="toggleRow"]) strong,
 .scope :global([class*="empty"]) strong,
-.scope :global([class*="table"]) td strong {
+.scope :global([class*="table"]) td strong,
+.scope :global([class*="tableRow"]) strong {
   font-size: 14px !important;
 }
 
@@ -85,7 +88,10 @@
 .scope :global([class*="primary"]),
 .scope :global([class*="secondary"]),
 .scope :global([class*="danger"]),
-.scope :global([class*="save"]) {
+.scope :global([class*="save"]),
+.scope :global([class*="filter"]),
+.scope :global([class*="tableHead"]),
+.scope :global([class*="tableRow"]) {
   font-size: 14px !important;
 }
 
