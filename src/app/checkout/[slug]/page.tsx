@@ -34,6 +34,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
   if (!offer) notFound();
 
+  const { data: crmRoute } = await admin.from("integration_webhook_routes")
+    .select("id")
+    .eq("integration", "crm_prosperity")
+    .eq("offer_reference", offer.checkout_slug)
+    .eq("active", true)
+    .maybeSingle();
+
+  const routedToCrmProsperity = Boolean(crmRoute);
+
   return <CheckoutFlow
     offer={{
       slug: offer.checkout_slug,
@@ -52,5 +61,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     }}
     affiliate={ref}
     mercadoPagoPublicKey={env.mercadoPagoPublicKey}
+    successUrl={routedToCrmProsperity ? "https://crmprosperity.com/obrigado" : undefined}
+    successLabel={routedToCrmProsperity ? "Continuar no CRM Prosperity" : undefined}
   />;
 }
