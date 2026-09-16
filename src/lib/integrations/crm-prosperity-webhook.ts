@@ -60,6 +60,18 @@ async function hydratePayment(admin: AdminClient, paymentId: string) {
   };
 }
 
+async function isOfferRoutedToCrm(admin: AdminClient, offerId: string) {
+  const { data, error } = await admin
+    .from("integration_webhook_routes")
+    .select("id")
+    .eq("integration", "crm_prosperity")
+    .eq("offer_id", offerId)
+    .eq("active", true)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
 async function getOrCreateDelivery(input: {
   admin: AdminClient;
   paymentId: string;
@@ -109,6 +121,10 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
   }
 
   const hydrated = await hydratePayment(input.admin, input.paymentId);
+  if (!(await isOfferRoutedToCrm(input.admin, hydrated.offer.id))) {
+    return { sent: false, reason: "offer_not_routed" as const };
+  }
+
   const eventType = eventTypeFor(status);
   const occurredAt = new Date().toISOString();
 
