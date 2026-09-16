@@ -82,10 +82,14 @@ export function CheckoutFlow({
   offer,
   affiliate,
   mercadoPagoPublicKey,
+  successUrl,
+  successLabel,
 }: {
   offer: Offer;
   affiliate?: string;
   mercadoPagoPublicKey?: string;
+  successUrl?: string;
+  successLabel?: string;
 }) {
   const recurring = offer.billingType === "recurring";
   const initialPrice = recurring && offer.firstChargeCents ? offer.firstChargeCents : offer.priceCents;
@@ -249,7 +253,7 @@ export function CheckoutFlow({
         <h1>Compra aprovada.</h1>
         <p>Recebemos o pagamento de <strong>{formatCents(initialPrice)}</strong> para <strong>{offer.name}</strong>.</p>
         {recurring && method === "card" && <div className={styles.successNote}>Seu cartão foi autorizado para as próximas cobranças recorrentes deste plano.</div>}
-        <a className={styles.primaryLink} href="/login">Ir para minha conta</a>
+        <a className={styles.primaryLink} href={successUrl ?? "/login"}>{successLabel ?? "Ir para minha conta"}</a>
       </section>
     </main>;
   }
