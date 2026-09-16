@@ -1,3 +1,9 @@
+.productsPage :global(a[aria-label^="Gerenciar "]) {
+  width: 100%;
+  max-width: 390px;
+  justify-self: start;
+}
+
 .productsPage :global(a[aria-label^="Gerenciar "] > div:last-child > div:last-child > strong) {
   display: none;
 }
