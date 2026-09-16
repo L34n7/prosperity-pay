@@ -1,16 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import {
-  BadgeDollarSign,
-  CreditCard,
-  Layers3,
-  QrCode,
-  Tag,
-  UsersRound,
-  WalletCards,
-  X,
-} from "lucide-react";
+import { CreditCard, QrCode, X } from "lucide-react";
 import { checkoutReference } from "@/lib/domain/offer-reference";
 import { AFFILIATE_HOLD_DAYS, getInstallmentOptions } from "@/lib/domain/offer-rules";
 import type { ProductPaymentType } from "@/lib/domain/product-rules";
@@ -75,6 +66,7 @@ function Switch({ checked, disabled, onChange, label }: { checked: boolean; disa
 
 export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
+  const affiliateOptionsRef = useRef<HTMLDivElement>(null);
   const defaultPrice = offer?.price_cents ?? productPrice(product) ?? 0;
   const [price, setPrice] = useState(moneyInput(defaultPrice));
   const [active, setActive] = useState(offer?.status === "active");
@@ -88,6 +80,10 @@ export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Pr
   const [maxInstallments, setMaxInstallments] = useState(Math.min(offer?.max_installments ?? allowedMaximum, allowedMaximum));
 
   useEffect(() => { ref.current?.showModal(); }, []);
+  useEffect(() => {
+    if (!affiliateEnabled || connectedRecurring) return;
+    requestAnimationFrame(() => affiliateOptionsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  }, [affiliateEnabled, connectedRecurring]);
 
   function changeCard(enabled: boolean) {
     setCardEnabled(enabled);
@@ -129,124 +125,81 @@ export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Pr
     });
   }
 
-  const paymentTypeLabel = product.payment_type === "recurring" ? "Assinatura recorrente" : "Pagamento único";
   const reference = offer ? checkoutReference(offer.checkout_slug) : null;
 
-  return <dialog
-    ref={ref}
-    className={styles.dialog}
-    onClose={onClose}
-    onCancel={event => { if (busy) event.preventDefault(); }}
-  >
+  return <dialog ref={ref} className={styles.dialog} onClose={onClose} onCancel={event => { if (busy) event.preventDefault(); }}>
     <form className={styles.form} onSubmit={submit}>
       <header className={styles.header}>
-        <div className={styles.headerIdentity}>
-          <div className={styles.headerIcon}><Tag size={20}/></div>
-          <div>
-            <span>{offer ? "Editar oferta" : "Nova oferta"}</span>
-            <h2>{offer ? offer.name : "Criar oferta"}</h2>
-            <p>Defina preço, cobrança, disponibilidade e regras comerciais.</p>
-          </div>
+        <div className={styles.headerText}>
+          <span>{offer ? "Editar oferta" : "Nova oferta"}</span>
+          <h2>{offer ? offer.name : "Criar oferta"}</h2>
         </div>
         <div className={styles.headerActions}>
-          <div className={`${styles.statusControl} ${active ? styles.statusActive : ""}`}>
-            <div><strong>{active ? "Oferta ativa" : "Oferta inativa"}</strong><small>{active ? "Checkout liberado" : "Checkout indisponível"}</small></div>
+          <label className={styles.headerSwitch}>
+            <span><strong>Oferta ativa</strong><small>{active ? "Checkout liberado" : "Checkout indisponível"}</small></span>
             <Switch checked={active} onChange={setActive} label="Alterar status da oferta"/>
-          </div>
+          </label>
           <button type="button" className={styles.closeButton} disabled={busy} onClick={() => ref.current?.close()} aria-label="Fechar"><X size={18}/></button>
         </div>
       </header>
 
       <div className={styles.body}>
-        <section className={styles.section}>
-          <div className={styles.sectionHeading}>
-            <span><BadgeDollarSign size={17}/></span>
-            <div><h3>Dados da oferta</h3><p>Informações principais exibidas na gestão e utilizadas na cobrança.</p></div>
-          </div>
-          <div className={styles.twoColumns}>
+        <section className={styles.block}>
+          <div className={styles.blockTitle}><h3>Oferta</h3>{reference && <code>{reference}</code>}</div>
+          <div className={styles.gridTwo}>
+            <label className={styles.field}><span>Nome</span><input name="name" defaultValue={offer?.name ?? "Oferta principal"} required minLength={2}/></label>
             <label className={styles.field}>
-              <span>Nome da oferta</span>
-              <input name="name" defaultValue={offer?.name ?? "Oferta principal"} required minLength={2}/>
-            </label>
-            <label className={styles.field}>
-              <span>{product.payment_type === "recurring" ? "Preço da recorrência" : "Preço da oferta"}</span>
+              <span>{product.payment_type === "recurring" ? "Valor da recorrência" : "Preço"}</span>
               <div className={styles.moneyInput}><small>R$</small><input name="price" type="number" min="0.01" step="0.01" value={price} onChange={event => changePrice(event.target.value)} required/></div>
             </label>
           </div>
-          <div className={styles.infoStrip}>
-            <div><small>Modelo de cobrança</small><strong>{paymentTypeLabel}</strong></div>
-            {reference && <div><small>Referência fixa</small><code>{reference}</code></div>}
-            <div><small>Recebimento</small><strong>{product.settlement_model === "connected_account" ? "Direto no Mercado Pago" : "Saldo Prosperity Pay"}</strong></div>
+        </section>
+
+        <section className={styles.block}>
+          <div className={styles.blockTitle}><h3>Pagamento</h3><small>{product.payment_type === "recurring" ? "Assinatura recorrente" : "Pagamento único"}</small></div>
+          <div className={styles.paymentRow}>
+            <button type="button" className={`${styles.paymentOption} ${cardEnabled ? styles.paymentOn : ""}`} onClick={() => changeCard(!cardEnabled)}><CreditCard size={17}/><span>Cartão</span><small>{cardEnabled ? "Ativo" : "Inativo"}</small></button>
+            <button type="button" className={`${styles.paymentOption} ${pixEnabled ? styles.paymentOn : ""}`} onClick={() => changePix(!pixEnabled)}><QrCode size={17}/><span>PIX</span><small>{pixEnabled ? "Ativo" : "Inativo"}</small></button>
+          </div>
+
+          <div className={styles.gridTwo}>
+            <label className={styles.field}>
+              <span>Método principal</span>
+              <select value={primary} onChange={event => setPrimary(event.target.value as "card" | "pix")}>
+                {cardEnabled && <option value="card">Cartão</option>}
+                {pixEnabled && <option value="pix">PIX</option>}
+              </select>
+            </label>
+            {product.payment_type === "one_time" ? <label className={styles.field}>
+              <span>Máximo de parcelas</span>
+              <select value={maxInstallments} disabled={!cardEnabled} onChange={event => setMaxInstallments(Number(event.target.value))}>{allowedInstallments.map(value => <option value={value} key={value}>{value}x</option>)}</select>
+              <small>Parcela mínima de R$ 50, limitada a 12x.</small>
+            </label> : product.different_first_charge ? <label className={styles.field}>
+              <span>Primeira cobrança</span>
+              <div className={styles.moneyInput}><small>R$</small><input name="firstCharge" type="number" min="0.01" step="0.01" defaultValue={moneyInput(offer?.first_charge_cents ?? product.first_charge_cents)} required/></div>
+            </label> : <div className={styles.simpleInfo}><span>Recorrência</span><strong>Sem parcelamento</strong></div>}
           </div>
         </section>
 
-        <section className={styles.section}>
-          <div className={styles.sectionHeading}>
-            <span><WalletCards size={17}/></span>
-            <div><h3>Pagamento</h3><p>Escolha os meios aceitos e qual será sugerido primeiro no checkout.</p></div>
-          </div>
-          <div className={styles.paymentGrid}>
-            <button type="button" className={`${styles.paymentCard} ${cardEnabled ? styles.paymentSelected : ""}`} onClick={() => changeCard(!cardEnabled)}>
-              <span className={styles.paymentIcon}><CreditCard size={19}/></span>
-              <span><strong>Cartão</strong><small>{cardEnabled ? "Habilitado" : "Desabilitado"}</small></span>
-              <i>{cardEnabled ? "Ativo" : "Inativo"}</i>
-            </button>
-            <button type="button" className={`${styles.paymentCard} ${pixEnabled ? styles.paymentSelected : ""}`} onClick={() => changePix(!pixEnabled)}>
-              <span className={styles.paymentIcon}><QrCode size={19}/></span>
-              <span><strong>PIX</strong><small>{pixEnabled ? "Habilitado" : "Desabilitado"}</small></span>
-              <i>{pixEnabled ? "Ativo" : "Inativo"}</i>
-            </button>
-          </div>
-
-          {(cardEnabled || pixEnabled) && <div className={styles.primaryMethod}>
-            <div><small>Método principal</small><strong>Forma de pagamento destacada primeiro</strong></div>
-            <div className={styles.segmented}>
-              <button type="button" disabled={!cardEnabled} className={primary === "card" ? styles.segmentActive : ""} onClick={() => setPrimary("card")}><CreditCard size={14}/> Cartão</button>
-              <button type="button" disabled={!pixEnabled} className={primary === "pix" ? styles.segmentActive : ""} onClick={() => setPrimary("pix")}><QrCode size={14}/> PIX</button>
-            </div>
-          </div>}
-
-          {product.payment_type === "recurring" && product.different_first_charge && <label className={styles.field}>
-            <span>Valor da primeira cobrança</span>
-            <div className={styles.moneyInput}><small>R$</small><input name="firstCharge" type="number" min="0.01" step="0.01" defaultValue={moneyInput(offer?.first_charge_cents ?? product.first_charge_cents)} required/></div>
-          </label>}
-
-          {product.payment_type === "recurring" ? <div className={styles.note}><Layers3 size={16}/><span><strong>Assinatura automática</strong>Não utiliza parcelamento. Para recorrência automática, mantenha Cartão habilitado.</span></div> : <label className={styles.field}>
-            <span>Quantidade máxima de parcelas</span>
-            <select value={maxInstallments} disabled={!cardEnabled} onChange={event => setMaxInstallments(Number(event.target.value))}>{allowedInstallments.map(value => <option value={value} key={value}>{value}x</option>)}</select>
-            <small>Parcela mínima de R$ 50, limitada a 12x.</small>
-          </label>}
-        </section>
-
-        <section className={`${styles.section} ${styles.partnerSection}`}>
-          <div className={styles.sectionHeading}>
-            <span><UsersRound size={17}/></span>
-            <div><h3>Afiliados</h3><p>Controle se esta oferta pode gerar comissão para parceiros.</p></div>
-          </div>
-          <div className={`${styles.toggleCard} ${affiliateEnabled ? styles.toggleCardActive : ""} ${connectedRecurring ? styles.toggleCardDisabled : ""}`}>
-            <div>
-              <strong>Disponível para afiliados</strong>
-              <small>{connectedRecurring ? "Indisponível neste modelo de recebimento recorrente." : affiliateEnabled ? "Afiliados podem divulgar e receber comissão desta oferta." : "A oferta não participa do programa de afiliados."}</small>
-            </div>
+        <section className={styles.block}>
+          <div className={styles.toggleLine}>
+            <div><h3>Afiliados</h3><p>{connectedRecurring ? "Indisponível para recebimento recorrente direto no Mercado Pago." : "Permita que afiliados divulguem esta oferta e recebam comissão."}</p></div>
             <Switch checked={affiliateEnabled} disabled={connectedRecurring} onChange={setAffiliateEnabled} label="Disponibilidade para afiliados"/>
           </div>
 
-          {!connectedRecurring && affiliateEnabled && <div className={styles.affiliateGrid}>
+          {!connectedRecurring && affiliateEnabled && <div ref={affiliateOptionsRef} className={styles.affiliateOptions}>
             <label className={styles.field}>
               <span>Comissão padrão</span>
               <div className={styles.percentInput}><input name="commission" type="number" min="0" max="100" step="0.01" defaultValue={(offer?.affiliate_commission_bps ?? 0) / 100}/><small>%</small></div>
             </label>
-            <div className={styles.holdCard}><small>Liberação da comissão</small><strong>{AFFILIATE_HOLD_DAYS} dias</strong><span>após a aprovação da venda</span></div>
+            <div className={styles.simpleInfo}><span>Liberação da comissão</span><strong>{AFFILIATE_HOLD_DAYS} dias após a venda</strong></div>
           </div>}
         </section>
       </div>
 
       <footer className={styles.footer}>
-        <div><span className={active ? styles.footerDotActive : styles.footerDot}/><p><strong>{active ? "Publicação ativa" : "Salva como inativa"}</strong><small>{active ? "O checkout ficará disponível após salvar." : "Você pode ativar esta oferta quando estiver pronta."}</small></p></div>
-        <div className={styles.footerActions}>
-          <button type="button" className={styles.cancelButton} disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button>
-          <button className={styles.saveButton} disabled={busy || (!cardEnabled && !pixEnabled)}>{busy ? "Salvando..." : offer ? "Salvar alterações" : "Criar oferta"}</button>
-        </div>
+        <button type="button" className={styles.cancelButton} disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button>
+        <button className={styles.saveButton} disabled={busy || (!cardEnabled && !pixEnabled)}>{busy ? "Salvando..." : offer ? "Salvar alterações" : "Criar oferta"}</button>
       </footer>
     </form>
   </dialog>;
