@@ -80,10 +80,11 @@ export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Pr
   const [maxInstallments, setMaxInstallments] = useState(Math.min(offer?.max_installments ?? allowedMaximum, allowedMaximum));
 
   useEffect(() => { ref.current?.showModal(); }, []);
-  useEffect(() => {
-    if (!affiliateEnabled || connectedRecurring) return;
-    requestAnimationFrame(() => affiliateOptionsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
-  }, [affiliateEnabled, connectedRecurring]);
+
+  function changeAffiliate(enabled: boolean) {
+    setAffiliateEnabled(enabled);
+    if (enabled) requestAnimationFrame(() => affiliateOptionsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+  }
 
   function changeCard(enabled: boolean) {
     setCardEnabled(enabled);
@@ -184,7 +185,7 @@ export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Pr
         <section className={styles.block}>
           <div className={styles.toggleLine}>
             <div><h3>Afiliados</h3><p>{connectedRecurring ? "Indisponível para recebimento recorrente direto no Mercado Pago." : "Permita que afiliados divulguem esta oferta e recebam comissão."}</p></div>
-            <Switch checked={affiliateEnabled} disabled={connectedRecurring} onChange={setAffiliateEnabled} label="Disponibilidade para afiliados"/>
+            <Switch checked={affiliateEnabled} disabled={connectedRecurring} onChange={changeAffiliate} label="Disponibilidade para afiliados"/>
           </div>
 
           {!connectedRecurring && affiliateEnabled && <div ref={affiliateOptionsRef} className={styles.affiliateOptions}>
