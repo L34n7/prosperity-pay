@@ -1,6 +1,7 @@
 "use client";
+import { checkoutPath } from "@/lib/domain/offer-reference";
 type Membership={id:string;code:string;status:string;affiliate_programs:{product_id:string;products:{name:string;offers:{name:string;checkout_slug:string;status:string}[]}|null}|null};
-export function AffiliateLinks({memberships}:{memberships:Membership[]}){return <div className="records-list">{memberships.map(m=><div key={m.id}><h2>{m.affiliate_programs?.products?.name} · {m.status}</h2><p>Código: {m.code}</p>{m.status==="active"&&m.affiliate_programs?.products?.offers?.filter(o=>o.status==="active").map(o=><div className="record-row" key={o.checkout_slug}><span>{o.name}</span><button className="secondary-button" onClick={()=>navigator.clipboard.writeText(`${location.origin}/checkout/${o.checkout_slug}?ref=${encodeURIComponent(m.code)}`)}>Copiar link de afiliado</button></div>)}</div>)}</div>}
+export function AffiliateLinks({memberships}:{memberships:Membership[]}){return <div className="records-list">{memberships.map(m=><div key={m.id}><h2>{m.affiliate_programs?.products?.name} · {m.status}</h2><p>Código: {m.code}</p>{m.status==="active"&&m.affiliate_programs?.products?.offers?.filter(o=>o.status==="active").map(o=><div className="record-row" key={o.checkout_slug}><span>{o.name}</span><button className="secondary-button" onClick={()=>navigator.clipboard.writeText(`${location.origin}${checkoutPath(o.checkout_slug)}?ref=${encodeURIComponent(m.code)}`)}>Copiar link de afiliado</button></div>)}</div>)}</div>}
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { requestJson } from "@/lib/operational";
