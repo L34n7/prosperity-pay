@@ -45,7 +45,7 @@ type SubscriptionTransparentColumns = {
 type IntegrationWebhookRouteRow = {
   id: string;
   integration: string;
-  offer_id: string;
+  offer_reference: string;
   active: boolean;
   metadata: Json;
   created_at: string;
@@ -57,22 +57,14 @@ type IntegrationWebhookRouteTable = {
   Insert: {
     id?: string;
     integration: string;
-    offer_id: string;
+    offer_reference: string;
     active?: boolean;
     metadata?: Json;
     created_at?: string;
     updated_at?: string;
   };
   Update: Partial<IntegrationWebhookRouteRow>;
-  Relationships: [
-    {
-      foreignKeyName: "integration_webhook_routes_offer_id_fkey";
-      columns: ["offer_id"];
-      isOneToOne: false;
-      referencedRelation: "offers";
-      referencedColumns: ["id"];
-    },
-  ];
+  Relationships: [];
 };
 
 type IntegrationWebhookDeliveryRow = {
