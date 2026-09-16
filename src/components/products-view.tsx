@@ -3,23 +3,69 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ArrowUpRight, BadgeDollarSign, CalendarDays, Handshake, Package, ShoppingBag, UsersRound } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { RECURRENCE_OPTIONS, type ProductPaymentType } from "@/lib/domain/product-rules";
 import { requestJson } from "@/lib/operational";
 import { MAX_PRODUCT_IMAGE_BYTES, productImageUrl } from "@/lib/product-images";
+import styles from "./products-view.module.css";
+
+type ProductStats = {
+  completed_sales: number;
+  total_sales_cents: number;
+  affiliate_count: number;
+  coproducer_count: number;
+};
 
 type Product = {
   id: string;
   name: string;
+  description: string | null;
   image_path: string | null;
   status: string;
   settlement_model: string;
   payment_type: ProductPaymentType;
   product_type: "digital" | "physical";
+  created_at: string;
+  stats: ProductStats;
 };
 
 function toCents(value: FormDataEntryValue | null) {
   return Math.round(Number(value) * 100);
+}
+
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(cents / 100);
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("pt-BR").format(value);
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function productStatusLabel(status: string) {
+  switch (status) {
+    case "active": return "Ativo";
+    case "inactive": return "Inativo";
+    case "archived": return "Arquivado";
+    default: return "Rascunho";
+  }
+}
+
+function productStatusClass(status: string) {
+  if (status === "active") return styles.statusActive;
+  if (status === "draft") return styles.statusDraft;
+  return styles.statusInactive;
 }
 
 export function ProductsView() {
@@ -95,7 +141,7 @@ export function ProductsView() {
         recurringPriceCents: paymentType === "recurring" ? toCents(data.get("recurringPrice")) : null,
         mainOfferPriceCents: paymentType === "one_time" ? toCents(data.get("mainOfferPrice")) : null,
       };
-      const result = await requestJson<{ product: Product }>("/api/products", {
+      const result = await requestJson<{ product: { id: string } }>("/api/products", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -125,20 +171,114 @@ export function ProductsView() {
   }
 
   return <>
-    <PageHeader title="Produtos" description="Cadastre produtos e configure ofertas para vender."
+    <PageHeader title="Produtos" description="Cadastre produtos e acompanhe o desempenho comercial de cada um."
       action={<button className="primary-button" onClick={() => { setDialogError(""); dialog.current?.showModal(); }}>Novo produto</button>}/>
     {notice && <p className="form-success" role="status">{notice}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     {loading ? <p>Carregando produtos...</p> : !products.length ?
       <section className="panel operational-panel"><p>Você ainda não cadastrou produtos. Crie seu primeiro produto para configurar uma oferta.</p></section> :
-      <section className="panel operational-panel"><h2>Seus produtos</h2><div className="records-list">{products.map(product =>
-        <Link className="record-row product-record" href={`/produtos/${product.id}`} key={product.id}>
-          {productImageUrl(product.image_path) && <Image className="product-thumb" src={productImageUrl(product.image_path)!} alt="" width={56} height={56} unoptimized/>}
-          <strong>{product.name}</strong>
-          <span>{product.payment_type === "recurring" ? "Recorrente" : "Pagamento único"} · {product.product_type === "physical" ? "Físico" : "Digital"}</span>
-          <span>{product.settlement_model === "connected_account" ? "Mercado Pago" : "Saldo Prosperity"} · {product.status}</span>
-          <span>Gerenciar →</span>
-        </Link>)}</div></section>}
+      <section className={styles.catalogSection}>
+        <div className={styles.catalogHeading}>
+          <div>
+            <span>Portfólio</span>
+            <h2>Seus produtos</h2>
+            <p>Visão rápida de vendas, faturamento e parceiros por produto.</p>
+          </div>
+          <strong>{products.length} {products.length === 1 ? "produto" : "produtos"}</strong>
+        </div>
+
+        <div className={styles.productGrid}>
+          {products.map((product) => {
+            const imageUrl = productImageUrl(product.image_path);
+            return <Link
+              className={styles.productCard}
+              href={`/produtos/${product.id}`}
+              key={product.id}
+              aria-label={`Gerenciar ${product.name}`}
+            >
+              <div className={styles.media}>
+                {imageUrl ?
+                  <Image
+                    className={styles.productImage}
+                    src={imageUrl}
+                    alt={`Imagem do produto ${product.name}`}
+                    width={720}
+                    height={405}
+                    unoptimized
+                  /> :
+                  <div className={styles.imageFallback}>
+                    <span><Package size={34} strokeWidth={1.6}/></span>
+                    <small>Prosperity Pay</small>
+                  </div>
+                }
+                <div className={styles.mediaShade}/>
+                <div className={styles.mediaBadges}>
+                  <span className={`${styles.statusBadge} ${productStatusClass(product.status)}`}>
+                    {productStatusLabel(product.status)}
+                  </span>
+                  <span className={styles.paymentBadge}>
+                    {product.payment_type === "recurring" ? "Recorrente" : "Pagamento único"}
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.cardBody}>
+                <div className={styles.productHeading}>
+                  <div>
+                    <p>
+                      {product.product_type === "physical" ? "Produto físico" : "Produto digital"}
+                      <span>•</span>
+                      {product.settlement_model === "connected_account" ? "Mercado Pago" : "Saldo Prosperity"}
+                    </p>
+                    <h3>{product.name}</h3>
+                  </div>
+                  <span className={styles.openIcon}><ArrowUpRight size={18}/></span>
+                </div>
+
+                <p className={styles.description}>
+                  {product.description?.trim() || "Sem descrição cadastrada. Adicione uma descrição para apresentar melhor este produto."}
+                </p>
+
+                <div className={styles.metricsGrid}>
+                  <div className={styles.metric}>
+                    <span className={styles.metricIcon}><ShoppingBag size={17}/></span>
+                    <div>
+                      <small>Vendas concluídas</small>
+                      <strong>{formatNumber(product.stats.completed_sales)}</strong>
+                    </div>
+                  </div>
+                  <div className={styles.metric}>
+                    <span className={`${styles.metricIcon} ${styles.metricIconGold}`}><BadgeDollarSign size={18}/></span>
+                    <div>
+                      <small>Valor total de vendas</small>
+                      <strong>{formatCurrency(product.stats.total_sales_cents)}</strong>
+                    </div>
+                  </div>
+                  <div className={styles.metric}>
+                    <span className={styles.metricIcon}><UsersRound size={17}/></span>
+                    <div>
+                      <small>Afiliados</small>
+                      <strong>{formatNumber(product.stats.affiliate_count)}</strong>
+                    </div>
+                  </div>
+                  <div className={styles.metric}>
+                    <span className={styles.metricIcon}><Handshake size={18}/></span>
+                    <div>
+                      <small>Coprodutores</small>
+                      <strong>{formatNumber(product.stats.coproducer_count)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.cardFooter}>
+                  <span><CalendarDays size={15}/> Cadastrado em {formatDate(product.created_at)}</span>
+                  <strong>Gerenciar <ArrowUpRight size={15}/></strong>
+                </div>
+              </div>
+            </Link>;
+          })}
+        </div>
+      </section>}
 
     <dialog ref={dialog} className="product-dialog" aria-labelledby="product-dialog-title" onCancel={event => { if (busy) event.preventDefault(); }} onClose={resetDialogState}>
       <div className="product-dialog-heading"><div><h2 id="product-dialog-title">Novo produto</h2><p>Defina os dados comerciais, suporte e cobrança do produto.</p></div>

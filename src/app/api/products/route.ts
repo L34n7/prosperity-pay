@@ -19,6 +19,13 @@ type ProductInsert = Database["public"]["Tables"]["products"]["Insert"] & {
   main_offer_price_cents: number | null;
 };
 
+type ProductStats = {
+  completed_sales: number;
+  total_sales_cents: number;
+  affiliate_count: number;
+  coproducer_count: number;
+};
+
 function positiveCents(value: unknown, field: string) {
   if (!Number.isSafeInteger(value) || Number(value) <= 0) {
     throw new Error(`INVALID:${field}`);
@@ -33,12 +40,80 @@ function nullableText(body: Record<string, unknown>, key: string, maxLength: num
   return value.trim();
 }
 
+function emptyStats(): ProductStats {
+  return {
+    completed_sales: 0,
+    total_sales_cents: 0,
+    affiliate_count: 0,
+    coproducer_count: 0,
+  };
+}
+
 export async function GET() {
   try {
     const { supabase, user } = await requireUser();
     const { data, error } = await supabase.from("products").select("*").eq("producer_id", user.id).order("created_at", { ascending: false });
     if (error) throw error;
-    return NextResponse.json({ products: data });
+
+    const products = data ?? [];
+    if (!products.length) return NextResponse.json({ products: [] });
+
+    const productIds = products.map((product) => product.id);
+    const [ordersResult, programsResult, participantsResult] = await Promise.all([
+      supabase
+        .from("orders")
+        .select("product_id,gross_amount_cents")
+        .eq("producer_id", user.id)
+        .eq("status", "paid")
+        .in("product_id", productIds),
+      supabase.from("affiliate_programs").select("id,product_id").in("product_id", productIds),
+      supabase.from("product_participants").select("product_id").eq("active", true).in("product_id", productIds),
+    ]);
+
+    if (ordersResult.error) throw ordersResult.error;
+    if (programsResult.error) throw programsResult.error;
+    if (participantsResult.error) throw participantsResult.error;
+
+    const stats = new Map<string, ProductStats>(productIds.map((productId) => [productId, emptyStats()]));
+
+    for (const order of ordersResult.data ?? []) {
+      const productStats = stats.get(order.product_id);
+      if (!productStats) continue;
+      productStats.completed_sales += 1;
+      productStats.total_sales_cents += Number(order.gross_amount_cents ?? 0);
+    }
+
+    for (const participant of participantsResult.data ?? []) {
+      const productStats = stats.get(participant.product_id);
+      if (productStats) productStats.coproducer_count += 1;
+    }
+
+    const programs = programsResult.data ?? [];
+    const programToProduct = new Map(programs.map((program) => [program.id, program.product_id]));
+    const programIds = programs.map((program) => program.id);
+
+    if (programIds.length) {
+      const membershipsResult = await supabase
+        .from("affiliate_memberships")
+        .select("program_id")
+        .eq("status", "active")
+        .in("program_id", programIds);
+
+      if (membershipsResult.error) throw membershipsResult.error;
+
+      for (const membership of membershipsResult.data ?? []) {
+        const productId = programToProduct.get(membership.program_id);
+        const productStats = productId ? stats.get(productId) : undefined;
+        if (productStats) productStats.affiliate_count += 1;
+      }
+    }
+
+    return NextResponse.json({
+      products: products.map((product) => ({
+        ...product,
+        stats: stats.get(product.id) ?? emptyStats(),
+      })),
+    });
   } catch (error) { return jsonError(error); }
 }
 
