@@ -4,7 +4,7 @@
 
 /*
  * Product management has dense operational content. Keep every secondary,
- * interactive and supporting text at a readable 14px minimum without
+ * interactive and supporting text at a readable 15px minimum without
  * flattening the hierarchy of larger titles, prices and KPI values.
  */
 .scope :global(small),
@@ -26,7 +26,7 @@
 .scope :global(.form-success),
 .scope :global(.checkbox-line),
 .scope :global(.operational-form) {
-  font-size: 14px !important;
+  font-size: 15px !important;
 }
 
 /* Small headings used as subtitles inside cards, tables and modals. */
@@ -38,10 +38,10 @@
 .scope :global([class*="sectionTitle"]) h3,
 .scope :global([class*="offerTop"]) h3,
 .scope :global([class*="panelHeading"]) h3 {
-  font-size: 14px !important;
+  font-size: 15px !important;
 }
 
-/* Values whose component styles were also below 14px. */
+/* Values whose component styles were also below 15px. */
 .scope :global([class*="dataCard"]) strong,
 .scope :global([class*="metric"]) strong,
 .scope :global([class*="fact"]) strong,
@@ -64,7 +64,7 @@
 .scope :global([class*="empty"]) strong,
 .scope :global([class*="table"]) td strong,
 .scope :global([class*="tableRow"]) strong {
-  font-size: 14px !important;
+  font-size: 15px !important;
 }
 
 /* Direct text containers that are not semantic p/small/span elements. */
@@ -92,7 +92,7 @@
 .scope :global([class*="filter"]),
 .scope :global([class*="tableHead"]),
 .scope :global([class*="tableRow"]) {
-  font-size: 14px !important;
+  font-size: 15px !important;
 }
 
 /* Native product dialogs use global utility classes rather than CSS modules. */
@@ -109,5 +109,5 @@
 .scope :global(.primary-button),
 .scope :global(.secondary-button),
 .scope :global(.detail-tabs) button {
-  font-size: 14px !important;
+  font-size: 15px !important;
 }
