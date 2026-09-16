@@ -167,13 +167,22 @@ async function selectCentralConnection(admin: AdminClient, product: Product) {
     throw new HttpError(409, "Checkout transparente central disponível somente para ofertas com Saldo Prosperity.");
   }
   const { data, error } = await admin.from("payment_provider_connections")
-    .select("id,provider_id")
+    .select("id,provider_id,live_mode")
     .eq("connection_kind", "prosperity_balance")
     .is("owner_user_id", null)
     .eq("status", "active")
     .single();
   if (error || !data) throw new HttpError(503, "Conta Mercado Pago central não configurada.");
   return data;
+}
+
+function subscriptionPayerEmail(connection: { live_mode?: boolean | null }, customerEmail: string) {
+  if (connection.live_mode !== false) return customerEmail;
+  const testPayerEmail = env.mercadoPagoTestPayerEmail?.trim().toLowerCase();
+  if (!testPayerEmail) {
+    throw new HttpError(503, "Configure MERCADO_PAGO_TEST_PAYER_EMAIL com o e-mail da conta Comprador Teste do mesmo país da conta Vendedor Teste.");
+  }
+  return testPayerEmail;
 }
 
 async function resolveCustomer(admin: AdminClient, input: TransparentCheckoutInput) {
@@ -473,6 +482,7 @@ async function createAuthorizedCardSubscription(input: {
 
   const { frequency, frequencyType } = subscriptionFrequency(offer);
   const appUrl = env.appUrl ?? "https://prosperity-pay.vercel.app";
+  const payerEmail = subscriptionPayerEmail(internal.connection, internal.customer.email);
   let preapproval: MercadoPagoPreapproval;
 
   try {
@@ -481,7 +491,7 @@ async function createAuthorizedCardSubscription(input: {
       body: JSON.stringify({
         reason: `${product.name} - ${offer.name}`.slice(0, 255),
         external_reference: `prosperity-subscription:${internal.subscriptionId}`,
-        payer_email: internal.customer.email,
+        payer_email: payerEmail,
         card_token_id: checkoutInput.card.token,
         auto_recurring: {
           frequency,
