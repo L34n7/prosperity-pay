@@ -1,6 +1,7 @@
 import { createHmac } from "crypto";
 import { env, requireEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/supabase/database.types";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type SupportedPaymentStatus = "approved" | "rejected" | "cancelled" | "refunded" | "charged_back";
@@ -63,7 +64,7 @@ async function getOrCreateDelivery(input: {
   admin: AdminClient;
   paymentId: string;
   eventType: string;
-  payload: Record<string, unknown>;
+  payload: Json;
 }) {
   const { admin, paymentId, eventType, payload } = input;
   const inserted = await admin
@@ -142,7 +143,7 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
       name: hydrated.customer.name,
       email: hydrated.customer.email,
     },
-  };
+  } satisfies Json;
 
   const delivery = await getOrCreateDelivery({
     admin: input.admin,
