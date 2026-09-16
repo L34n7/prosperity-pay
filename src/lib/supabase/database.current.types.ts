@@ -42,6 +42,39 @@ type SubscriptionTransparentColumns = {
   payment_profile_id: string | null;
 };
 
+type IntegrationWebhookRouteRow = {
+  id: string;
+  integration: string;
+  offer_id: string;
+  active: boolean;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+type IntegrationWebhookRouteTable = {
+  Row: IntegrationWebhookRouteRow;
+  Insert: {
+    id?: string;
+    integration: string;
+    offer_id: string;
+    active?: boolean;
+    metadata?: Json;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Update: Partial<IntegrationWebhookRouteRow>;
+  Relationships: [
+    {
+      foreignKeyName: "integration_webhook_routes_offer_id_fkey";
+      columns: ["offer_id"];
+      isOneToOne: false;
+      referencedRelation: "offers";
+      referencedColumns: ["id"];
+    },
+  ];
+};
+
 type IntegrationWebhookDeliveryRow = {
   id: string;
   event_id: string;
@@ -99,10 +132,10 @@ type GeneratedFunctions = PublicSchema["Functions"];
  * Database type used by Supabase clients.
  *
  * The checked-in generated file predates the latest product/offer, transparent
- * checkout, platform bootstrap and CRM webhook delivery migrations. This layer
- * keeps the client strictly typed against the live schema without weakening
- * mutations with `any`/`never` casts. When database.types.ts is regenerated
- * from Supabase, these additions can be folded back into it.
+ * checkout, platform bootstrap and CRM webhook integration migrations. This
+ * layer keeps the client strictly typed against the live schema without
+ * weakening mutations with `any`/`never` casts. When database.types.ts is
+ * regenerated from Supabase, these additions can be folded back into it.
  */
 export type Database = Omit<GeneratedDatabase, "public"> & {
   public: Omit<PublicSchema, "Tables" | "Functions"> & {
@@ -110,6 +143,7 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       products: ExtendTable<GeneratedTables["products"], ProductCommercialColumns>;
       offers: ExtendTable<GeneratedTables["offers"], OfferCommercialColumns>;
       subscriptions: ExtendTable<GeneratedTables["subscriptions"], SubscriptionTransparentColumns>;
+      integration_webhook_routes: IntegrationWebhookRouteTable;
       integration_webhook_deliveries: IntegrationWebhookDeliveryTable;
     };
     Functions: GeneratedFunctions & {
