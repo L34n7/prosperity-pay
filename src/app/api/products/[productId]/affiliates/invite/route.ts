@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatchAffiliateMembershipWebhooksSafe } from "@/lib/integrations/affiliate-webhook";
 
 type Context = { params: Promise<{ productId: string }> };
 
@@ -83,6 +84,8 @@ export async function POST(request: Request, context: Context) {
       if (error) throw error;
       membership = data;
     }
+
+    await dispatchAffiliateMembershipWebhooksSafe(admin, membership.id);
 
     return NextResponse.json({
       membership,

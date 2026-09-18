@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatchAffiliateMembershipWebhooksSafe } from "@/lib/integrations/affiliate-webhook";
 
 type Context={params:Promise<{programId:string}>};
 function createCode(email?:string|null){return `${(email?.split("@")[0]??"AFILIADO").replace(/[^a-z0-9]/gi,"").toUpperCase().slice(0,12)}${randomBytes(3).toString("hex").toUpperCase()}`}
@@ -30,6 +31,7 @@ export async function POST(_:Request,context:Context){
       const {error}=await admin.from("affiliate_links").upsert({membership_id:result.data.id,ref_code:result.data.code},{onConflict:"ref_code"});
       if(error)throw error;
     }
+    await dispatchAffiliateMembershipWebhooksSafe(admin,result.data.id);
     return NextResponse.json({membership:result.data},{status:existing?200:201});
   }catch(error){return jsonError(error)}
 }

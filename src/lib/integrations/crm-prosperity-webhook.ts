@@ -77,6 +77,8 @@ async function getOrCreateDelivery(input: {
     .insert({
       integration: "crm_prosperity",
       payment_id: paymentId,
+      subject_type: "payment",
+      subject_id: paymentId,
       event_type: eventType,
       payload,
       status: "pending",

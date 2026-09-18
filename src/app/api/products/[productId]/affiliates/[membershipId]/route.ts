@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatchAffiliateMembershipWebhooksSafe } from "@/lib/integrations/affiliate-webhook";
 
 type Context = { params: Promise<{ productId: string; membershipId: string }> };
 
@@ -33,6 +34,7 @@ export async function PATCH(request: Request, context: Context) {
       }, { onConflict: "ref_code" });
       if (linkError) throw linkError;
     }
+    await dispatchAffiliateMembershipWebhooksSafe(admin, membership.id);
     return NextResponse.json({ membership });
   } catch (error) { return jsonError(error); }
 }

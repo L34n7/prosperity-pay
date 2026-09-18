@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatchAffiliateMembershipWebhooksSafe } from "@/lib/integrations/affiliate-webhook";
 
 export async function POST(request: Request) {
   try {
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
     if (action === "reject") {
       const { error: rejectError } = await admin.from("affiliate_memberships").update({ status: "rejected" }).eq("id", membership.id);
       if (rejectError) throw rejectError;
+      await dispatchAffiliateMembershipWebhooksSafe(admin, membership.id);
       return NextResponse.json({ accepted: false });
     }
 
@@ -49,6 +51,7 @@ export async function POST(request: Request) {
     }, { onConflict: "ref_code" });
     if (linkError) throw linkError;
 
+    await dispatchAffiliateMembershipWebhooksSafe(admin, updated.id);
     return NextResponse.json({ accepted: true, membership: updated });
   } catch (error) {
     return jsonError(error);
