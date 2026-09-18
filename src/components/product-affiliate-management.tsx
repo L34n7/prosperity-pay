@@ -70,6 +70,12 @@ export function ProductAffiliateManagement({id}:{id:string}) {
     {error&&<p className={styles.error} role="alert">{error}</p>}
     {message&&<p className={styles.success} role="status">{message}</p>}
 
+    {program?.active&&program.mode!=="invite"&&<section className={styles.card}>
+      <div className={styles.cardHeader}><div><span><Link2 size={16}/></span><div><h3>Link para novos afiliados</h3><p>Compartilhe este endereço para inscrição no programa.</p></div></div></div>
+      <div className={styles.linkBox}><Link2 size={15}/><code>{`${location.origin}/afiliados/participar/${program.id}`}</code><button type="button" className={styles.secondary} onClick={()=>void copy(`${location.origin}/afiliados/participar/${program.id}`)}><Copy size={14}/>Copiar</button></div>
+      {program.mode==="approval"&&<p className={styles.notice}>As solicitações recebidas por este link ficarão pendentes até sua aprovação.</p>}
+    </section>}
+
     {program?.mode==="invite"&&<section className={styles.card}>
       <div className={styles.cardHeader}><div><span><MailPlus size={16}/></span><div><h3>Convidar afiliado</h3><p>Informe o e-mail da conta Prosperity Pay que receberá o convite.</p></div></div></div>
       <form className={styles.inviteGrid} onSubmit={invite}>
