@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { env, requireEnv } from "@/lib/env";
+import { fetchMercadoPagoOrder, syncTransparentOrder } from "@/lib/checkout/transparent-checkout-service";
+import { deliverCrmProsperityWebhookForOrder } from "@/lib/integrations/crm-prosperity-order-delivery";
 import { deliverCrmProsperityPaymentWebhook } from "@/lib/integrations/crm-prosperity-webhook";
 import { getPaymentProvider, type ProviderPayment } from "@/lib/payments";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
@@ -143,6 +145,40 @@ async function applyPaymentState(input: {
   });
 
   return { storedPayment, becameApproved };
+}
+
+async function processOrderEvent(input: {
+  admin: AdminClient;
+  providerId: string;
+  dataId: string;
+  eventId: string;
+}) {
+  const { admin, providerId, dataId, eventId } = input;
+
+  const { data: checkout, error: checkoutError } = await admin.from("payment_provider_checkouts")
+    .select("order_id,connection_id")
+    .eq("provider_id", providerId)
+    .eq("external_checkout_id", dataId)
+    .maybeSingle();
+
+  if (checkoutError) {
+    throw checkoutError;
+  }
+
+  if (!checkout) {
+    // A notificação pode chegar antes de persistirmos o external_checkout_id.
+    // O retorno 5xx faz o Mercado Pago reenviar o evento.
+    throw new Error("Order ainda não vinculada.");
+  }
+
+  const mpOrder = await fetchMercadoPagoOrder(checkout.connection_id, dataId);
+  await syncTransparentOrder({
+    admin,
+    internalOrderId: checkout.order_id,
+    mpOrder,
+    eventId,
+  });
+  await deliverCrmProsperityWebhookForOrder(admin, checkout.order_id);
 }
 
 async function processPaymentEvent(input: {
@@ -358,7 +394,7 @@ export async function POST(request: Request) {
   let payload: Payload;
   try { payload = JSON.parse(rawBody) as Payload; } catch { return NextResponse.json({ error: "JSON invalido." }, { status: 400 }); }
   const dataId = String(payload.data?.id ?? new URL(request.url).searchParams.get("data.id") ?? "");
-  const supported = new Set(["payment", "subscription_preapproval", "subscription_authorized_payment"]);
+  const supported = new Set(["payment", "order", "orders", "subscription_preapproval", "subscription_authorized_payment"]);
   if (!payload.type || !supported.has(payload.type) || !dataId) return NextResponse.json({ received: true, ignored: true });
 
   const signature = request.headers.get("x-signature") ?? "";
@@ -403,6 +439,8 @@ export async function POST(request: Request) {
     let finalStatus: "processed" | "ignored" = "processed";
     if (payload.type === "payment") {
       finalStatus = await processPaymentEvent({ admin, providerId: provider.id, payload, dataId, eventId: event.id });
+    } else if (payload.type === "order" || payload.type === "orders") {
+      await processOrderEvent({ admin, providerId: provider.id, dataId, eventId: event.id });
     } else if (payload.type === "subscription_preapproval") {
       await processSubscriptionEvent({ admin, providerId: provider.id, payload, dataId });
     } else if (payload.type === "subscription_authorized_payment") {
