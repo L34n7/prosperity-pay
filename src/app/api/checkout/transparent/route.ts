@@ -37,7 +37,8 @@ export async function POST(request: Request) {
 
     // O retorno do próprio Mercado Pago já pode trazer o pagamento como
     // aprovado antes do webhook assíncrono. Entregamos o estado final ao CRM
-    // imediatamente e mantemos o webhook/polling como redundância idempotente.
+    // imediatamente e mantemos o webhook/polling como redundância idempotente,
+    // sem depender de uma segunda notificação para liberar o acesso do cliente.
     if (["approved", "rejected", "cancelled", "refunded"].includes(result.status)) {
       await deliverCrmProsperityWebhookForOrder(
         createAdminClient(),
