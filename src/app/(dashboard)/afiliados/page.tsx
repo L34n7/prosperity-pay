@@ -9,7 +9,7 @@ export default async function Page(){
  const admin=env.supabaseServiceRoleKey?createAdminClient():null;
  const [{data:memberships,error},{data:programs,error:programError}]=await Promise.all([
   supabase.from("affiliate_memberships").select("id,code,status,affiliate_programs(product_id,products(name,offers(name,checkout_slug,status)))").eq("user_id",user.id),
-  admin?admin.from("affiliate_programs").select("id,mode,products(id,name,producer_id)").eq("active",true).eq("marketplace_enabled",true).neq("mode","invite").limit(100):Promise.resolve({data:[],error:null}),
+  admin?admin.from("affiliate_programs").select("id,mode,marketplace_description,marketplace_tags,landing_page_url,products(id,name,producer_id)").eq("active",true).eq("marketplace_enabled",true).neq("mode","invite").limit(100):Promise.resolve({data:[],error:null}),
  ]);
  if(error)throw error;
  if(programError)console.error("Falha ao consultar o catálogo de afiliados",{code:programError.code});
