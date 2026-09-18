@@ -463,6 +463,7 @@
 }
 
 .submit,
+.retry,
 .primaryLink {
   display: inline-flex;
   min-height: 48px;
@@ -480,14 +481,22 @@
 }
 
 .submit:hover:not(:disabled),
+.retry:hover:not(:disabled),
 .primaryLink:hover {
   transform: translateY(-1px);
   box-shadow: 0 15px 32px rgba(7, 126, 86, .23);
 }
 
 .submit:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: .58;
+}
+
+.retry {
+  border-color: #d7e1dc;
+  background: #fff;
+  color: #176a4f;
+  box-shadow: none;
 }
 
 .footer {

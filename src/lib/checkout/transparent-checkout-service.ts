@@ -29,6 +29,7 @@ type TransparentCheckoutInput = {
 type Offer = {
   id: string;
   product_id: string;
+  checkout_slug: string;
   name: string;
   price_cents: number;
   first_charge_cents: number | null;
@@ -489,7 +490,11 @@ async function createAuthorizedCardSubscription(input: {
           transaction_amount: internal.amountCents / 100,
           currency_id: offer.currency,
         },
-        back_url: `${appUrl}/checkout/sucesso?order=${internal.order.id}`,
+        back_url: (() => {
+          const url = new URL(`${appUrl}/checkout/${offer.checkout_slug}`);
+          if (checkoutInput.refCode) url.searchParams.set("ref", checkoutInput.refCode);
+          return url.toString();
+        })(),
         status: "authorized",
       }),
     }, `${checkoutInput.idempotencyKey}:preapproval`);

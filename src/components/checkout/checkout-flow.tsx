@@ -101,7 +101,7 @@ export function CheckoutFlow({
   const [method, setMethod] = useState<PaymentMethod>(defaultMethod);
   const [sdkReady, setSdkReady] = useState(false);
   const [cardReady, setCardReady] = useState(false);
-  const [cardFormVersion, setCardFormVersion] = useState(0);
+  const [cardRetryRequired, setCardRetryRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CheckoutResult | null>(null);
@@ -155,16 +155,9 @@ export function CheckoutFlow({
     }).catch(() => undefined);
   }
 
-  function resetCardFormForRetry() {
-    newAttempt();
-    setCardReady(false);
-    try {
-      cardFormRef.current?.unmount?.();
-    } catch {
-      // O SDK pode já ter desmontado internamente; seguimos recriando o formulário.
-    }
-    cardFormRef.current = null;
-    setCardFormVersion((value) => value + 1);
+  function handleCardRetry() {
+    reportCardEvent("card_retry_reload");
+    window.location.reload();
   }
 
   function handleCardSubmitClick() {
@@ -216,8 +209,9 @@ export function CheckoutFlow({
       const message = cause instanceof Error ? cause.message : "Falha ao processar o pagamento.";
       setError(message);
       if (cardAttempt) {
-        reportCardEvent("card_attempt_reset", message);
-        resetCardFormForRetry();
+        newAttempt();
+        setCardRetryRequired(true);
+        reportCardEvent("card_retry_required", message);
       } else {
         newAttempt();
       }
@@ -241,6 +235,7 @@ export function CheckoutFlow({
         return;
       }
       reportCardEvent("card_token_ready");
+      setCardRetryRequired(false);
       await sendPayment({
         paymentMethod: "card",
         card: {
@@ -317,7 +312,7 @@ export function CheckoutFlow({
       cardForm.unmount?.();
       cardFormRef.current = null;
     };
-  }, [sdkReady, mercadoPagoPublicKey, offer.paymentCardEnabled, initialPrice, cardFormVersion]);
+  }, [sdkReady, mercadoPagoPublicKey, offer.paymentCardEnabled, initialPrice]);
 
   useEffect(() => {
     if (!result?.orderId || !["pending", "processing"].includes(result.status)) return;
@@ -438,7 +433,8 @@ export function CheckoutFlow({
 
             {recurring && <div className={styles.recurrenceInfo}><CreditCard size={18}/><span><strong>Cobrança recorrente</strong><small>Esta primeira cobrança será feita em 1x. O cartão ficará autorizado no Mercado Pago para as próximas mensalidades.</small></span></div>}
             {error && method === "card" && <p className={styles.error} role="alert">{error}</p>}
-            <button id="form-checkout__submit" className={styles.submit} type="submit" onClick={handleCardSubmitClick} disabled={busy || !mercadoPagoPublicKey || !cardReady}>{busy ? "Processando..." : cardReady ? `Pagar ${formatCents(initialPrice)}` : "Carregando pagamento seguro..."}</button>
+            {cardRetryRequired && <button type="button" className={styles.retry} onClick={handleCardRetry}>Tentar novamente</button>}
+            <button id="form-checkout__submit" className={styles.submit} type="submit" onClick={handleCardSubmitClick} disabled={busy || cardRetryRequired || !mercadoPagoPublicKey || !cardReady}>{busy ? "Processando..." : cardRetryRequired ? "Nova tentativa necessária" : cardReady ? `Pagar ${formatCents(initialPrice)}` : "Carregando pagamento seguro..."}</button>
           </form>
 
           <form className={`${styles.form} ${method !== "pix" ? styles.hiddenForm : ""}`} onSubmit={submitPix}>
