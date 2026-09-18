@@ -110,6 +110,8 @@ export function CheckoutFlow({
   const buyerRef = useRef(buyer);
   const cardFormRef = useRef<CardFormInstance | null>(null);
   const keyRef = useRef<string | null>(null);
+  const cardSubmitObservedRef = useRef(false);
+  const cardSubmitWatchdogRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!affiliateAttribution) {
@@ -137,6 +139,37 @@ export function CheckoutFlow({
   function newAttempt() {
     keyRef.current = crypto.randomUUID();
     return keyRef.current;
+  }
+
+  function reportCardEvent(event: string, message?: string) {
+    void fetch("/api/checkout/client-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        event,
+        offerSlug: offer.slug,
+        message: message?.slice(0, 300),
+      }),
+    }).catch(() => undefined);
+  }
+
+  function handleCardSubmitClick() {
+    setError("");
+    cardSubmitObservedRef.current = false;
+    reportCardEvent("card_submit_clicked");
+
+    if (cardSubmitWatchdogRef.current) {
+      window.clearTimeout(cardSubmitWatchdogRef.current);
+    }
+
+    cardSubmitWatchdogRef.current = window.setTimeout(() => {
+      if (cardSubmitObservedRef.current) return;
+      reportCardEvent("card_submit_not_observed");
+      setError(
+        "O Mercado Pago não conseguiu validar os dados do cartão. Revise número, validade, código de segurança e nome do titular e tente novamente."
+      );
+    }, 1800);
   }
 
   async function sendPayment(payload: Record<string, unknown>) {
@@ -174,24 +207,34 @@ export function CheckoutFlow({
   }
 
   async function submitCard(cardForm: CardFormInstance) {
-    const data = cardForm.getCardFormData();
-    if (!buyerRef.current.name.trim() || !buyerRef.current.email.trim() || buyerRef.current.document.length !== 11) {
-      setError("Preencha nome, e-mail e CPF antes de continuar.");
-      return;
+    try {
+      const data = cardForm.getCardFormData();
+      if (!buyerRef.current.name.trim() || !buyerRef.current.email.trim() || buyerRef.current.document.length !== 11) {
+        reportCardEvent("card_buyer_validation_failed");
+        setError("Preencha nome, e-mail e CPF antes de continuar.");
+        return;
+      }
+      if (!data.token || !data.paymentMethodId) {
+        reportCardEvent("card_token_missing");
+        setError("O Mercado Pago não conseguiu gerar o token do cartão. Confira os dados do cartão e tente novamente.");
+        return;
+      }
+      reportCardEvent("card_token_ready");
+      await sendPayment({
+        paymentMethod: "card",
+        card: {
+          token: data.token,
+          paymentMethodId: data.paymentMethodId,
+          issuerId: data.issuerId,
+          installments: recurring ? 1 : Number(data.installments || 1),
+        },
+      });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Falha ao ler dados tokenizados.";
+      console.error("[checkout-card] Falha antes do envio ao backend", cause);
+      reportCardEvent("card_form_data_error", message);
+      setError("Não foi possível validar o cartão com o Mercado Pago. Confira os dados e tente novamente.");
     }
-    if (!data.token || !data.paymentMethodId) {
-      setError("Confira os dados do cartão e tente novamente.");
-      return;
-    }
-    await sendPayment({
-      paymentMethod: "card",
-      card: {
-        token: data.token,
-        paymentMethodId: data.paymentMethodId,
-        issuerId: data.issuerId,
-        installments: recurring ? 1 : Number(data.installments || 1),
-      },
-    });
   }
 
   async function submitPix(event: FormEvent<HTMLFormElement>) {
@@ -224,14 +267,27 @@ export function CheckoutFlow({
       callbacks: {
         onFormMounted: (mountError: unknown) => {
           if (mountError) {
+            const message = mountError instanceof Error ? mountError.message : String(mountError);
+            reportCardEvent("card_form_mount_error", message);
             setError("Não foi possível carregar o formulário seguro do cartão.");
             return;
           }
+          reportCardEvent("card_form_mounted");
           setCardReady(true);
         },
         onSubmit: (event: Event) => {
           event.preventDefault();
+          cardSubmitObservedRef.current = true;
+          if (cardSubmitWatchdogRef.current) {
+            window.clearTimeout(cardSubmitWatchdogRef.current);
+            cardSubmitWatchdogRef.current = null;
+          }
+          reportCardEvent("card_submit_observed");
           void submitCard(cardForm);
+        },
+        onFetching: (resource: unknown) => {
+          reportCardEvent("card_sdk_fetching", typeof resource === "string" ? resource : undefined);
+          return () => undefined;
         },
       },
     });
@@ -361,7 +417,7 @@ export function CheckoutFlow({
 
             {recurring && <div className={styles.recurrenceInfo}><CreditCard size={18}/><span><strong>Cobrança recorrente</strong><small>Esta primeira cobrança será feita em 1x. O cartão ficará autorizado no Mercado Pago para as próximas mensalidades.</small></span></div>}
             {error && method === "card" && <p className={styles.error} role="alert">{error}</p>}
-            <button id="form-checkout__submit" className={styles.submit} type="submit" disabled={busy || !mercadoPagoPublicKey || !cardReady}>{busy ? "Processando..." : cardReady ? `Pagar ${formatCents(initialPrice)}` : "Carregando pagamento seguro..."}</button>
+            <button id="form-checkout__submit" className={styles.submit} type="submit" onClick={handleCardSubmitClick} disabled={busy || !mercadoPagoPublicKey || !cardReady}>{busy ? "Processando..." : cardReady ? `Pagar ${formatCents(initialPrice)}` : "Carregando pagamento seguro..."}</button>
           </form>
 
           <form className={`${styles.form} ${method !== "pix" ? styles.hiddenForm : ""}`} onSubmit={submitPix}>
