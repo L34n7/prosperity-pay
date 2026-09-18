@@ -12,6 +12,8 @@ type ProductInsert = Database["public"]["Tables"]["products"]["Insert"] & {
   support_display_name: string | null;
   support_email: string | null;
   support_whatsapp: string | null;
+  post_purchase_message: string | null;
+  post_purchase_redirect_url: string | null;
   recurrence_frequency: RecurrenceFrequency | null;
   different_first_charge: boolean;
   first_charge_cents: number | null;
@@ -38,6 +40,18 @@ function nullableText(body: Record<string, unknown>, key: string, maxLength: num
   if (value == null || value === "") return null;
   if (typeof value !== "string" || value.trim().length > maxLength) throw new Error(`INVALID:${key}`);
   return value.trim();
+}
+
+function nullableHttpUrl(body: Record<string, unknown>, key: string) {
+  const value = nullableText(body, key, 2048);
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+    return value;
+  } catch {
+    throw new Error(`INVALID:${key}`);
+  }
 }
 
 function emptyStats(): ProductStats {
@@ -133,11 +147,14 @@ export async function POST(request: Request) {
     if (!isProductKind(productType)) return NextResponse.json({ error: "Tipo de produto inválido." }, { status: 400 });
 
     let category: string | null, supportDisplayName: string | null, supportEmail: string | null, supportWhatsapp: string | null;
+    let postPurchaseMessage: string | null, postPurchaseRedirectUrl: string | null;
     try {
       category = nullableText(body, "category", 120);
       supportDisplayName = nullableText(body, "supportDisplayName", 180);
       supportEmail = nullableText(body, "supportEmail", 320);
       supportWhatsapp = nullableText(body, "supportWhatsapp", 32);
+      postPurchaseMessage = nullableText(body, "postPurchaseMessage", 4000);
+      postPurchaseRedirectUrl = nullableHttpUrl(body, "postPurchaseRedirectUrl");
     } catch (error) {
       const field = error instanceof Error ? error.message.replace("INVALID:", "") : "dados";
       return NextResponse.json({ error: `Campo ${field} inválido.` }, { status: 400 });
@@ -178,6 +195,8 @@ export async function POST(request: Request) {
       support_display_name: supportDisplayName,
       support_email: supportEmail,
       support_whatsapp: supportWhatsapp,
+      post_purchase_message: postPurchaseMessage,
+      post_purchase_redirect_url: postPurchaseRedirectUrl,
       recurrence_frequency: recurrenceFrequency,
       different_first_charge: differentFirstCharge,
       first_charge_cents: firstChargeCents,

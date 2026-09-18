@@ -6,7 +6,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-const OFFER_SELECT = "checkout_slug,name,price_cents,first_charge_cents,billing_type,billing_interval,billing_interval_count,max_installments,payment_card_enabled,payment_pix_enabled,products!inner(name,description,image_path,status)";
+const OFFER_SELECT = "checkout_slug,name,price_cents,first_charge_cents,billing_type,billing_interval,billing_interval_count,max_installments,payment_card_enabled,payment_pix_enabled,products!inner(*)";
+
+type CheckoutProduct = {
+  name: string;
+  image_path: string | null;
+  status: string;
+  post_purchase_message?: string | null;
+  post_purchase_redirect_url?: string | null;
+};
 
 export default async function Page({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ ref?: string }> }) {
   const [{ slug }, { ref }] = await Promise.all([params, searchParams]);
@@ -34,14 +42,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
 
   if (!offer) notFound();
 
-  const { data: crmRoute } = await admin.from("integration_webhook_routes")
-    .select("id")
-    .eq("integration", "crm_prosperity")
-    .eq("offer_reference", offer.checkout_slug)
-    .eq("active", true)
-    .maybeSingle();
-
-  const routedToCrmProsperity = Boolean(crmRoute);
+  const product = offer.products as unknown as CheckoutProduct;
 
   return <CheckoutFlow
     offer={{
@@ -55,13 +56,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       maxInstallments: Number(offer.max_installments),
       paymentCardEnabled: Boolean(offer.payment_card_enabled),
       paymentPixEnabled: Boolean(offer.payment_pix_enabled),
-      productName: offer.products.name,
-      description: offer.products.description,
-      imageUrl: productImageUrl(offer.products.image_path),
+      productName: product.name,
+      imageUrl: productImageUrl(product.image_path),
     }}
     affiliate={ref}
     mercadoPagoPublicKey={env.mercadoPagoPublicKey}
-    successUrl={routedToCrmProsperity ? "https://crmprosperity.com/obrigado" : undefined}
-    successLabel={routedToCrmProsperity ? "Continuar no CRM Prosperity" : undefined}
+    successText={product.post_purchase_message ?? undefined}
+    successUrl={product.post_purchase_redirect_url ?? undefined}
+    successLabel={product.post_purchase_redirect_url ? "Continuar" : undefined}
   />;
 }

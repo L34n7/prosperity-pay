@@ -14,7 +14,6 @@ type Offer = {
   slug: string;
   name: string;
   productName: string;
-  description: string | null;
   imageUrl: string | null;
   priceCents: number;
   firstChargeCents: number | null;
@@ -82,12 +81,14 @@ export function CheckoutFlow({
   offer,
   affiliate,
   mercadoPagoPublicKey,
+  successText,
   successUrl,
   successLabel,
 }: {
   offer: Offer;
   affiliate?: string;
   mercadoPagoPublicKey?: string;
+  successText?: string;
   successUrl?: string;
   successLabel?: string;
 }) {
@@ -237,6 +238,14 @@ export function CheckoutFlow({
     return () => window.clearInterval(timer);
   }, [result?.orderId, result?.status]);
 
+  useEffect(() => {
+    if (result?.status !== "approved" || !successUrl) return;
+    const timer = window.setTimeout(() => {
+      window.location.assign(successUrl);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [result?.status, successUrl]);
+
   async function copyPix() {
     if (!result?.qrCode) return;
     await navigator.clipboard.writeText(result.qrCode);
@@ -251,9 +260,10 @@ export function CheckoutFlow({
         <span className={styles.successIcon}><Check size={34}/></span>
         <p className={styles.eyebrow}>Pagamento confirmado</p>
         <h1>Compra aprovada.</h1>
-        <p>Recebemos o pagamento de <strong>{formatCents(initialPrice)}</strong> para <strong>{offer.name}</strong>.</p>
+        <p>{successText?.trim() || <>Recebemos o pagamento de <strong>{formatCents(initialPrice)}</strong> para <strong>{offer.name}</strong>.</>}</p>
         {recurring && method === "card" && <div className={styles.successNote}>Seu cartão foi autorizado para as próximas cobranças recorrentes deste plano.</div>}
-        <a className={styles.primaryLink} href={successUrl ?? "/login"}>{successLabel ?? "Ir para minha conta"}</a>
+        {successUrl && <div className={styles.successNote}>Você será direcionado automaticamente em alguns segundos.</div>}
+        <a className={styles.primaryLink} href={successUrl ?? "/login"}>{successLabel ?? (successUrl ? "Continuar" : "Ir para minha conta")}</a>
       </section>
     </main>;
   }
@@ -284,7 +294,6 @@ export function CheckoutFlow({
           {offer.imageUrl && <Image className={styles.productImage} src={offer.imageUrl} alt={offer.productName} width={720} height={400} unoptimized/>}
           <span className={styles.productBadge}>{offer.productName}</span>
           <h1>{offer.name}</h1>
-          {offer.description && <p className={styles.description}>{offer.description}</p>}
           <div className={styles.priceBlock}>
             <span>Total {recurring ? "da primeira cobrança" : ""}</span>
             <strong>{formatCents(initialPrice)}</strong>

@@ -17,6 +17,8 @@ type Product = {
   id: string;
   name: string;
   description: string | null;
+  post_purchase_message: string | null;
+  post_purchase_redirect_url: string | null;
   image_path: string | null;
   status: string;
   settlement_model: string;

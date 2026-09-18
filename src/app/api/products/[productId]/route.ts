@@ -13,6 +13,8 @@ type ProductUpdate = Database["public"]["Tables"]["products"]["Update"] & {
   support_display_name?: string | null;
   support_email?: string | null;
   support_whatsapp?: string | null;
+  post_purchase_message?: string | null;
+  post_purchase_redirect_url?: string | null;
   recurrence_frequency?: RecurrenceFrequency | null;
   different_first_charge?: boolean;
   first_charge_cents?: number | null;
@@ -23,13 +25,25 @@ type OfferSync = Database["public"]["Tables"]["offers"]["Update"] & { first_char
 type ProductRow = Database["public"]["Tables"]["products"]["Row"] & Required<Pick<ProductUpdate,
   "payment_type" | "product_type" | "different_first_charge"
 >> & Pick<ProductUpdate,
-  "category" | "support_display_name" | "support_email" | "support_whatsapp" | "recurrence_frequency" | "first_charge_cents" | "recurring_price_cents" | "main_offer_price_cents"
+  "category" | "support_display_name" | "support_email" | "support_whatsapp" | "post_purchase_message" | "post_purchase_redirect_url" | "recurrence_frequency" | "first_charge_cents" | "recurring_price_cents" | "main_offer_price_cents"
 >;
 
 function nullableText(value: unknown, maxLength: number, field: string) {
   if (value == null || value === "") return null;
   if (typeof value !== "string" || value.trim().length > maxLength) throw new Error(`INVALID:${field}`);
   return value.trim();
+}
+
+function nullableHttpUrl(value: unknown, field: string) {
+  const normalized = nullableText(value, 2048, field);
+  if (!normalized) return null;
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+    return normalized;
+  } catch {
+    throw new Error(`INVALID:${field}`);
+  }
 }
 
 function positiveCents(value: unknown, field: string) {
@@ -79,6 +93,8 @@ export async function PATCH(request: Request, context: Context) {
       update.support_display_name = body.supportDisplayName === undefined ? current.support_display_name : nullableText(body.supportDisplayName, 180, "supportDisplayName");
       update.support_email = body.supportEmail === undefined ? current.support_email : nullableText(body.supportEmail, 320, "supportEmail");
       update.support_whatsapp = body.supportWhatsapp === undefined ? current.support_whatsapp : nullableText(body.supportWhatsapp, 32, "supportWhatsapp");
+      update.post_purchase_message = body.postPurchaseMessage === undefined ? current.post_purchase_message : nullableText(body.postPurchaseMessage, 4000, "postPurchaseMessage");
+      update.post_purchase_redirect_url = body.postPurchaseRedirectUrl === undefined ? current.post_purchase_redirect_url : nullableHttpUrl(body.postPurchaseRedirectUrl, "postPurchaseRedirectUrl");
       if (update.support_email && !/^\S+@\S+\.\S+$/.test(update.support_email)) return NextResponse.json({ error: "E-mail do SAC inválido." }, { status: 400 });
 
       if (paymentType === "recurring") {

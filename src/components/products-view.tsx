@@ -236,7 +236,7 @@ export function ProductsView() {
                 </div>
 
                 <p className={styles.description}>
-                  {product.description?.trim() || "Sem descrição cadastrada. Adicione uma descrição para apresentar melhor este produto."}
+                  {product.description?.trim() || "Sem descrição interna cadastrada."}
                 </p>
 
                 <div className={styles.metricsGrid}>
@@ -300,7 +300,7 @@ export function ProductsView() {
           <label className="checkbox-line"><input type="checkbox" checked={differentFirstCharge} onChange={event => setDifferentFirstCharge(event.target.checked)}/> Preço diferente na primeira cobrança</label>
           {differentFirstCharge && <label>Valor da primeira cobrança (R$)<input name="firstCharge" type="number" min="0.01" step="0.01" required/></label>}
         </>}
-        <label>Descrição<textarea name="description" rows={3} maxLength={4000}/></label>
+        <label>Descrição interna<textarea name="description" rows={3} maxLength={4000}/><small className="form-hint">(Essa descrição não é exibida para os clientes)</small></label>
         <div className="form-grid">
           <label>Nome de exibição do SAC<input name="supportDisplayName" maxLength={180}/></label>
           <label>E-mail do SAC<input name="supportEmail" type="email" maxLength={320}/></label>

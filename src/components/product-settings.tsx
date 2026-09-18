@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, useState } from "react";
-import { ImageIcon, LifeBuoy, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
+import { ExternalLink, ImageIcon, LifeBuoy, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
 import { RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { productImageUrl } from "@/lib/product-images";
 import styles from "./product-settings.module.css";
@@ -11,6 +11,8 @@ type Product = {
   id: string;
   name: string;
   description: string | null;
+  post_purchase_message: string | null;
+  post_purchase_redirect_url: string | null;
   image_path: string | null;
   status: string;
   payment_type: ProductPaymentType;
@@ -56,6 +58,8 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
     await onSave({
       name: data.get("name"),
       description: data.get("description"),
+      postPurchaseMessage: data.get("postPurchaseMessage"),
+      postPurchaseRedirectUrl: data.get("postPurchaseRedirectUrl"),
       status: data.get("status"),
       paymentType,
       productType: data.get("productType"),
@@ -84,7 +88,7 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
         <div className={styles.cardHeader}><div><span><Package size={16}/></span><div><h3>Informações principais</h3><p>Dados que identificam o produto dentro da plataforma.</p></div></div></div>
         <div className={styles.stack}>
           <label className={styles.field}><span>Nome</span><input name="name" defaultValue={product.name} required minLength={2}/></label>
-          <label className={styles.field}><span>Descrição</span><textarea name="description" defaultValue={product.description ?? ""} rows={4} placeholder="Descreva de forma objetiva o que este produto oferece."/></label>
+          <label className={styles.field}><span>Descrição interna <small className={styles.labelHint}>(Essa descrição não é exibida para os clientes)</small></span><textarea name="description" defaultValue={product.description ?? ""} rows={4} placeholder="Use este campo para observações internas sobre o produto."/></label>
           <div className={styles.gridThree}>
             <label className={styles.field}><span>Status</span><select name="status" defaultValue={product.status}><option value="draft">Rascunho</option><option value="active">Ativo</option><option value="inactive">Inativo</option><option value="archived">Arquivado</option></select></label>
             <label className={styles.field}><span>Tipo de produto</span><select name="productType" defaultValue={product.product_type}><option value="digital">Digital</option><option value="physical">Físico</option></select></label>
@@ -105,6 +109,15 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
           {differentFirstCharge && <label className={styles.field}><span>Valor da primeira cobrança</span><div className={styles.money}><small>R$</small><input name="firstCharge" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.first_charge_cents)} required/></div></label>}
           <p className={styles.hint}>Cobranças recorrentes são processadas pela API oficial de Assinaturas do Mercado Pago.</p>
         </div>}
+      </section>
+
+      <section className={styles.card}>
+        <div className={styles.cardHeader}><div><span><ExternalLink size={16}/></span><div><h3>Pós-compra</h3><p>Defina a mensagem de confirmação e para onde o cliente será direcionado após a aprovação.</p></div></div></div>
+        <div className={styles.stack}>
+          <label className={styles.field}><span>Texto que o cliente verá</span><textarea name="postPurchaseMessage" defaultValue={product.post_purchase_message ?? ""} rows={4} maxLength={4000} placeholder="Ex.: Pagamento aprovado! Você será direcionado para as instruções de acesso."/></label>
+          <label className={styles.field}><span>URL de direcionamento</span><input name="postPurchaseRedirectUrl" type="url" defaultValue={product.post_purchase_redirect_url ?? ""} maxLength={2048} placeholder="https://seusite.com/obrigado"/></label>
+          <p className={styles.hint}>Quando a URL estiver preenchida, o cliente será direcionado automaticamente após a confirmação e também terá um botão para continuar imediatamente.</p>
+        </div>
       </section>
 
       <section className={styles.card}>
