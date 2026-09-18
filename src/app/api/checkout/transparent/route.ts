@@ -27,6 +27,7 @@ export async function POST(request: Request) {
       customerName: optionalString(body, "customerName", 180),
       customerDocument: requiredString(body, "customerDocument", 30),
       refCode: optionalString(body, "refCode", 80),
+      deviceId: optionalString(body, "deviceId", 255),
       idempotencyKey,
       paymentMethod,
       card,

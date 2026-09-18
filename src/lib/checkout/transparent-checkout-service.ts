@@ -16,6 +16,7 @@ type TransparentCheckoutInput = {
   customerEmail: string;
   customerDocument: string;
   refCode?: string;
+  deviceId?: string;
   idempotencyKey: string;
   paymentMethod: PaymentMethod;
   card?: {
@@ -477,8 +478,13 @@ async function createAuthorizedCardSubscription(input: {
   let preapproval: MercadoPagoPreapproval;
 
   try {
+    console.info("[mercadopago] subscription risk context", {
+      offerSlug: offer.checkout_slug,
+      deviceIdPresent: Boolean(checkoutInput.deviceId),
+    });
     preapproval = await mpRequest<MercadoPagoPreapproval>(token, "/preapproval", {
       method: "POST",
+      headers: checkoutInput.deviceId ? { "X-meli-session-id": checkoutInput.deviceId } : undefined,
       body: JSON.stringify({
         reason: `${product.name} - ${offer.name}`.slice(0, 255),
         external_reference: `prosperity-subscription:${internal.subscriptionId}`,
@@ -561,6 +567,9 @@ export async function createTransparentCheckout(input: TransparentCheckoutInput)
   if (input.paymentMethod === "card" && !offer.payment_card_enabled) throw new HttpError(409, "Pagamento por cartão não está habilitado nesta oferta.");
   if (input.paymentMethod === "pix" && !offer.payment_pix_enabled) throw new HttpError(409, "Pagamento por PIX não está habilitado nesta oferta.");
   if (input.paymentMethod === "card" && (!input.card?.token || !input.card.paymentMethodId)) throw new HttpError(400, "Dados tokenizados do cartão ausentes.");
+  if (input.paymentMethod === "card" && offer.billing_type === "recurring" && !input.deviceId) {
+    throw new HttpError(400, "Device ID obrigatório para validar cartão recorrente.");
+  }
   if (input.paymentMethod === "card" && offer.billing_type === "recurring" && Number(input.card?.installments ?? 1) !== 1) {
     throw new HttpError(400, "Assinaturas recorrentes devem ser cobradas em 1x por ciclo.");
   }
@@ -597,6 +606,7 @@ export async function createTransparentCheckout(input: TransparentCheckoutInput)
   try {
     mpOrder = await mpRequest<MercadoPagoOrder>(token, "/v1/orders", {
       method: "POST",
+      headers: input.deviceId ? { "X-meli-session-id": input.deviceId } : undefined,
       body: JSON.stringify({
         type: "online",
         processing_mode: "automatic",

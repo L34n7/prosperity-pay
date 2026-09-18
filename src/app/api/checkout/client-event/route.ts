@@ -14,6 +14,8 @@ const ALLOWED_EVENTS = new Set([
   "card_attempt_reset",
   "card_retry_required",
   "card_retry_reload",
+  "device_id_ready",
+  "device_id_missing",
 ]);
 
 export async function POST(request: Request) {

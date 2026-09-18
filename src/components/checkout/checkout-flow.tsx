@@ -48,6 +48,7 @@ type MercadoPagoInstance = {
 declare global {
   interface Window {
     MercadoPago?: new (publicKey: string, options?: { locale?: string }) => MercadoPagoInstance;
+    MP_DEVICE_SESSION_ID?: string;
   }
 }
 
@@ -115,6 +116,18 @@ export function CheckoutFlow({
   const cardSubmitWatchdogRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-prosperity-mp-security="true"]');
+    if (existing) return;
+
+    const script = document.createElement("script");
+    script.src = "https://www.mercadopago.com/v2/security.js";
+    script.async = true;
+    script.setAttribute("view", "checkout");
+    script.setAttribute("data-prosperity-mp-security", "true");
+    document.head.appendChild(script);
+  }, []);
+
+  useEffect(() => {
     if (!affiliateAttribution) {
       setAffiliateRef(undefined);
       return;
@@ -130,6 +143,16 @@ export function CheckoutFlow({
     }
     setAffiliateRef(resolved);
   }, [affiliate, affiliateAttribution, offer.productId]);
+
+  async function waitForDeviceId(timeoutMs = 2200) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const deviceId = window.MP_DEVICE_SESSION_ID?.trim();
+      if (deviceId) return deviceId;
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    }
+    return undefined;
+  }
 
   function updateBuyer(field: keyof typeof buyer, value: string) {
     const next = { ...buyerRef.current, [field]: field === "document" ? onlyDigits(value) : value };
@@ -235,9 +258,17 @@ export function CheckoutFlow({
         return;
       }
       reportCardEvent("card_token_ready");
+      const deviceId = await waitForDeviceId();
+      if (!deviceId) {
+        reportCardEvent("device_id_missing");
+        setError("Não foi possível iniciar a validação segura do dispositivo. Recarregue a página e tente novamente.");
+        return;
+      }
+      reportCardEvent("device_id_ready");
       setCardRetryRequired(false);
       await sendPayment({
         paymentMethod: "card",
+        deviceId,
         card: {
           token: data.token,
           paymentMethodId: data.paymentMethodId,
