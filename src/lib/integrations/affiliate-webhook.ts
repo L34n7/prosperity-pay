@@ -31,7 +31,7 @@ export async function dispatchAffiliateMembershipWebhooks(admin: AdminClient, me
 
   const program = programResult.data;
   const [productResult, offersResult] = await Promise.all([
-    admin.from("products").select("id,name,producer_id").eq("id", program.product_id).single(),
+    admin.from("products").select("id,name,producer_id,affiliate_funnel_base_url").eq("id", program.product_id).single(),
     admin.from("offers")
       .select("id,name,checkout_slug,status,affiliate_enabled,affiliate_commission_type,affiliate_commission_bps,affiliate_commission_fixed_cents")
       .eq("product_id", program.product_id),
@@ -56,6 +56,11 @@ export async function dispatchAffiliateMembershipWebhooks(admin: AdminClient, me
     if (!byIntegration.has(route.integration)) byIntegration.set(route.integration, new Set());
     byIntegration.get(route.integration)!.add(route.offer_reference);
   }
+
+  const affiliateFunnelBaseUrl = productResult.data.affiliate_funnel_base_url;
+  const affiliateFunnelUrl = affiliateFunnelBaseUrl
+    ? `${affiliateFunnelBaseUrl}${encodeURIComponent(membership.code)}`
+    : null;
 
   const eventType = eventTypeFor(String(membership.status));
   const subjectId = `${membership.id}:${membership.status}:${membership.approved_at || membership.updated_at || membership.created_at}`;
@@ -108,6 +113,8 @@ export async function dispatchAffiliateMembershipWebhooks(admin: AdminClient, me
       tracking: {
         parameter: "ref",
         value: membership.code,
+        base_url: affiliateFunnelBaseUrl,
+        url: affiliateFunnelUrl,
       },
     } satisfies Json;
 

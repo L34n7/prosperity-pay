@@ -25,6 +25,7 @@ type ProductCommercialColumns = {
   support_whatsapp: string | null;
   post_purchase_message: string | null;
   post_purchase_redirect_url: string | null;
+  affiliate_funnel_base_url: string | null;
   recurrence_frequency: RecurrenceFrequency | null;
   different_first_charge: boolean;
   first_charge_cents: number | null;

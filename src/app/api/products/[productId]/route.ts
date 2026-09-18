@@ -15,6 +15,7 @@ type ProductUpdate = Database["public"]["Tables"]["products"]["Update"] & {
   support_whatsapp?: string | null;
   post_purchase_message?: string | null;
   post_purchase_redirect_url?: string | null;
+  affiliate_funnel_base_url?: string | null;
   recurrence_frequency?: RecurrenceFrequency | null;
   different_first_charge?: boolean;
   first_charge_cents?: number | null;
@@ -25,7 +26,7 @@ type OfferSync = Database["public"]["Tables"]["offers"]["Update"] & { first_char
 type ProductRow = Database["public"]["Tables"]["products"]["Row"] & Required<Pick<ProductUpdate,
   "payment_type" | "product_type" | "different_first_charge"
 >> & Pick<ProductUpdate,
-  "category" | "support_display_name" | "support_email" | "support_whatsapp" | "post_purchase_message" | "post_purchase_redirect_url" | "recurrence_frequency" | "first_charge_cents" | "recurring_price_cents" | "main_offer_price_cents"
+  "category" | "support_display_name" | "support_email" | "support_whatsapp" | "post_purchase_message" | "post_purchase_redirect_url" | "affiliate_funnel_base_url" | "recurrence_frequency" | "first_charge_cents" | "recurring_price_cents" | "main_offer_price_cents"
 >;
 
 function nullableText(value: unknown, maxLength: number, field: string) {
@@ -44,6 +45,15 @@ function nullableHttpUrl(value: unknown, field: string) {
   } catch {
     throw new Error(`INVALID:${field}`);
   }
+}
+
+function nullableAffiliateFunnelBaseUrl(value: unknown) {
+  const normalized = nullableHttpUrl(value, "affiliateFunnelBaseUrl");
+  if (!normalized) return null;
+  if (!/[?&]ref=$/.test(normalized)) {
+    throw new Error("INVALID:affiliateFunnelBaseUrl");
+  }
+  return normalized;
 }
 
 function positiveCents(value: unknown, field: string) {
@@ -95,6 +105,7 @@ export async function PATCH(request: Request, context: Context) {
       update.support_whatsapp = body.supportWhatsapp === undefined ? current.support_whatsapp : nullableText(body.supportWhatsapp, 32, "supportWhatsapp");
       update.post_purchase_message = body.postPurchaseMessage === undefined ? current.post_purchase_message : nullableText(body.postPurchaseMessage, 4000, "postPurchaseMessage");
       update.post_purchase_redirect_url = body.postPurchaseRedirectUrl === undefined ? current.post_purchase_redirect_url : nullableHttpUrl(body.postPurchaseRedirectUrl, "postPurchaseRedirectUrl");
+      update.affiliate_funnel_base_url = body.affiliateFunnelBaseUrl === undefined ? current.affiliate_funnel_base_url : nullableAffiliateFunnelBaseUrl(body.affiliateFunnelBaseUrl);
       if (update.support_email && !/^\S+@\S+\.\S+$/.test(update.support_email)) return NextResponse.json({ error: "E-mail do SAC inválido." }, { status: 400 });
 
       if (paymentType === "recurring") {
@@ -121,7 +132,10 @@ export async function PATCH(request: Request, context: Context) {
       }
     } catch (error) {
       const field = error instanceof Error ? error.message.replace("INVALID:", "") : "dados";
-      return NextResponse.json({ error: `Campo ${field} inválido.` }, { status: 400 });
+      const message = field === "affiliateFunnelBaseUrl"
+        ? "A URL principal de divulgação deve ser http(s) e terminar em ?ref= ou &ref=."
+        : `Campo ${field} inválido.`;
+      return NextResponse.json({ error: message }, { status: 400 });
     }
 
     if (update.status === "active") {

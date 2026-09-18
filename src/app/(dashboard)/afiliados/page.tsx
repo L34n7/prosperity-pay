@@ -8,7 +8,7 @@ export default async function Page(){
  const {user,supabase}=await requireUser();
  const admin=env.supabaseServiceRoleKey?createAdminClient():null;
  const [{data:memberships,error},{data:programs,error:programError}]=await Promise.all([
-  supabase.from("affiliate_memberships").select("id,code,status,affiliate_programs(product_id,products(name,offers(name,checkout_slug,status)))").eq("user_id",user.id),
+  supabase.from("affiliate_memberships").select("id,code,status,affiliate_programs(product_id,products(name,affiliate_funnel_base_url,offers(name,checkout_slug,status)))").eq("user_id",user.id),
   admin?admin.from("affiliate_programs").select("id,mode,marketplace_description,marketplace_tags,landing_page_url,products(id,name,producer_id)").eq("active",true).eq("marketplace_enabled",true).neq("mode","invite").limit(100):Promise.resolve({data:[],error:null}),
  ]);
  if(error)throw error;

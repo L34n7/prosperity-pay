@@ -19,6 +19,7 @@ type Product = {
   description: string | null;
   post_purchase_message: string | null;
   post_purchase_redirect_url: string | null;
+  affiliate_funnel_base_url: string | null;
   image_path: string | null;
   status: string;
   settlement_model: string;

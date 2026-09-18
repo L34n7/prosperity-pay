@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { FormEvent, useState } from "react";
-import { ExternalLink, ImageIcon, LifeBuoy, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
+import { ExternalLink, ImageIcon, LifeBuoy, Link2, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
 import { RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { productImageUrl } from "@/lib/product-images";
 import styles from "./product-settings.module.css";
@@ -13,6 +13,7 @@ type Product = {
   description: string | null;
   post_purchase_message: string | null;
   post_purchase_redirect_url: string | null;
+  affiliate_funnel_base_url: string | null;
   image_path: string | null;
   status: string;
   payment_type: ProductPaymentType;
@@ -60,6 +61,7 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
       description: data.get("description"),
       postPurchaseMessage: data.get("postPurchaseMessage"),
       postPurchaseRedirectUrl: data.get("postPurchaseRedirectUrl"),
+      affiliateFunnelBaseUrl: data.get("affiliateFunnelBaseUrl"),
       status: data.get("status"),
       paymentType,
       productType: data.get("productType"),
@@ -117,6 +119,17 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
           <label className={styles.field}><span>Texto que o cliente verá</span><textarea name="postPurchaseMessage" defaultValue={product.post_purchase_message ?? ""} rows={4} maxLength={4000} placeholder="Ex.: Pagamento aprovado! Você será direcionado para as instruções de acesso."/></label>
           <label className={styles.field}><span>URL de direcionamento</span><input name="postPurchaseRedirectUrl" type="url" defaultValue={product.post_purchase_redirect_url ?? ""} maxLength={2048} placeholder="https://seusite.com/obrigado"/></label>
           <p className={styles.hint}>Quando a URL estiver preenchida, o cliente será direcionado automaticamente após a confirmação e também terá um botão para continuar imediatamente.</p>
+        </div>
+      </section>
+
+      <section className={styles.card}>
+        <div className={styles.cardHeader}><div><span><Link2 size={16}/></span><div><h3>Divulgação por afiliados</h3><p>Defina o início do funil que será usado como link principal pelos afiliados deste produto.</p></div></div></div>
+        <div className={styles.stack}>
+          <label className={styles.field}>
+            <span>URL principal de divulgação para afiliados</span>
+            <input name="affiliateFunnelBaseUrl" type="url" defaultValue={product.affiliate_funnel_base_url ?? ""} maxLength={2048} placeholder="https://seusite.com/comecar?ref="/>
+          </label>
+          <p className={styles.hint}>Informe a URL do início do funil terminando em <strong>?ref=</strong> ou <strong>&amp;ref=</strong>. O Prosperity Pay adicionará automaticamente o código único do afiliado ao final. Ex.: <strong>https://seusite.com/comecar?ref=</strong></p>
         </div>
       </section>
 
