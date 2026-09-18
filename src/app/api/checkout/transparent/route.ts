@@ -34,9 +34,38 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("[transparent-checkout] payment attempt failed", error);
-    if (error instanceof HttpError && error.status >= 500) {
-      return NextResponse.json({ error: "Não foi possível processar o pagamento. Tente novamente." }, { status: error.status });
+
+    if (error instanceof HttpError) {
+      const providerMessage = error.message || "";
+
+      if (providerMessage.includes("CC_VAL_433")) {
+        return NextResponse.json(
+          {
+            error:
+              "O Mercado Pago recusou a validação deste cartão. Confira os dados ou tente outro cartão. Os campos do cartão serão recarregados para uma nova tentativa.",
+          },
+          { status: 422 }
+        );
+      }
+
+      if (providerMessage.toLowerCase().includes("card token was used")) {
+        return NextResponse.json(
+          {
+            error:
+              "Os dados seguros deste cartão já foram utilizados em uma tentativa anterior. Preencha o cartão novamente para gerar um novo token.",
+          },
+          { status: 409 }
+        );
+      }
+
+      if (error.status >= 500) {
+        return NextResponse.json(
+          { error: "Não foi possível processar o pagamento. Tente novamente." },
+          { status: error.status }
+        );
+      }
     }
+
     return jsonError(error);
   }
 }

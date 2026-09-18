@@ -101,6 +101,7 @@ export function CheckoutFlow({
   const [method, setMethod] = useState<PaymentMethod>(defaultMethod);
   const [sdkReady, setSdkReady] = useState(false);
   const [cardReady, setCardReady] = useState(false);
+  const [cardFormVersion, setCardFormVersion] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<CheckoutResult | null>(null);
@@ -154,6 +155,18 @@ export function CheckoutFlow({
     }).catch(() => undefined);
   }
 
+  function resetCardFormForRetry() {
+    newAttempt();
+    setCardReady(false);
+    try {
+      cardFormRef.current?.unmount?.();
+    } catch {
+      // O SDK pode já ter desmontado internamente; seguimos recriando o formulário.
+    }
+    cardFormRef.current = null;
+    setCardFormVersion((value) => value + 1);
+  }
+
   function handleCardSubmitClick() {
     setError("");
     cardSubmitObservedRef.current = false;
@@ -176,6 +189,7 @@ export function CheckoutFlow({
     setBusy(true);
     setError("");
     const idempotencyKey = keyRef.current ?? newAttempt();
+    const cardAttempt = payload.paymentMethod === "card";
     try {
       const response = await fetch("/api/checkout/transparent", {
         method: "POST",
@@ -191,16 +205,23 @@ export function CheckoutFlow({
       });
       const body = await response.json() as CheckoutResult & { error?: string };
       if (!response.ok) {
-        if (response.status === 409) newAttempt();
         throw new Error(body.error || "Não foi possível processar o pagamento.");
       }
       setResult(body);
       if (body.status === "rejected" || body.status === "cancelled") {
-        newAttempt();
-        throw new Error("Pagamento não aprovado. Confira os dados e tente novamente.");
+        throw new Error("Pagamento não aprovado. Confira os dados ou tente outro cartão.");
       }
+      return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao processar o pagamento.");
+      const message = cause instanceof Error ? cause.message : "Falha ao processar o pagamento.";
+      setError(message);
+      if (cardAttempt) {
+        reportCardEvent("card_attempt_reset", message);
+        resetCardFormForRetry();
+      } else {
+        newAttempt();
+      }
+      return false;
     } finally {
       setBusy(false);
     }
@@ -296,7 +317,7 @@ export function CheckoutFlow({
       cardForm.unmount?.();
       cardFormRef.current = null;
     };
-  }, [sdkReady, mercadoPagoPublicKey, offer.paymentCardEnabled, initialPrice]);
+  }, [sdkReady, mercadoPagoPublicKey, offer.paymentCardEnabled, initialPrice, cardFormVersion]);
 
   useEffect(() => {
     if (!result?.orderId || !["pending", "processing"].includes(result.status)) return;

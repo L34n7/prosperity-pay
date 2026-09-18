@@ -11,6 +11,7 @@ const ALLOWED_EVENTS = new Set([
   "card_token_missing",
   "card_token_ready",
   "card_form_data_error",
+  "card_attempt_reset",
 ]);
 
 export async function POST(request: Request) {
