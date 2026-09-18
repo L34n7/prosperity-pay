@@ -62,3 +62,5 @@
 .sectionTitle small { color: var(--text-subtle); font-size: .55rem; }
 @media (max-width: 900px) { .formGrid { grid-template-columns: 1fr 1fr; } .formGrid > button { width: 100%; } .row { grid-template-columns: minmax(0,1fr) minmax(120px,.65fr) auto; } .code { display: none; } }
 @media (max-width: 620px) { .hero { align-items: flex-start; } .hero p, .statusBox > span { display: none; } .modeSelector, .formGrid, .inviteGrid { grid-template-columns: 1fr; max-width:none; } .configFooter { align-items: stretch; flex-direction: column; } .configFooter button { width: 100%; } .row { grid-template-columns: 1fr; align-items: start; } .rowActions { justify-content: flex-start; } .linkBox { align-items: stretch; flex-direction: column; } .linkBox button { width: 100%; } }
+
+.heroActions{display:flex;align-items:center;gap:8px}.statusDot{width:9px;height:9px;border-radius:50%;background:#657067;box-shadow:0 0 0 4px rgba(101,112,103,.08)}.statusDotOn{background:var(--primary);box-shadow:0 0 0 4px rgba(34,230,161,.08)}@media(max-width:620px){.heroActions{align-items:flex-end;flex-direction:column}.heroActions .primary{width:auto}}

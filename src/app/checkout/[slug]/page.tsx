@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-const OFFER_SELECT = "checkout_slug,name,price_cents,first_charge_cents,billing_type,billing_interval,billing_interval_count,max_installments,payment_card_enabled,payment_pix_enabled,products!inner(*)";
+const OFFER_SELECT = "product_id,checkout_slug,name,price_cents,first_charge_cents,billing_type,billing_interval,billing_interval_count,max_installments,payment_card_enabled,payment_pix_enabled,products!inner(*)";
 
 type CheckoutProduct = {
   name: string;
@@ -43,10 +43,15 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!offer) notFound();
 
   const product = offer.products as unknown as CheckoutProduct;
+  const { data: affiliateProgram } = await admin.from("affiliate_programs")
+    .select("id,active,cookie_days,attribution_model")
+    .eq("product_id", offer.product_id)
+    .maybeSingle();
 
   return <CheckoutFlow
     offer={{
       slug: offer.checkout_slug,
+      productId: offer.product_id,
       name: offer.name,
       priceCents: Number(offer.price_cents),
       firstChargeCents: offer.first_charge_cents == null ? null : Number(offer.first_charge_cents),
@@ -60,6 +65,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       imageUrl: productImageUrl(product.image_path),
     }}
     affiliate={ref}
+    affiliateAttribution={affiliateProgram?.active ? {
+      cookieDays: affiliateProgram.cookie_days,
+      attributionModel: affiliateProgram.attribution_model,
+    } : undefined}
     mercadoPagoPublicKey={env.mercadoPagoPublicKey}
     successText={product.post_purchase_message ?? undefined}
     successUrl={product.post_purchase_redirect_url ?? undefined}

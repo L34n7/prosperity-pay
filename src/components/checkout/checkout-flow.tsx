@@ -12,6 +12,7 @@ type PaymentMethod = "card" | "pix";
 
 type Offer = {
   slug: string;
+  productId: string;
   name: string;
   productName: string;
   imageUrl: string | null;
@@ -80,6 +81,7 @@ function onlyDigits(value: string) {
 export function CheckoutFlow({
   offer,
   affiliate,
+  affiliateAttribution,
   mercadoPagoPublicKey,
   successText,
   successUrl,
@@ -87,6 +89,7 @@ export function CheckoutFlow({
 }: {
   offer: Offer;
   affiliate?: string;
+  affiliateAttribution?: { cookieDays: number; attributionModel: "last_click" | "first_click" };
   mercadoPagoPublicKey?: string;
   successText?: string;
   successUrl?: string;
@@ -103,9 +106,27 @@ export function CheckoutFlow({
   const [result, setResult] = useState<CheckoutResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [buyer, setBuyer] = useState({ name: "", email: "", document: "" });
+  const [affiliateRef, setAffiliateRef] = useState(affiliate);
   const buyerRef = useRef(buyer);
   const cardFormRef = useRef<CardFormInstance | null>(null);
   const keyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!affiliateAttribution) {
+      setAffiliateRef(undefined);
+      return;
+    }
+    const cookieName = `pp_aff_${offer.productId.replace(/-/g, "")}`;
+    const encoded = document.cookie.split("; ").find(item => item.startsWith(`${cookieName}=`))?.split("=").slice(1).join("=");
+    const stored = encoded ? decodeURIComponent(encoded) : undefined;
+    let resolved = stored;
+    if (affiliate) {
+      resolved = affiliateAttribution.attributionModel === "first_click" && stored ? stored : affiliate;
+      const secure = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `${cookieName}=${encodeURIComponent(resolved)}; Max-Age=${affiliateAttribution.cookieDays * 86400}; Path=/; SameSite=Lax${secure}`;
+    }
+    setAffiliateRef(resolved);
+  }, [affiliate, affiliateAttribution, offer.productId]);
 
   function updateBuyer(field: keyof typeof buyer, value: string) {
     const next = { ...buyerRef.current, [field]: field === "document" ? onlyDigits(value) : value };
@@ -131,7 +152,7 @@ export function CheckoutFlow({
           customerName: buyerRef.current.name,
           customerEmail: buyerRef.current.email,
           customerDocument: buyerRef.current.document,
-          refCode: affiliate,
+          refCode: affiliateRef,
           ...payload,
         }),
       });

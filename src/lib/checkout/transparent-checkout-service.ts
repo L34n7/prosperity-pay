@@ -208,11 +208,11 @@ async function resolveCustomer(admin: AdminClient, input: TransparentCheckoutInp
 async function resolveAffiliate(admin: AdminClient, refCode: string | undefined, offer: Offer, product: Product) {
   if (!refCode || !offer.affiliate_enabled) return undefined;
   const { data: link } = await admin.from("affiliate_links")
-    .select("id,membership_id,affiliate_memberships!inner(user_id,status,affiliate_programs!inner(product_id,active))")
+    .select("id,membership_id,affiliate_memberships!inner(user_id,status,affiliate_programs!inner(product_id,active,cookie_days))")
     .eq("ref_code", refCode).eq("active", true).maybeSingle();
   const membership = link?.affiliate_memberships;
   if (!link || !membership || Array.isArray(membership) || membership.status !== "active" || membership.affiliate_programs?.product_id !== product.id || !membership.affiliate_programs.active) return undefined;
-  return { linkId: link.id, membershipId: link.membership_id, userId: membership.user_id };
+  return { linkId: link.id, membershipId: link.membership_id, userId: membership.user_id, cookieDays: Number(membership.affiliate_programs.cookie_days ?? 30) };
 }
 
 async function createFinancialSnapshot(admin: AdminClient, orderId: string, offer: Offer, product: Product, affiliateUserId?: string) {
@@ -294,7 +294,7 @@ async function createInternalOrder(admin: AdminClient, input: TransparentCheckou
       affiliate_membership_id: affiliate.membershipId,
       order_id: order.id,
       ref_code: input.refCode!,
-      expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+      expires_at: new Date(Date.now() + affiliate.cookieDays * 86_400_000).toISOString(),
     });
     if (error) throw error;
   }

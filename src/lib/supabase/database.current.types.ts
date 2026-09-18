@@ -40,6 +40,16 @@ type OfferCommercialColumns = {
   affiliate_enabled: boolean;
 };
 
+type AffiliateProgramSettingsColumns = {
+  attribution_model: "last_click" | "first_click";
+  customer_data_access: boolean;
+  marketplace_enabled: boolean;
+  support_email: string | null;
+  landing_page_url: string | null;
+  marketplace_description: string | null;
+  marketplace_tags: string[];
+};
+
 type SubscriptionTransparentColumns = {
   payment_profile_id: string | null;
 };
@@ -133,9 +143,10 @@ type GeneratedFunctions = PublicSchema["Functions"];
  */
 export type Database = Omit<GeneratedDatabase, "public"> & {
   public: Omit<PublicSchema, "Tables" | "Functions"> & {
-    Tables: Omit<GeneratedTables, "products" | "offers" | "subscriptions"> & {
+    Tables: Omit<GeneratedTables, "products" | "offers" | "subscriptions" | "affiliate_programs"> & {
       products: ExtendTable<GeneratedTables["products"], ProductCommercialColumns>;
       offers: ExtendTable<GeneratedTables["offers"], OfferCommercialColumns>;
+      affiliate_programs: ExtendTable<GeneratedTables["affiliate_programs"], AffiliateProgramSettingsColumns>;
       subscriptions: ExtendTable<GeneratedTables["subscriptions"], SubscriptionTransparentColumns>;
       integration_webhook_routes: IntegrationWebhookRouteTable;
       integration_webhook_deliveries: IntegrationWebhookDeliveryTable;
