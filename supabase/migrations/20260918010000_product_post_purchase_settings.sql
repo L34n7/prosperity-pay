@@ -20,5 +20,5 @@ grant update (post_purchase_message, post_purchase_redirect_url)
 -- removing the need for checkout-specific hardcoded routing.
 update public.products
 set post_purchase_redirect_url = 'https://crmprosperity.com/obrigado'
-where lower(trim(name)) = 'crm prosperity'
+where lower(trim(name)) like 'crm prosperity%'
   and post_purchase_redirect_url is null;
