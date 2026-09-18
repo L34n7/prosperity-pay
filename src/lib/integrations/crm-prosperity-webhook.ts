@@ -72,7 +72,7 @@ async function getOrCreateDelivery(input: {
   payload: Json;
 }) {
   const { admin, paymentId, eventType, payload } = input;
-  const inserted = await admin
+  const inserted = await (admin as any)
     .from("integration_webhook_deliveries")
     .insert({
       integration: "crm_prosperity",
@@ -89,7 +89,7 @@ async function getOrCreateDelivery(input: {
   if (!inserted.error && inserted.data) return inserted.data as DeliveryRecord;
   if (inserted.error?.code !== "23505") throw inserted.error;
 
-  const existing = await admin
+  const existing = await (admin as any)
     .from("integration_webhook_deliveries")
     .select("id,event_id,status,attempts")
     .eq("integration", "crm_prosperity")
@@ -195,7 +195,7 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha de rede ao enviar webhook.";
-    await input.admin.from("integration_webhook_deliveries").update({
+    await (input.admin as any).from("integration_webhook_deliveries").update({
       status: "failed",
       attempts: delivery.attempts + 1,
       last_error: message.slice(0, 1000),
@@ -205,7 +205,7 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
   }
 
   const responseText = (await response.text()).slice(0, 2000);
-  const update = await input.admin.from("integration_webhook_deliveries").update({
+  const update = await (input.admin as any).from("integration_webhook_deliveries").update({
     status: response.ok ? "delivered" : "failed",
     attempts: delivery.attempts + 1,
     response_status: response.status,
