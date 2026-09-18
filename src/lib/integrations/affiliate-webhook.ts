@@ -58,7 +58,7 @@ export async function dispatchAffiliateMembershipWebhooks(admin: AdminClient, me
   }
 
   const eventType = eventTypeFor(String(membership.status));
-  const subjectId = `${membership.id}:${membership.updated_at}`;
+  const subjectId = `${membership.id}:${membership.status}:${membership.approved_at || membership.updated_at || membership.created_at}`;
   const occurredAt = new Date().toISOString();
   const results: Array<{ integration: string; sent: boolean }> = [];
 

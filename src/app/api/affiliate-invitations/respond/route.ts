@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     }
 
     if (action === "reject") {
-      const { error: rejectError } = await admin.from("affiliate_memberships").update({ status: "rejected" }).eq("id", membership.id);
+      const { error: rejectError } = await admin.from("affiliate_memberships").update({ status: "rejected", updated_at: new Date().toISOString() }).eq("id", membership.id);
       if (rejectError) throw rejectError;
       await dispatchAffiliateMembershipWebhooksSafe(admin, membership.id);
       return NextResponse.json({ accepted: false });
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
       status: "active",
       approved_by: membership.invited_by,
       approved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }).eq("id", membership.id).select("id, code, status").single();
     if (updateError) throw updateError;
 

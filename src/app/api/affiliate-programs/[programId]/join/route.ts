@@ -23,7 +23,7 @@ export async function POST(_:Request,context:Context){
 
     const status=program.mode==="public"?"active":"pending";const code=existing?.code||createCode(user.email);
     const result=existing
-      ? await admin.from("affiliate_memberships").update({code,status,approved_at:status==="active"?new Date().toISOString():null,approved_by:null}).eq("id",existing.id).select().single()
+      ? await admin.from("affiliate_memberships").update({code,status,approved_at:status==="active"?new Date().toISOString():null,approved_by:null,updated_at:new Date().toISOString()}).eq("id",existing.id).select().single()
       : await admin.from("affiliate_memberships").insert({program_id:programId,user_id:user.id,code,status,approved_at:status==="active"?new Date().toISOString():null}).select().single();
     if(result.error||!result.data)throw result.error??new Error("Falha ao criar afiliação.");
 

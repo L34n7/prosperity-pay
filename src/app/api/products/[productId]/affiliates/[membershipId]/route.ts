@@ -26,6 +26,7 @@ export async function PATCH(request: Request, context: Context) {
       status,
       approved_by: status === "active" ? user.id : null,
       approved_at: status === "active" ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
     }).eq("id", membershipId).select().single();
     if (error || !membership) throw error ?? new Error("Falha ao atualizar afiliado.");
     if (status === "active") {

@@ -69,6 +69,7 @@ export async function POST(request: Request, context: Context) {
         invited_by: user.id,
         approved_by: null,
         approved_at: null,
+        updated_at: new Date().toISOString(),
       }).eq("id", existing.id).select("id, code, status").single();
       if (error) throw error;
       membership = data;
