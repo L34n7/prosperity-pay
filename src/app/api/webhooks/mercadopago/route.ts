@@ -393,14 +393,40 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   let payload: Payload;
   try { payload = JSON.parse(rawBody) as Payload; } catch { return NextResponse.json({ error: "JSON invalido." }, { status: 400 }); }
-  const dataId = String(payload.data?.id ?? new URL(request.url).searchParams.get("data.id") ?? "");
+  const requestUrl = new URL(request.url);
+  const queryDataId =
+    requestUrl.searchParams.get("data.id")
+    ?? requestUrl.searchParams.get("data_id")
+    ?? "";
+  const dataId = String(payload.data?.id ?? queryDataId ?? "");
   const supported = new Set(["payment", "order", "orders", "subscription_preapproval", "subscription_authorized_payment"]);
   if (!payload.type || !supported.has(payload.type) || !dataId) return NextResponse.json({ received: true, ignored: true });
 
   const signature = request.headers.get("x-signature") ?? "";
   const requestId = request.headers.get("x-request-id") ?? "";
   const secret = requireEnv(env.mercadoPagoWebhookSecret, "MERCADO_PAGO_WEBHOOK_SECRET");
-  if (!verifyMercadoPagoSignature({ signature, requestId, dataId, secret })) {
+  const signatureDataIds = Array.from(new Set([
+    queryDataId,
+    dataId,
+  ].map((value) => String(value || "").trim()).filter(Boolean)));
+  const signatureValid = signatureDataIds.some((candidateDataId) =>
+    verifyMercadoPagoSignature({
+      signature,
+      requestId,
+      dataId: candidateDataId,
+      secret,
+    })
+  );
+
+  if (!signatureValid) {
+    console.warn("[MERCADO PAGO WEBHOOK] Assinatura inválida.", {
+      type: payload.type ?? null,
+      action: payload.action ?? null,
+      hasSignature: Boolean(signature),
+      hasRequestId: Boolean(requestId),
+      queryDataId: queryDataId || null,
+      payloadDataId: dataId || null,
+    });
     return NextResponse.json({ error: "Assinatura invalida." }, { status: 401 });
   }
 
