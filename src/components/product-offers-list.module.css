@@ -10,7 +10,7 @@
 .list { display: grid; gap: 12px; }
 .offerRow { display: grid; grid-template-columns: minmax(280px,.9fr) minmax(620px,2.5fr) auto; min-height: 142px; align-items: center; gap: 22px; padding: 20px 20px; border: 1px solid rgba(92,133,111,.18); border-radius: 17px; background: linear-gradient(145deg, rgba(14,25,19,.92), rgba(8,15,11,.94)); box-shadow: 0 16px 38px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.02); transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
 .offerRow:hover { transform: translateY(-1px); border-color: rgba(34,230,161,.24); box-shadow: 0 20px 44px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.025); }
-.offerMain { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; }
+.offerMain { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .offerIdentity { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .iconBox { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(34,230,161,.14); border-radius: 10px; background: rgba(34,230,161,.07); color: var(--primary); }
 .offerIdentity > div:last-child { min-width: 0; }
@@ -20,9 +20,9 @@
 .activeBadge, .mutedBadge { flex: 0 0 auto; padding: 4px 7px; border-radius: 999px; font-size: .58rem !important; font-weight: 760; letter-spacing: 0 !important; text-transform: none !important; }
 .activeBadge { border: 1px solid rgba(34,230,161,.2); background: rgba(34,230,161,.08); color: #79f4c8 !important; }
 .mutedBadge { border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.025); color: var(--text-subtle) !important; }
-.priceBlock { display: flex; flex: 0 0 auto; align-items: flex-end; flex-direction: column; gap: 2px; padding-left: 10px; border-left: 1px solid rgba(92,133,111,.12); }
+.priceBlock { display: flex; align-items: flex-start; flex-direction: column; gap: 2px; margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(92,133,111,.12); }
 .priceBlock small { color: var(--text-subtle); font-size: .56rem; }
-.priceBlock strong { color: #e8fff6; font-size: .82rem; font-weight: 740; white-space: nowrap; }
+.priceBlock strong { color: #e8fff6; font-size: .9rem; font-weight: 760; white-space: nowrap; }
 .priceBlock span { color: var(--text-subtle); font-size: .55rem; letter-spacing: 0; text-transform: none; white-space: nowrap; }
 .offerDetails { display: grid; grid-template-columns: minmax(340px,.9fr) minmax(420px,1.25fr); gap: 16px; min-width: 0; align-items: center; }
 .metrics { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; min-width: 0; }
@@ -39,8 +39,8 @@
 .checkoutField svg { flex: 0 0 auto; color: var(--text-subtle); }
 .referenceField button, .checkoutField button, .checkoutField a { display: grid; width: 26px; height: 26px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); cursor: pointer; }
 .referenceField button:hover, .checkoutField button:hover, .checkoutField a:hover { background: rgba(34,230,161,.08); color: var(--primary); }
-.actions { display: flex; align-items: center; gap: 6px; }
-.actions button { display: inline-flex; min-height: 34px; align-items: center; gap: 6px; padding: 0 10px; border-radius: 9px; cursor: pointer; font-size: .66rem; font-weight: 680; }
+.actions { display: grid; grid-template-columns: 1fr; gap: 9px; min-width: 126px; }
+.actions button { display: inline-flex; width: 100%; min-height: 42px; align-items: center; justify-content: center; gap: 7px; padding: 0 14px; border-radius: 10px; cursor: pointer; font-size: .7rem; font-weight: 720; }
 .editButton { border: 1px solid rgba(34,230,161,.16); background: rgba(34,230,161,.055); color: #ccecdf; }
 .deleteButton { border: 1px solid rgba(224,90,90,.13); background: rgba(224,90,90,.035); color: #c99; }
 .empty { display: flex; align-items: center; gap: 14px; padding: 22px; border: 1px dashed rgba(92,133,111,.22); border-radius: 15px; color: var(--text-muted); }
@@ -70,9 +70,9 @@
   .referenceField, .checkoutField { grid-template-columns: 1fr; gap: 5px; }
   .offerRow { padding: 14px; }
   .offerMain { align-items: flex-start; flex-direction: column; }
-  .priceBlock { width: 100%; align-items: flex-start; padding: 8px 0 0; border-top: 1px solid rgba(92,133,111,.12); border-left: 0; }
+  .priceBlock { width: 100%; align-items: flex-start; margin-top: 8px; padding: 8px 0 0; border-top: 1px solid rgba(92,133,111,.12); }
   .titleLine { align-items: flex-start; flex-direction: column; gap: 5px; }
-  .actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; min-width: 0; }
   .actions button { justify-content: center; }
   .empty { align-items: flex-start; flex-wrap: wrap; }
   .empty button { width: 100%; }

@@ -55,7 +55,7 @@ type Offer = {
   first_charge_cents: number | null;
 };
 
-const tabs = ["Visão geral", "Ofertas", "Afiliados", "Coprodutores", "Pagamentos", "Configurações"];
+const tabs = ["Visão geral", "Ofertas", "Afiliados", "Co-Produtores", "Pagamentos", "Configurações"];
 
 export function ProductDetail({ id }: { id: string }) {
   const router = useRouter();
@@ -165,7 +165,7 @@ export function ProductDetail({ id }: { id: string }) {
       {tab === "Configurações" && <ProductSettings key={product.updated_at} product={product} busy={busy} onSave={body => mutate(`/api/products/${id}`, "PATCH", body)} onChangeImage={changeImage} onRemoveImage={removeImage}/>} 
       {tab === "Ofertas" && <ProductOffersList paymentType={product.payment_type} offers={offers} onNew={() => setEditingOffer(null)} onEdit={setEditingOffer} onDelete={setDeletingOffer}/>} 
       {tab === "Afiliados" && <ProductAffiliateManagement id={id}/>} 
-      {tab === "Coprodutores" && <ProductCoproducerManagement id={id} offers={offers.map(offer => ({ id: offer.id, name: offer.name }))}/>} 
+      {tab === "Co-Produtores" && <ProductCoproducerManagement id={id} offers={offers.map(offer => ({ id: offer.id, name: offer.name }))}/>} 
       {tab === "Pagamentos" && <ProductPaymentsManagement id={id}/>} 
     </section>}
     {product && editingOffer !== undefined && <ProductOfferDialog product={product} offer={editingOffer} busy={busy} onClose={() => setEditingOffer(undefined)} onSave={saveOffer}/>} 

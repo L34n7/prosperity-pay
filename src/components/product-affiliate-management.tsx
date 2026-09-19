@@ -65,9 +65,11 @@ export function ProductAffiliateManagement({id}:{id:string}) {
     <section className={styles.hero}>
       <div className={styles.heroTitle}><div className={styles.heroIcon}><UsersRound size={19}/></div><div><small>Parcerias</small><h2>Programa de afiliados</h2><p>Configure as regras comerciais antes de liberar afiliados para este produto.</p></div></div>
       <div className={styles.heroActions}>
+        <div className={styles.heroButtonGroup}>
+          <button type="button" className={styles.primary} onClick={()=>setSettingsOpen(true)}><Settings2 size={15}/>{program?"Configurar afiliação":"Configurar e habilitar"}</button>
+          {program?.mode==="invite"&&<button type="button" className={styles.secondary} onClick={()=>setInviteOpen(true)}><UserPlus size={15}/>Convidar</button>}
+        </div>
         <div className={styles.statusBox}><span><strong>{program?.active?"Programa ativo":"Programa pausado"}</strong><small>{activeCount} ativos · {pendingCount} pendentes</small></span><i className={`${styles.statusDot} ${program?.active?styles.statusDotOn:""}`}/></div>
-        <button type="button" className={styles.primary} onClick={()=>setSettingsOpen(true)}><Settings2 size={15}/>{program?"Configurar afiliação":"Configurar e habilitar"}</button>
-        {program?.mode==="invite"&&<button type="button" className={styles.secondary} onClick={()=>setInviteOpen(true)}><UserPlus size={15}/>Convidar</button>}
       </div>
     </section>
 

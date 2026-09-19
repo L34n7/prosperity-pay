@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   BadgePercent,
   Check,
@@ -175,6 +175,7 @@ export function ProductCoproducerManagement({ id, offers }: { id: string; offers
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [invitations, setInvitations] = useState<CoproducerInvitation[]>([]);
   const [participants, setParticipants] = useState<CoproducerParticipant[]>([]);
 
@@ -206,23 +207,15 @@ export function ProductCoproducerManagement({ id, offers }: { id: string; offers
 
   return <div className={styles.shell}>
     <section className={styles.hero}>
-      <div className={styles.heroTitle}><div className={styles.heroIcon}><Handshake size={19}/></div><div><small>Parcerias</small><h2>Coprodutores</h2><p>Divida a participação financeira do produto ou de uma oferta específica com parceiros.</p></div></div>
-      <div className={styles.statusBox}><span><strong>{activeParticipants.length} coprodutor{activeParticipants.length === 1 ? "" : "es"}</strong><small>{invitations.filter(item => item.status === "pending").length} convite(s) pendente(s)</small></span><BadgePercent size={18}/></div>
+      <div className={styles.heroTitle}><div className={styles.heroIcon}><Handshake size={19}/></div><div><small>Parcerias</small><h2>Co-Produtores</h2><p>Divida a participação financeira do produto ou de uma oferta específica com parceiros.</p></div></div>
+      <div className={styles.heroActions}>
+        <button type="button" className={styles.primary} onClick={()=>setInviteOpen(true)}><UserPlus size={15}/>Convidar Co-Produtor</button>
+        <div className={styles.statusBox}><span><strong>{activeParticipants.length} co-produtor{activeParticipants.length === 1 ? "" : "es"}</strong><small>{invitations.filter(item => item.status === "pending").length} convite(s) pendente(s)</small></span><BadgePercent size={18}/></div>
+      </div>
     </section>
 
     {error && <p className={styles.error} role="alert">{error}</p>}
     {message && <p className={styles.success} role="status">{message}</p>}
-
-    <section className={styles.card}>
-      <div className={styles.cardHeader}><div><span><UserPlus size={16}/></span><div><h3>Novo convite</h3><p>Defina quem participa, qual percentual recebe e onde a participação se aplica.</p></div></div></div>
-      <form className={styles.formGrid} onSubmit={invite}>
-        <label className={styles.field}>E-mail<input name="email" type="email" placeholder="parceiro@exemplo.com" required/></label>
-        <label className={styles.field}>Participação (%)<input name="share" type="number" min="0.01" max="100" step="0.01" placeholder="10" required/></label>
-        <label className={styles.field}>Aplicação<select name="offerId"><option value="">Produto inteiro</option>{offers.map(offer => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label>
-        <button className={styles.primary} disabled={busy}>{busy ? "Criando..." : "Criar convite"}</button>
-      </form>
-      {link && <div className={styles.linkBox}><Link2 size={15}/><code>{link}</code><button type="button" className={styles.secondary} onClick={async () => { await copy(link); setCopied(true); setTimeout(() => setCopied(false), 1200); }}>{copied ? <Check size={14}/> : <Copy size={14}/>}Copiar</button></div>}
-    </section>
 
     <section className={styles.card}>
       <div className={styles.sectionTitle}><h3>Coprodutores ativos</h3><small>{activeParticipants.length}</small></div>
@@ -243,5 +236,25 @@ export function ProductCoproducerManagement({ id, offers }: { id: string; offers
         <div className={styles.rowActions}/>
       </div>)}</div> : <div className={styles.empty}>Nenhum convite de coprodução enviado ainda.</div>}
     </section>
+    {inviteOpen&&<CoproducerInviteDialog offers={offers} busy={busy} link={link} copied={copied} error={error} message={message} onInvite={invite} onCopy={async()=>{await copy(link);setCopied(true);setTimeout(()=>setCopied(false),1200);}} onClose={()=>setInviteOpen(false)}/>}
   </div>;
+}
+
+function CoproducerInviteDialog({offers,busy,link,copied,error,message,onInvite,onCopy,onClose}:{offers:OfferOption[];busy:boolean;link:string;copied:boolean;error:string;message:string;onInvite:(event:FormEvent<HTMLFormElement>)=>Promise<void>;onCopy:()=>Promise<void>;onClose:()=>void}) {
+  const ref=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{ref.current?.showModal();},[]);
+  return <dialog ref={ref} className={styles.inviteDialog} onClose={onClose} onCancel={event=>{if(busy)event.preventDefault();}}>
+    <header className={styles.inviteModalHeader}><div><span><UserPlus size={17}/></span><div><h3>Convidar Co-Produtor</h3><p>Defina o parceiro, a participação e onde ela será aplicada.</p></div></div><button type="button" className={styles.secondary} disabled={busy} onClick={()=>ref.current?.close()}>Fechar</button></header>
+    <div className={styles.inviteModalBody}>
+      <form className={styles.formGrid} onSubmit={event=>void onInvite(event)}>
+        <label className={styles.field}>E-mail<input name="email" type="email" placeholder="parceiro@exemplo.com" required autoFocus/></label>
+        <label className={styles.field}>Participação (%)<input name="share" type="number" min="0.01" max="100" step="0.01" placeholder="10" required/></label>
+        <label className={styles.field}>Aplicação<select name="offerId"><option value="">Produto inteiro</option>{offers.map(offer=><option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label>
+        <button className={styles.primary} disabled={busy}>{busy?"Criando...":"Criar convite"}</button>
+      </form>
+      {error&&<p className={styles.error} role="alert">{error}</p>}
+      {message&&<p className={styles.success} role="status">{message}</p>}
+      {link&&<div className={styles.linkBox}><Link2 size={15}/><code>{link}</code><button type="button" className={styles.secondary} onClick={()=>void onCopy()}>{copied?<Check size={14}/>:<Copy size={14}/>}Copiar</button></div>}
+    </div>
+  </dialog>;
 }

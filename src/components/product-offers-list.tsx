@@ -104,12 +104,12 @@ export function ProductOffersList({ paymentType, offers, onNew, onEdit, onDelete
                   <span className={active ? styles.activeBadge : styles.mutedBadge}>{statusLabel(offer.status)}</span>
                 </div>
                 <p>{offer.billing_type === "recurring" ? "Oferta recorrente" : "Pagamento único"}</p>
+                <div className={styles.priceBlock}>
+                  <small>Preço</small>
+                  <strong>{formatCents(offer.price_cents)}</strong>
+                  {offer.first_charge_cents != null && <span>1ª cobrança {formatCents(offer.first_charge_cents)}</span>}
+                </div>
               </div>
-            </div>
-            <div className={styles.priceBlock}>
-              <small>Preço</small>
-              <strong>{formatCents(offer.price_cents)}</strong>
-              {offer.first_charge_cents != null && <span>1ª cobrança {formatCents(offer.first_charge_cents)}</span>}
             </div>
           </div>
 
