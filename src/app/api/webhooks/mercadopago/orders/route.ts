@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchMercadoPagoOrder, syncTransparentOrder } from "@/lib/checkout/transparent-checkout-service";
 import { env, requireEnv } from "@/lib/env";
-import { deliverCrmProsperityWebhookForOrder } from "@/lib/integrations/crm-prosperity-order-delivery";
 import { verifyMercadoPagoSignature } from "@/lib/payments/providers/mercadopago/webhook-signature";
 import { sha256 } from "@/lib/security/hash";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -95,7 +94,6 @@ export async function POST(request: Request) {
       mpOrder,
       eventId: event.id,
     });
-    await deliverCrmProsperityWebhookForOrder(admin, checkout.order_id);
     await admin.from("webhook_events").update({
       status: "processed",
       processed_at: new Date().toISOString(),

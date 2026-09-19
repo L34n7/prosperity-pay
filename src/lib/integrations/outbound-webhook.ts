@@ -1,7 +1,6 @@
 import { createHmac } from "crypto";
 import { decryptSecret } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCrmProsperityRuntimeConfig, CRM_PROSPERITY_INTEGRATION_KEY } from "@/lib/integrations/crm-prosperity-config";
 import type { Json } from "@/lib/supabase/database.types";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -29,6 +28,14 @@ function deliveryTable(admin: AdminClient) {
   return (admin as any).from("integration_webhook_deliveries");
 }
 
+function integrationEnvPrefix(integrationKey: string) {
+  return integrationKey
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 async function getIntegrationRuntime(admin: AdminClient, integrationKey: string): Promise<IntegrationRuntime> {
   const { data, error } = await integrationTable(admin)
     .select("integration_key,webhook_url,secret_encrypted,status")
@@ -37,7 +44,10 @@ async function getIntegrationRuntime(admin: AdminClient, integrationKey: string)
   if (error) throw error;
 
   if (data) {
-    if (data.status !== "active") return { configured: true, active: false, status: data.status };
+    if (data.status !== "active") {
+      return { configured: true, active: false, status: data.status };
+    }
+
     return {
       configured: true,
       active: true,
@@ -47,14 +57,21 @@ async function getIntegrationRuntime(admin: AdminClient, integrationKey: string)
     };
   }
 
-  if (integrationKey === CRM_PROSPERITY_INTEGRATION_KEY) {
-    const legacy = await getCrmProsperityRuntimeConfig(admin);
+  // Compatibilidade genérica com integrações configuradas por ambiente.
+  // Ex.: integrationKey "crm_prosperity" resolve automaticamente
+  // CRM_PROSPERITY_WEBHOOK_URL e CRM_PROSPERITY_WEBHOOK_SECRET, sem
+  // conhecimento específico do sistema dentro do motor de webhooks.
+  const prefix = integrationEnvPrefix(integrationKey);
+  const webhookUrl = process.env[`${prefix}_WEBHOOK_URL`];
+  const secret = process.env[`${prefix}_WEBHOOK_SECRET`];
+
+  if (webhookUrl && secret) {
     return {
-      configured: legacy.configured,
-      active: legacy.active,
-      webhookUrl: legacy.webhookUrl,
-      secret: legacy.secret,
-      status: legacy.status,
+      configured: true,
+      active: true,
+      status: "active",
+      webhookUrl,
+      secret,
     };
   }
 

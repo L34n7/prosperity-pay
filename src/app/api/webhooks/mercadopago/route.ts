@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { env, requireEnv } from "@/lib/env";
 import { fetchMercadoPagoOrder, syncTransparentOrder } from "@/lib/checkout/transparent-checkout-service";
-import { deliverCrmProsperityWebhookForOrder } from "@/lib/integrations/crm-prosperity-order-delivery";
-import { deliverCrmProsperityPaymentWebhook } from "@/lib/integrations/crm-prosperity-webhook";
+import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
 import { getPaymentProvider, type ProviderPayment } from "@/lib/payments";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { verifyMercadoPagoSignature } from "@/lib/payments/providers/mercadopago/webhook-signature";
@@ -138,11 +137,7 @@ async function applyPaymentState(input: {
     for (const update of updates) if (update.error) throw update.error;
   }
 
-  await deliverCrmProsperityPaymentWebhook({
-    admin,
-    paymentId: storedPayment.id,
-    paymentStatus: payment.status,
-  });
+  await dispatchPaymentIntegrationEventsSafe(admin, storedPayment.id);
 
   return { storedPayment, becameApproved };
 }
@@ -178,7 +173,6 @@ async function processOrderEvent(input: {
     mpOrder,
     eventId,
   });
-  await deliverCrmProsperityWebhookForOrder(admin, checkout.order_id);
 }
 
 async function processPaymentEvent(input: {

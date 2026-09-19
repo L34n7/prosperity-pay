@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { asObject, HttpError, jsonError, optionalString, requiredInteger, requiredString } from "@/lib/api/http";
 import { createTransparentCheckout } from "@/lib/checkout/transparent-checkout-service";
-import { deliverCrmProsperityWebhookForOrder } from "@/lib/integrations/crm-prosperity-order-delivery";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
@@ -34,18 +32,6 @@ export async function POST(request: Request) {
       paymentMethod,
       card,
     });
-
-    // O retorno do próprio Mercado Pago já pode trazer o pagamento como
-    // aprovado antes do webhook assíncrono. Entregamos o estado final ao CRM
-    // imediatamente e mantemos o webhook/polling como redundância idempotente,
-    // sem depender de uma segunda notificação para liberar o acesso do cliente.
-    if (["approved", "rejected", "cancelled", "refunded"].includes(result.status)) {
-      await deliverCrmProsperityWebhookForOrder(
-        createAdminClient(),
-        result.orderId,
-      );
-    }
-
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     console.error("[transparent-checkout] payment attempt failed", error);
