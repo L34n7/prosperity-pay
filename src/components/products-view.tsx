@@ -124,7 +124,7 @@ export function ProductsView() {
       const payload = {
         name: data.get("name"),
         description: data.get("description"),
-        settlementModel: data.get("settlementModel"),
+        settlementModel: "prosperity_balance",
         paymentType: "one_time",
         productType: data.get("productType"),
         category: data.get("category"),
@@ -280,15 +280,14 @@ export function ProductsView() {
       <div className="product-dialog-heading"><div><h2 id="product-dialog-title">Novo produto</h2><p>Defina os dados comerciais, suporte e cobrança do produto.</p></div>
         <button type="button" className="secondary-button" aria-label="Fechar" disabled={busy} onClick={closeDialog}>Fechar</button></div>
       <form className="operational-form" onSubmit={create}>
+        <label>Nome<input name="name" minLength={2} maxLength={180} required autoFocus/></label>
+        <label>Descrição interna<textarea name="description" rows={3} maxLength={4000}/><small className="form-hint">(Essa descrição não é exibida para os clientes)</small></label>
         <div className="form-grid">
-          <label>Nome<input name="name" minLength={2} maxLength={180} required autoFocus/></label>
           <label>Tipo de produto<select name="productType" defaultValue="digital"><option value="digital">Digital</option><option value="physical">Físico</option></select></label>
           <label>Tipo de pagamento<select name="paymentType" value="one_time" disabled><option value="one_time">Pagamento único</option></select></label>
           <label>Categoria<select name="category" defaultValue=""><option value="">Selecione</option>{PRODUCT_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
-          <label>Modelo de recebimento<select name="settlementModel"><option value="connected_account">Receber diretamente no Mercado Pago</option><option value="prosperity_balance">Receber como saldo no Prosperity Pay</option></select></label>
-          <label>Preço da oferta principal (R$)<input name="mainOfferPrice" type="number" min="0.01" step="0.01" required/></label>
+          <label>Preço padrão do produto<input name="mainOfferPrice" type="number" min="0.01" step="0.01" required/></label>
         </div>
-        <label>Descrição interna<textarea name="description" rows={3} maxLength={4000}/><small className="form-hint">(Essa descrição não é exibida para os clientes)</small></label>
         <div className="form-grid">
           <label>Nome de exibição do SAC<input name="supportDisplayName" maxLength={180}/></label>
           <label>E-mail do SAC<input name="supportEmail" type="email" maxLength={320}/></label>

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, Link2, MailPlus, Settings2, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
 import { ProductAffiliateSettingsDialog, type AffiliateOfferSettings, type AffiliateProductSettings, type AffiliateProgramSettings } from "@/components/product-affiliate-settings-dialog";
 import { requestJson } from "@/lib/operational";
@@ -20,6 +20,7 @@ export function ProductAffiliateManagement({id}:{id:string}) {
   const [product,setProduct]=useState<AffiliateProductSettings|null>(null);
   const [members,setMembers]=useState<AffiliateMember[]>([]);
   const [settingsOpen,setSettingsOpen]=useState(false);
+  const [inviteOpen,setInviteOpen]=useState(false);
   const [error,setError]=useState("");
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
@@ -66,6 +67,7 @@ export function ProductAffiliateManagement({id}:{id:string}) {
       <div className={styles.heroActions}>
         <div className={styles.statusBox}><span><strong>{program?.active?"Programa ativo":"Programa pausado"}</strong><small>{activeCount} ativos · {pendingCount} pendentes</small></span><i className={`${styles.statusDot} ${program?.active?styles.statusDotOn:""}`}/></div>
         <button type="button" className={styles.primary} onClick={()=>setSettingsOpen(true)}><Settings2 size={15}/>{program?"Configurar afiliação":"Configurar e habilitar"}</button>
+        {program?.mode==="invite"&&<button type="button" className={styles.secondary} onClick={()=>setInviteOpen(true)}><UserPlus size={15}/>Convidar</button>}
       </div>
     </section>
 
@@ -76,16 +78,6 @@ export function ProductAffiliateManagement({id}:{id:string}) {
       <div className={styles.cardHeader}><div><span><Link2 size={16}/></span><div><h3>Link para novos afiliados</h3><p>Compartilhe este endereço para inscrição no programa.</p></div></div></div>
       <div className={styles.linkBox}><Link2 size={15}/><code>{programUrl}</code><button type="button" className={styles.secondary} onClick={()=>void copy(programUrl)}><Copy size={14}/>Copiar</button></div>
       {program.mode==="approval"&&<p className={styles.notice}>As solicitações recebidas por este link ficarão pendentes até sua aprovação.</p>}
-    </section>}
-
-    {program?.mode==="invite"&&<section className={styles.card}>
-      <div className={styles.cardHeader}><div><span><MailPlus size={16}/></span><div><h3>Convidar afiliado</h3><p>Informe o e-mail da conta Prosperity Pay que receberá o convite.</p></div></div></div>
-      <form className={styles.inviteGrid} onSubmit={invite}>
-        <label className={styles.field}>E-mail do afiliado<input name="email" type="email" placeholder="afiliado@exemplo.com" required/></label>
-        <button className={styles.primary} disabled={busy||!persistedInvite}><UserPlus size={15}/>{busy?"Criando...":"Criar convite"}</button>
-      </form>
-      {!program.active&&<p className={styles.notice}>Ative o programa nas configurações para enviar convites.</p>}
-      {inviteUrl&&<div className={styles.linkBox}><Link2 size={15}/><code>{inviteUrl}</code><button type="button" className={styles.secondary} onClick={()=>void copy(inviteUrl)}><Copy size={14}/>Copiar</button></div>}
     </section>}
 
     <section className={styles.card}>
@@ -104,5 +96,24 @@ export function ProductAffiliateManagement({id}:{id:string}) {
     {settingsOpen&&<ProductAffiliateSettingsDialog productId={id} program={program} offers={offers} product={product}
       onClose={()=>setSettingsOpen(false)}
       onSaved={(nextProgram,nextOffers)=>{setProgram(nextProgram);setOffers(nextOffers);setSettingsOpen(false);setMessage(nextProgram.active?"Programa de afiliados configurado e ativo.":"Configurações salvas. O programa permanece pausado.");}}/>}
+    {inviteOpen&&<AffiliateInviteDialog busy={busy} enabled={persistedInvite} inviteUrl={inviteUrl} error={error} message={message} onInvite={invite} onClose={()=>setInviteOpen(false)}/>}
   </div>;
+}
+
+function AffiliateInviteDialog({busy,enabled,inviteUrl,error,message,onInvite,onClose}:{busy:boolean;enabled:boolean;inviteUrl:string;error:string;message:string;onInvite:(event:FormEvent<HTMLFormElement>)=>Promise<void>;onClose:()=>void}) {
+  const ref=useRef<HTMLDialogElement>(null);
+  useEffect(()=>{ref.current?.showModal();},[]);
+  return <dialog ref={ref} className={styles.inviteDialog} onClose={onClose} onCancel={event=>{if(busy)event.preventDefault();}}>
+    <header className={styles.inviteModalHeader}><div><span><MailPlus size={17}/></span><div><h3>Convidar afiliado</h3><p>Informe o e-mail da conta Prosperity Pay que receberá o convite.</p></div></div><button type="button" className={styles.secondary} disabled={busy} onClick={()=>ref.current?.close()}>Fechar</button></header>
+    <div className={styles.inviteModalBody}>
+      <form className={styles.inviteGrid} onSubmit={event=>void onInvite(event)}>
+        <label className={styles.field}>E-mail do afiliado<input name="email" type="email" placeholder="afiliado@exemplo.com" required autoFocus/></label>
+        <button className={styles.primary} disabled={busy||!enabled}><UserPlus size={15}/>{busy?"Criando...":"Criar convite"}</button>
+      </form>
+      {!enabled&&<p className={styles.notice}>Ative o programa e selecione o modo Somente convite nas configurações para enviar convites.</p>}
+      {error&&<p className={styles.error} role="alert">{error}</p>}
+      {message&&<p className={styles.success} role="status">{message}</p>}
+      {inviteUrl&&<div className={styles.linkBox}><Link2 size={15}/><code>{inviteUrl}</code><button type="button" className={styles.secondary} onClick={()=>void copy(inviteUrl)}><Copy size={14}/>Copiar</button></div>}
+    </div>
+  </dialog>;
 }

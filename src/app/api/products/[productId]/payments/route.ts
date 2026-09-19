@@ -1,47 +1,10 @@
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
+import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ productId: string }> };
-
-type RawObject = Record<string, unknown>;
-
-function asObject(value: unknown): RawObject | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as RawObject : null;
-}
-
-function text(value: unknown) {
-  return typeof value === "string" ? value : null;
-}
-
-function number(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function paymentMetadata(raw: unknown) {
-  const root = asObject(raw);
-  const nested = root ? asObject(root.payment) : null;
-  const data = nested ?? root;
-  const card = data ? asObject(data.card) : null;
-  const methodId = text(data?.payment_method_id);
-  const typeId = text(data?.payment_type_id);
-
-  let method: "card" | "pix" | "other" = "other";
-  if (methodId?.toLowerCase() === "pix" || typeId?.toLowerCase() === "bank_transfer") method = "pix";
-  else if (typeId?.toLowerCase().includes("card") || card) method = "card";
-
-  return {
-    method,
-    method_id: methodId,
-    payment_type_id: typeId,
-    status_detail: text(data?.status_detail),
-    installments: number(data?.installments),
-    card_last_four: text(card?.last_four_digits),
-    provider_created_at: text(data?.date_created),
-    provider_approved_at: text(data?.date_approved),
-  };
-}
 
 export async function GET(_: Request, context: Context) {
   try {
@@ -118,7 +81,7 @@ export async function GET(_: Request, context: Context) {
       const offer = offerMap.get(order.offer_id);
       const customer = customerMap.get(order.customer_id);
       const snapshot = snapshotMap.get(order.id);
-      const metadata = paymentMetadata(payment.raw_provider_data);
+      const metadata = mercadoPagoPaymentMetadata(payment.raw_provider_data);
       return [{
         id: payment.id,
         order_id: order.id,

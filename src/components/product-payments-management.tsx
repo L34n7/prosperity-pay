@@ -147,13 +147,14 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
 
       {loading ? <div className={styles.empty}>Carregando pagamentos...</div> : filtered.length ? <div className={styles.tableWrap}>
         <table className={styles.table}>
-          <thead><tr><th>Oferta</th><th>Cliente</th><th>Valor</th><th>Meios da oferta</th><th>Gerado em</th><th>Status</th><th/></tr></thead>
+          <thead><tr><th>Oferta</th><th>Cliente</th><th>Valor</th><th>Forma de pag.</th><th>Gerado em</th><th>Pago em</th><th>Status</th><th/></tr></thead>
           <tbody>{filtered.map(payment => <tr key={payment.id}>
             <td><strong>{payment.offer_name}</strong><small>Pedido {payment.order_id.slice(0, 8)}</small></td>
             <td><strong>{payment.customer_name || "Cliente"}</strong><small>{payment.customer_email}</small></td>
             <td className={styles.amount}>{money(payment.amount_cents)}</td>
-            <td><span className={styles.methods}>{allowedMethods(payment)}</span></td>
+            <td><span className={styles.methods}>{methodLabel(payment.actual_method)}</span></td>
             <td><span>{dateTime(payment.created_at)}</span></td>
+            <td><span>{dateTime(payment.paid_at || payment.provider_approved_at)}</span></td>
             <td><Status value={payment.status}/></td>
             <td><button type="button" className={styles.detailButton} onClick={() => setSelected(payment)}><Eye size={14}/>Detalhes</button></td>
           </tr>)}</tbody>

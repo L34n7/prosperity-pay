@@ -64,3 +64,11 @@
 @media (max-width: 620px) { .hero { align-items: flex-start; } .hero p, .statusBox > span { display: none; } .modeSelector, .formGrid, .inviteGrid { grid-template-columns: 1fr; max-width:none; } .configFooter { align-items: stretch; flex-direction: column; } .configFooter button { width: 100%; } .row { grid-template-columns: 1fr; align-items: start; } .rowActions { justify-content: flex-start; } .linkBox { align-items: stretch; flex-direction: column; } .linkBox button { width: 100%; } }
 
 .heroActions{display:flex;align-items:center;gap:8px}.statusDot{width:9px;height:9px;border-radius:50%;background:#657067;box-shadow:0 0 0 4px rgba(101,112,103,.08)}.statusDotOn{background:var(--primary);box-shadow:0 0 0 4px rgba(34,230,161,.08)}@media(max-width:620px){.heroActions{align-items:flex-end;flex-direction:column}.heroActions .primary{width:auto}}
+
+.inviteDialog{width:min(620px,calc(100vw - 24px));padding:0;overflow:hidden;border:1px solid rgba(92,133,111,.24);border-radius:17px;background:linear-gradient(145deg,#0d1912,#07100b);color:var(--text);box-shadow:0 34px 90px rgba(0,0,0,.52)}
+.inviteDialog::backdrop{background:rgba(2,6,4,.78);backdrop-filter:blur(7px)}
+.inviteModalHeader{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 16px;border-bottom:1px solid rgba(92,133,111,.14)}
+.inviteModalHeader>div{display:flex;align-items:center;gap:10px}.inviteModalHeader>div>span{display:grid;width:34px;height:34px;place-items:center;border:1px solid rgba(34,230,161,.14);border-radius:9px;background:rgba(34,230,161,.05);color:var(--primary)}
+.inviteModalHeader h3{margin:0;color:var(--text);font-size:.82rem}.inviteModalHeader p{margin:3px 0 0;color:var(--text-subtle);font-size:.6rem}
+.inviteModalBody{display:grid;gap:10px;padding:16px}
+@media(max-width:620px){.inviteDialog{width:calc(100vw - 12px)}.inviteModalHeader{align-items:flex-start}.inviteGrid{grid-template-columns:1fr}.inviteModalHeader>button{flex:0 0 auto}}

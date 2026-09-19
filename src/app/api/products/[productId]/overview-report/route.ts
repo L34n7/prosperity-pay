@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
+import { mercadoPagoPaymentMetadata, type MercadoPagoPaymentMethod } from "@/lib/payments/mercado-pago-payment-metadata";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ productId: string }> };
-type PaymentMethod = "pix" | "card" | "other";
+type PaymentMethod = MercadoPagoPaymentMethod;
 
 type MutableStats = {
   sales_count: number;
@@ -28,32 +29,6 @@ function emptyStats(): MutableStats {
     other_count: 0,
     other_sales_cents: 0,
   };
-}
-
-function rawObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function normalizedText(value: unknown) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
-
-function paymentMethod(raw: unknown): PaymentMethod {
-  const data = rawObject(raw);
-  if (!data) return "other";
-
-  const methodId = normalizedText(data.payment_method_id);
-  const typeId = normalizedText(data.payment_type_id);
-  if (methodId === "pix" || typeId === "bank_transfer") return "pix";
-  if (typeId.includes("card") || Boolean(rawObject(data.card))) return "card";
-
-  const nestedPayment = rawObject(data.payment);
-  if (nestedPayment) {
-    const nestedMethod = paymentMethod(nestedPayment);
-    if (nestedMethod !== "other") return nestedMethod;
-  }
-
-  return "other";
 }
 
 function addSale(stats: MutableStats, amountCents: number, method: PaymentMethod) {
@@ -124,7 +99,7 @@ export async function GET(_: Request, context: Context) {
 
     const paymentByOrder = new Map<string, PaymentMethod>();
     for (const payment of paymentsResult.data ?? []) {
-      if (!paymentByOrder.has(payment.order_id)) paymentByOrder.set(payment.order_id, paymentMethod(payment.raw_provider_data));
+      if (!paymentByOrder.has(payment.order_id)) paymentByOrder.set(payment.order_id, mercadoPagoPaymentMetadata(payment.raw_provider_data).method);
     }
 
     const attributionsResult = orderIds.length

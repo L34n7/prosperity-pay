@@ -3,6 +3,7 @@ import { asObject, jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { isProductCategory, isProductKind, isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import type { Database } from "@/lib/supabase/database.types";
+import { PRODUCT_IMAGE_BUCKET } from "@/lib/product-images";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ productId: string }> };
@@ -173,4 +174,48 @@ export async function PATCH(request: Request, context: Context) {
 
     return NextResponse.json({ product: data });
   } catch (error) { return jsonError(error); }
+}
+
+
+export async function DELETE(_: Request, context: Context) {
+  try {
+    const { productId } = await context.params;
+    const { user, supabase } = await requireUser();
+
+    const { data: product, error: productError } = await supabase.from("products")
+      .select("id,name,image_path")
+      .eq("id", productId)
+      .eq("producer_id", user.id)
+      .maybeSingle();
+    if (productError) throw productError;
+    if (!product) return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+
+    const { count: orderCount, error: orderError } = await supabase.from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("product_id", productId);
+    if (orderError) throw orderError;
+    if ((orderCount ?? 0) > 0) {
+      return NextResponse.json({
+        error: "Este produto possui histórico financeiro e não pode ser excluído. Arquive-o para preservar pagamentos e relatórios.",
+      }, { status: 409 });
+    }
+
+    const { data: deleted, error: deleteError } = await supabase.from("products")
+      .delete()
+      .eq("id", productId)
+      .eq("producer_id", user.id)
+      .select("id")
+      .maybeSingle();
+    if (deleteError) throw deleteError;
+    if (!deleted) return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+
+    if (product.image_path) {
+      const { error: storageError } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([product.image_path]);
+      if (storageError) console.error("Falha ao remover imagem do produto excluído", storageError);
+    }
+
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    return jsonError(error);
+  }
 }

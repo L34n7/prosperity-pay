@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { ProductAffiliateManagement } from "@/components/product-affiliate-management";
 import { ProductOfferDialog } from "@/components/product-offer-dialog";
 import { ProductOffersList } from "@/components/product-offers-list";
@@ -56,6 +58,7 @@ type Offer = {
 const tabs = ["Visão geral", "Ofertas", "Afiliados", "Coprodutores", "Pagamentos", "Configurações"];
 
 export function ProductDetail({ id }: { id: string }) {
+  const router = useRouter();
   const [product, setProduct] = useState<Product | null>(null);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [tab, setTab] = useState("Visão geral");
@@ -64,6 +67,7 @@ export function ProductDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [editingOffer, setEditingOffer] = useState<Offer | null | undefined>(undefined);
   const [deletingOffer, setDeletingOffer] = useState<Offer | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -138,8 +142,22 @@ export function ProductDetail({ id }: { id: string }) {
     if (success) setDeletingOffer(null);
   }
 
+  async function deleteProduct() {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      await requestJson(`/api/products/${id}`, { method: "DELETE" });
+      router.push("/produtos");
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível excluir o produto.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <>
-    <PageHeader title={product?.name ?? "Produto"} description={product?.settlement_model === "connected_account" ? "Recebimento direto no Mercado Pago" : "Recebimento no saldo Prosperity Pay"}/>
+    <PageHeader title={product?.name ?? "Produto"} description={product?.settlement_model === "connected_account" ? "Recebimento direto no Mercado Pago" : "Recebimento no saldo Prosperity Pay"}
+      action={product?<button type="button" className="secondary-button" disabled={busy} onClick={()=>setDeletingProduct(true)}><Trash2 size={14}/>Excluir produto</button>:undefined}/>
     <nav className="detail-tabs" aria-label="Gestão do produto">{tabs.map(item => <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</nav>
     {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success" role="status">{message}</p>}
     {!product ? <p>Carregando...</p> : <section className="panel operational-panel">
@@ -152,6 +170,7 @@ export function ProductDetail({ id }: { id: string }) {
     </section>}
     {product && editingOffer !== undefined && <ProductOfferDialog product={product} offer={editingOffer} busy={busy} onClose={() => setEditingOffer(undefined)} onSave={saveOffer}/>} 
     {deletingOffer && <ConfirmDeleteDialog offer={deletingOffer} busy={busy} onClose={() => setDeletingOffer(null)} onConfirm={deleteOffer}/>} 
+    {deletingProduct && product && <ConfirmProductDeleteDialog productName={product.name} busy={busy} onClose={()=>setDeletingProduct(false)} onConfirm={deleteProduct}/>}
   </>;
 }
 
@@ -165,5 +184,15 @@ function ConfirmDeleteDialog({ offer, busy, onClose, onConfirm }: { offer: Offer
   return <dialog ref={ref} className="product-dialog confirm-dialog" onClose={onClose} onCancel={event => { if (busy) event.preventDefault(); }}>
     <div className="product-dialog-heading"><div><h2>Excluir oferta?</h2><p>Esta ação remove a oferta <strong>{offer.name}</strong>. Ofertas com histórico financeiro não podem ser excluídas.</p></div></div>
     <div className="product-dialog-actions"><button className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button className="primary-button" disabled={busy} onClick={() => void onConfirm()}>{busy ? "Excluindo..." : "Excluir oferta"}</button></div>
+  </dialog>;
+}
+
+
+function ConfirmProductDeleteDialog({ productName, busy, onClose, onConfirm }: { productName: string; busy: boolean; onClose: () => void; onConfirm: () => Promise<void> }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => { ref.current?.showModal(); }, []);
+  return <dialog ref={ref} className="product-dialog confirm-dialog" onClose={onClose} onCancel={event => { if (busy) event.preventDefault(); }}>
+    <div className="product-dialog-heading"><div><h2>Excluir produto?</h2><p>Confirme a exclusão de <strong>{productName}</strong>. Produtos com histórico financeiro não podem ser apagados.</p></div></div>
+    <div className="product-dialog-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button type="button" className="primary-button" disabled={busy} onClick={() => void onConfirm()}>{busy ? "Excluindo..." : "Confirmar exclusão"}</button></div>
   </dialog>;
 }
