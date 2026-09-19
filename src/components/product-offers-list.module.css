@@ -8,14 +8,14 @@
 .headingActions > strong { padding: 7px 10px; border: 1px solid var(--border-soft); border-radius: 999px; color: var(--text-secondary); font-size: .68rem; }
 .newButton, .empty button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 13px; border: 1px solid rgba(34,230,161,.24); border-radius: 10px; background: linear-gradient(135deg, rgba(34,230,161,.18), rgba(34,230,161,.08)); color: #dffff3; cursor: pointer; font-weight: 700; }
 .list { display: grid; gap: 12px; }
-.offerRow { display: grid; grid-template-columns: minmax(285px,.92fr) minmax(620px,2.5fr) auto; min-height: 122px; align-items: center; gap: 32px; padding: 14px 18px; border: 1px solid rgba(92,133,111,.18); border-radius: 17px; background: linear-gradient(145deg, rgba(14,25,19,.92), rgba(8,15,11,.94)); box-shadow: 0 16px 38px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.02); transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
+.offerRow { display: grid; grid-template-columns: minmax(285px,.92fr) minmax(620px,2.5fr) auto; min-height: 112px; align-items: center; column-gap: 40px; row-gap: 14px; padding: 12px 18px; border: 1px solid rgba(92,133,111,.18); border-radius: 17px; background: linear-gradient(145deg, rgba(14,25,19,.92), rgba(8,15,11,.94)); box-shadow: 0 16px 38px rgba(0,0,0,.12), inset 0 1px 0 rgba(255,255,255,.02); transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
 .offerRow:hover { transform: translateY(-1px); border-color: rgba(34,230,161,.24); box-shadow: 0 20px 44px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.025); }
 .offerMain { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .offerIdentity { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .iconBox { display: grid; width: 38px; height: 38px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(34,230,161,.14); border-radius: 10px; background: rgba(34,230,161,.07); color: var(--primary); }
 .offerIdentity > div:last-child { min-width: 0; }
 .titleLine { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.titleLine h3 { overflow: hidden; margin: 0; color: var(--text); font-size: 1rem; font-weight: 760; letter-spacing: -.015em; text-overflow: ellipsis; white-space: nowrap; }
+.titleLine h3 { overflow: hidden; margin: 0; color: var(--text); font-size: 1.12rem; font-weight: 780; letter-spacing: -.018em; text-overflow: ellipsis; white-space: nowrap; }
 .offerIdentity p { margin: 4px 0 0; color: var(--text-subtle); font-size: .66rem; }
 .activeBadge, .mutedBadge { flex: 0 0 auto; padding: 4px 7px; border-radius: 999px; font-size: .58rem !important; font-weight: 760; letter-spacing: 0 !important; text-transform: none !important; }
 .activeBadge { border: 1px solid rgba(34,230,161,.2); background: rgba(34,230,161,.08); color: #79f4c8 !important; }
@@ -24,9 +24,9 @@
 .priceBlock small { color: var(--text-subtle); font-size: .56rem; }
 .priceBlock strong { color: #e8fff6; font-size: .9rem; font-weight: 760; white-space: nowrap; }
 .priceBlock span { color: var(--text-subtle); font-size: .55rem; letter-spacing: 0; text-transform: none; white-space: nowrap; }
-.offerDetails { display: grid; grid-template-columns: minmax(340px,.9fr) minmax(420px,1.25fr); gap: 26px; min-width: 0; align-items: center; }
-.metrics { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); column-gap: 12px; row-gap: 7px; min-width: 0; }
-.metrics > div { display: grid; grid-template-columns: 29px minmax(0,1fr); grid-template-rows: auto auto; column-gap: 8px; align-items: center; min-width: 0; min-height: 43px; padding: 6px 9px; border: 1px solid rgba(92,133,111,.13); border-radius: 10px; background: rgba(255,255,255,.018); }
+.offerDetails { display: grid; grid-template-columns: minmax(340px,.9fr) minmax(420px,1.25fr); gap: 30px; min-width: 0; align-items: center; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); column-gap: 16px; row-gap: 8px; min-width: 0; }
+.metrics > div { display: grid; grid-template-columns: 29px minmax(0,1fr); grid-template-rows: auto auto; column-gap: 8px; align-items: center; min-width: 0; min-height: 40px; padding: 5px 10px; border: 1px solid rgba(92,133,111,.13); border-radius: 10px; background: rgba(255,255,255,.018); }
 .metrics > div > span { grid-row: 1 / span 2; display: grid; width: 27px; height: 27px; place-items: center; border-radius: 8px; background: rgba(34,230,161,.055); color: var(--primary); }
 .metrics small { color: var(--text-subtle); font-size: .57rem; }
 .metrics strong { overflow: hidden; color: var(--text-secondary); font-size: .66rem; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
