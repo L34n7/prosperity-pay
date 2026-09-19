@@ -89,7 +89,7 @@ export function ProductOffersList({ paymentType, offers, onNew, onEdit, onDelete
       {offers.map(offer => {
         const reference = checkoutReference(offer.checkout_slug);
         const path = checkoutPath(offer.checkout_slug);
-        const checkoutUrl = typeof window === "undefined" ? path : `${window.location.origin}${path}`;
+        const checkoutUrl = `https://prosperity-pay.vercel.app${path}`;
         const active = offer.status === "active";
         const referenceKey = `${offer.id}:reference`;
         const linkKey = `${offer.id}:link`;
@@ -113,25 +113,27 @@ export function ProductOffersList({ paymentType, offers, onNew, onEdit, onDelete
             </div>
           </div>
 
-          <div className={styles.metrics}>
-            <div><span><WalletCards size={15}/></span><small>Métodos</small><strong>{methodLabel(offer)}</strong></div>
-            <div><span><CreditCard size={15}/></span><small>Parcelamento</small><strong>{paymentType === "recurring" ? "Assinatura" : `Até ${offer.max_installments}x`}</strong></div>
-            <div><span><UsersRound size={15}/></span><small>Afiliados</small><strong>{offer.affiliate_enabled ? `${offer.affiliate_commission_bps / 100}% de comissão` : "Desativado"}</strong></div>
-            <div><span>{offer.primary_payment_method === "pix" ? <QrCode size={15}/> : <CreditCard size={15}/>}</span><small>Principal</small><strong>{offer.primary_payment_method === "pix" ? "PIX" : "Cartão"}</strong></div>
-          </div>
-
-          <div className={styles.linkArea}>
-            <div className={styles.referenceField}>
-              <small>Referência</small>
-              <div><code>{reference}</code><button aria-label="Copiar referência" onClick={() => void copy(referenceKey, reference)}>{copied === referenceKey ? <Check size={15}/> : <Copy size={15}/>}</button></div>
+          <div className={styles.offerDetails}>
+            <div className={styles.metrics}>
+              <div><span><WalletCards size={15}/></span><small>Métodos</small><strong>{methodLabel(offer)}</strong></div>
+              <div><span><UsersRound size={15}/></span><small>Afiliados</small><strong>{offer.affiliate_enabled ? `${offer.affiliate_commission_bps / 100}% de comissão` : "Desativado"}</strong></div>
+              <div><span><CreditCard size={15}/></span><small>Parcelamento</small><strong>{paymentType === "recurring" ? "Assinatura" : `Até ${offer.max_installments}x`}</strong></div>
+              <div><span>{offer.primary_payment_method === "pix" ? <QrCode size={15}/> : <CreditCard size={15}/>}</span><small>Principal</small><strong>{offer.primary_payment_method === "pix" ? "PIX" : "Cartão"}</strong></div>
             </div>
-            <div className={styles.checkoutField}>
-              <small>Link de pagamento</small>
-              <div>
-                <Link2 size={15}/>
-                <code>{path}</code>
-                <button aria-label="Copiar link de pagamento" onClick={() => void copy(linkKey, checkoutUrl)}>{copied === linkKey ? <Check size={15}/> : <Copy size={15}/>}</button>
-                <Link aria-label="Abrir checkout" href={path} target="_blank"><ExternalLink size={15}/></Link>
+
+            <div className={styles.linkArea}>
+              <div className={styles.checkoutField}>
+                <small>Link de pagamento</small>
+                <div>
+                  <Link2 size={15}/>
+                  <code>{checkoutUrl}</code>
+                  <button aria-label="Copiar link de pagamento" onClick={() => void copy(linkKey, checkoutUrl)}>{copied === linkKey ? <Check size={15}/> : <Copy size={15}/>}</button>
+                  <Link aria-label="Abrir checkout" href={path} target="_blank"><ExternalLink size={15}/></Link>
+                </div>
+              </div>
+              <div className={styles.referenceField}>
+                <small>Referência</small>
+                <div><code>{reference}</code><button aria-label="Copiar referência" onClick={() => void copy(referenceKey, reference)}>{copied === referenceKey ? <Check size={15}/> : <Copy size={15}/>}</button></div>
               </div>
             </div>
           </div>

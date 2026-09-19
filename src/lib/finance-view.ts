@@ -1,6 +1,9 @@
 import { requireUser } from "@/lib/auth/require-user";
+import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
+import { createAdminClient } from "@/lib/supabase/admin";
 export async function getFinanceView() {
  const {user,supabase}=await requireUser();
+ await expireStalePayments(createAdminClient(), { producerId: user.id });
  const [{data:orders,error:ordersError},{data:commissions,error:commissionsError},{data:balance,error:balanceError},{data:withdrawals,error:withdrawalsError}]=await Promise.all([
   supabase.from("orders").select("id,status,product_id,offer_id,gross_amount_cents,settlement_model,created_at,products(name),offers!orders_offer_id_fkey(name),financial_snapshots(gateway_fee_amount_cents,prosperity_fee_amount_cents,affiliate_amount_cents,coproducer_amount_cents,producer_amount_cents)").eq("producer_id",user.id).order("created_at",{ascending:false}).limit(500),
   supabase.from("commissions").select("id,payment_id,commission_type,status,amount_cents,available_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(products(name),offers!orders_offer_id_fkey(name)))").eq("beneficiary_user_id",user.id).order("created_at",{ascending:false}).limit(500),

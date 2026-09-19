@@ -81,7 +81,7 @@ function dateTime(value: string | null | undefined) {
 function methodLabel(value: ProductPayment["actual_method"]) {
   if (value === "card") return "Cartão";
   if (value === "pix") return "PIX";
-  return "Não identificado";
+  return "—";
 }
 
 function allowedMethods(payment: ProductPayment) {
@@ -147,7 +147,7 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
 
       {loading ? <div className={styles.empty}>Carregando pagamentos...</div> : filtered.length ? <div className={styles.tableWrap}>
         <table className={styles.table}>
-          <thead><tr><th>Oferta</th><th>Cliente</th><th>Valor</th><th>Forma de pag.</th><th>Gerado em</th><th>Pago em</th><th>Status</th><th/></tr></thead>
+          <thead><tr><th>Oferta</th><th>Cliente</th><th>Valor</th><th>Forma</th><th>Gerado em</th><th>Pago em</th><th>Status</th><th/></tr></thead>
           <tbody>{filtered.map(payment => <tr key={payment.id}>
             <td><strong>{payment.offer_name}</strong><small>Pedido {payment.order_id.slice(0, 8)}</small></td>
             <td><strong>{payment.customer_name || "Cliente"}</strong><small>{payment.customer_email}</small></td>

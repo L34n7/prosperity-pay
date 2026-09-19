@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
+import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
 import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -15,6 +16,7 @@ export async function GET(_: Request, context: Context) {
     if (!owns) return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
 
     const admin = createAdminClient();
+    await expireStalePayments(admin, { productId });
     const [offersResult, ordersResult] = await Promise.all([
       admin.from("offers")
         .select("id,name,payment_card_enabled,payment_pix_enabled,primary_payment_method")

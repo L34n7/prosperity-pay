@@ -2,9 +2,10 @@
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatCents, formatDate } from "@/lib/operational";
+import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 type Order = { id:string; product_id:string; offer_id:string; status:string; settlement_model:string; products:{name:string}|null; offers:{name:string}|null; customers:{name:string|null;email:string}|null; financial_snapshots:{prosperity_fee_amount_cents:number;affiliate_amount_cents:number;coproducer_amount_cents:number;producer_amount_cents:number}|null };
 type Payment = { id:string; order_id:string; status:string; external_payment_id:string|null; external_reference:string; gross_amount_cents:number; provider_fee_amount_cents:number; created_at:string; raw_provider_data:unknown; payment_transactions:{transaction_type:string;status:string|null;occurred_at:string|null;created_at:string}[] };
-function methodOf(payment:Payment) { const raw=payment.raw_provider_data; return raw&&typeof raw==="object"&&"payment_method_id" in raw ? String(raw.payment_method_id) : "—"; }
+function methodOf(payment:Payment) { const method=mercadoPagoPaymentMetadata(payment.raw_provider_data).method; return method==="pix"?"PIX":method==="card"?"Cartão":"—"; }
 export function PaymentsView({ orders, payments }: { orders:Order[]; payments:Payment[] }) {
  const [selected,setSelected]=useState<string|null>(null),[period,setPeriod]=useState(""),[cutoff,setCutoff]=useState(0),[status,setStatus]=useState(""),[product,setProduct]=useState(""),[offer,setOffer]=useState(""),[method,setMethod]=useState(""),[model,setModel]=useState("");
  const orderMap=new Map(orders.map(o=>[o.id,o]));
