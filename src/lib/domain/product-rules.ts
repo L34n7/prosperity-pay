@@ -2,6 +2,29 @@ export type ProductPaymentType = "one_time" | "recurring";
 export type ProductKind = "digital" | "physical";
 export type RecurrenceFrequency = "weekly" | "monthly" | "quarterly" | "semiannual" | "annual";
 
+export const PRODUCT_CATEGORIES = [
+  "Software e SaaS",
+  "Cursos e Educação",
+  "Serviços",
+  "Consultoria",
+  "Marketing e Vendas",
+  "Saúde e Bem-estar",
+  "Beleza e Estética",
+  "Pet",
+  "Moda e Acessórios",
+  "Casa e Decoração",
+  "Alimentação",
+  "Eventos",
+  "Finanças",
+  "Imobiliário",
+  "Tecnologia e Eletrônicos",
+  "Outros",
+] as const;
+
+export function isProductCategory(value: unknown): value is typeof PRODUCT_CATEGORIES[number] {
+  return typeof value === "string" && PRODUCT_CATEGORIES.includes(value as typeof PRODUCT_CATEGORIES[number]);
+}
+
 export const RECURRENCE_OPTIONS: { value: RecurrenceFrequency; label: string }[] = [
   { value: "weekly", label: "Semanal" },
   { value: "monthly", label: "Mensal" },

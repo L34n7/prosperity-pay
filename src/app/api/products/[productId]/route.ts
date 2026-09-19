@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
-import { isProductKind, isProductPaymentType, isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
+import { isProductCategory, isProductKind, isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import type { Database } from "@/lib/supabase/database.types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -67,7 +67,13 @@ export async function GET(_: Request, context: Context) {
     const { supabase } = await requireUser();
     const { data, error } = await supabase.from("products").select("*").eq("id", productId).single();
     if (error) throw error;
-    return NextResponse.json({ product: data });
+    return NextResponse.json({
+      product: {
+        ...data,
+        payment_type: "one_time",
+        main_offer_price_cents: data.main_offer_price_cents ?? data.recurring_price_cents,
+      },
+    });
   } catch (error) { return jsonError(error); }
 }
 
@@ -82,9 +88,9 @@ export async function PATCH(request: Request, context: Context) {
     if (currentResult.error || !currentResult.data) throw currentResult.error ?? new Error("Produto não encontrado.");
     const current = currentResult.data as ProductRow;
 
-    const paymentType = body.paymentType === undefined ? current.payment_type : body.paymentType;
+    if (body.paymentType === "recurring") return NextResponse.json({ error: "Pagamento recorrente está temporariamente indisponível. Use pagamento único." }, { status: 400 });
+    const paymentType = "one_time" as "one_time" | "recurring";
     const productType = body.productType === undefined ? current.product_type : body.productType;
-    if (!isProductPaymentType(paymentType)) return NextResponse.json({ error: "Tipo de pagamento inválido." }, { status: 400 });
     if (!isProductKind(productType)) return NextResponse.json({ error: "Tipo de produto inválido." }, { status: 400 });
 
     const update: ProductUpdate = {};
@@ -100,6 +106,7 @@ export async function PATCH(request: Request, context: Context) {
       update.payment_type = paymentType;
       update.product_type = productType;
       update.category = body.category === undefined ? current.category : nullableText(body.category, 120, "category");
+      if (update.category && !isProductCategory(update.category)) throw new Error("INVALID:category");
       update.support_display_name = body.supportDisplayName === undefined ? current.support_display_name : nullableText(body.supportDisplayName, 180, "supportDisplayName");
       update.support_email = body.supportEmail === undefined ? current.support_email : nullableText(body.supportEmail, 320, "supportEmail");
       update.support_whatsapp = body.supportWhatsapp === undefined ? current.support_whatsapp : nullableText(body.supportWhatsapp, 32, "supportWhatsapp");

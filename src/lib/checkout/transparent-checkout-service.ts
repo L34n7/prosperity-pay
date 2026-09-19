@@ -613,7 +613,16 @@ export async function createTransparentCheckout(input: TransparentCheckoutInput)
     .eq("status", "active")
     .single();
   if (offerError || !rawOffer || !rawOffer.products || Array.isArray(rawOffer.products)) throw new HttpError(404, "Oferta ativa não encontrada.");
-  const offer = rawOffer as unknown as Offer & { products: Product };
+  const storedOffer = rawOffer as unknown as Offer & { products: Product };
+  const offer: Offer & { products: Product } = storedOffer.billing_type === "recurring"
+    ? {
+        ...storedOffer,
+        billing_type: "one_time",
+        billing_interval: null,
+        billing_interval_count: null,
+        first_charge_cents: null,
+      }
+    : storedOffer;
   const product = offer.products;
   if (product.status !== "active") throw new HttpError(409, "Produto indisponível para venda.");
   if (input.paymentMethod === "card" && !offer.payment_card_enabled) throw new HttpError(409, "Pagamento por cartão não está habilitado nesta oferta.");

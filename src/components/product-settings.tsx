@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useState } from "react";
+import { FormEvent } from "react";
 import { ExternalLink, ImageIcon, LifeBuoy, Link2, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
-import { RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
+import { PRODUCT_CATEGORIES, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { productImageUrl } from "@/lib/product-images";
 import styles from "./product-settings.module.css";
 
@@ -45,14 +45,7 @@ function cents(value: FormDataEntryValue | null) {
   return Math.round(Number(value) * 100);
 }
 
-function Switch({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
-  return <button type="button" role="switch" aria-checked={checked} aria-label={label} className={`${styles.switch} ${checked ? styles.switchOn : ""}`} onClick={() => onChange(!checked)}><span/></button>;
-}
-
 export function ProductSettings({ product, busy, onSave, onChangeImage, onRemoveImage }: Props) {
-  const [paymentType, setPaymentType] = useState<ProductPaymentType>(product.payment_type);
-  const [differentFirstCharge, setDifferentFirstCharge] = useState(product.different_first_charge);
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -63,17 +56,17 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
       postPurchaseRedirectUrl: data.get("postPurchaseRedirectUrl"),
       affiliateFunnelBaseUrl: data.get("affiliateFunnelBaseUrl"),
       status: data.get("status"),
-      paymentType,
+      paymentType: "one_time",
       productType: data.get("productType"),
       category: data.get("category"),
       supportDisplayName: data.get("supportDisplayName"),
       supportEmail: data.get("supportEmail"),
       supportWhatsapp: data.get("supportWhatsapp"),
-      recurrenceFrequency: paymentType === "recurring" ? data.get("recurrenceFrequency") : null,
-      differentFirstCharge: paymentType === "recurring" && differentFirstCharge,
-      firstChargeCents: paymentType === "recurring" && differentFirstCharge ? cents(data.get("firstCharge")) : null,
-      recurringPriceCents: paymentType === "recurring" ? cents(data.get("recurringPrice")) : null,
-      mainOfferPriceCents: paymentType === "one_time" ? cents(data.get("mainOfferPrice")) : null,
+      recurrenceFrequency: null,
+      differentFirstCharge: false,
+      firstChargeCents: null,
+      recurringPriceCents: null,
+      mainOfferPriceCents: cents(data.get("mainOfferPrice")),
     });
   }
 
@@ -94,7 +87,7 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
           <div className={styles.gridThree}>
             <label className={styles.field}><span>Status</span><select name="status" defaultValue={product.status}><option value="draft">Rascunho</option><option value="active">Ativo</option><option value="inactive">Inativo</option><option value="archived">Arquivado</option></select></label>
             <label className={styles.field}><span>Tipo de produto</span><select name="productType" defaultValue={product.product_type}><option value="digital">Digital</option><option value="physical">Físico</option></select></label>
-            <label className={styles.field}><span>Categoria</span><input name="category" defaultValue={product.category ?? ""} maxLength={120} placeholder="Ex.: Software"/></label>
+            <label className={styles.field}><span>Categoria</span><select name="category" defaultValue={PRODUCT_CATEGORIES.includes(product.category as typeof PRODUCT_CATEGORIES[number]) ? product.category ?? "" : ""}><option value="">Selecione</option>{PRODUCT_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
           </div>
         </div>
       </section>
@@ -102,15 +95,10 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
       <section className={styles.card}>
         <div className={styles.cardHeader}><div><span><ReceiptText size={16}/></span><div><h3>Cobrança</h3><p>Defina o modelo principal usado pelas ofertas deste produto.</p></div></div></div>
         <div className={styles.gridTwo}>
-          <label className={styles.field}><span>Tipo de pagamento</span><select value={paymentType} onChange={event => { const next = event.target.value as ProductPaymentType; setPaymentType(next); if (next === "one_time") setDifferentFirstCharge(false); }}><option value="one_time">Pagamento único</option><option value="recurring">Recorrente</option></select></label>
-          {paymentType === "one_time" ? <label className={styles.field}><span>Preço da oferta principal</span><div className={styles.money}><small>R$</small><input name="mainOfferPrice" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.main_offer_price_cents)} required/></div></label> : <label className={styles.field}><span>Preço da recorrência</span><div className={styles.money}><small>R$</small><input name="recurringPrice" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.recurring_price_cents)} required/></div></label>}
+          <label className={styles.field}><span>Tipo de pagamento</span><select value="one_time" disabled><option value="one_time">Pagamento único</option></select></label>
+          <label className={styles.field}><span>Preço padrão do produto</span><div className={styles.money}><small>R$</small><input name="mainOfferPrice" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.main_offer_price_cents ?? product.recurring_price_cents)} required/></div></label>
         </div>
-        {paymentType === "recurring" && <div className={styles.recurringBox}>
-          <label className={styles.field}><span>Frequência</span><select name="recurrenceFrequency" defaultValue={product.recurrence_frequency ?? "monthly"}>{RECURRENCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-          <div className={styles.toggleRow}><div><strong>Primeira cobrança diferente</strong><small>Use um valor inicial diferente do valor recorrente.</small></div><Switch checked={differentFirstCharge} onChange={setDifferentFirstCharge} label="Primeira cobrança diferente"/></div>
-          {differentFirstCharge && <label className={styles.field}><span>Valor da primeira cobrança</span><div className={styles.money}><small>R$</small><input name="firstCharge" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.first_charge_cents)} required/></div></label>}
-          <p className={styles.hint}>A recorrência é gerenciada pelo Prosperity Pay e as cobranças são processadas pela Orders API do Mercado Pago.</p>
-        </div>}
+        <p className={styles.hint}>O valor efetivamente cobrado no checkout é o preço configurado em cada oferta. O CRM controla vencimento e renovação da assinatura.</p>
       </section>
 
       <section className={styles.card}>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError, optionalString, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
-import { isProductKind, isProductPaymentType, isRecurrenceFrequency, type RecurrenceFrequency } from "@/lib/domain/product-rules";
+import { isProductCategory, isProductKind, isRecurrenceFrequency, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { toSlug } from "@/lib/domain/slug";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -125,6 +125,7 @@ export async function GET() {
     return NextResponse.json({
       products: products.map((product) => ({
         ...product,
+        payment_type: "one_time",
         stats: stats.get(product.id) ?? emptyStats(),
       })),
     });
@@ -143,13 +144,14 @@ export async function POST(request: Request) {
     }
     const requestedPaymentType = body.paymentType;
     const productType = body.productType;
-    if (!isProductPaymentType(requestedPaymentType)) return NextResponse.json({ error: "Tipo de pagamento inválido." }, { status: 400 });
+    if (requestedPaymentType !== "one_time") return NextResponse.json({ error: "Pagamento recorrente está temporariamente indisponível. Use pagamento único." }, { status: 400 });
     if (!isProductKind(productType)) return NextResponse.json({ error: "Tipo de produto inválido." }, { status: 400 });
 
     let category: string | null, supportDisplayName: string | null, supportEmail: string | null, supportWhatsapp: string | null;
     let postPurchaseMessage: string | null, postPurchaseRedirectUrl: string | null;
     try {
       category = nullableText(body, "category", 120);
+      if (category && !isProductCategory(category)) throw new Error("INVALID:category");
       supportDisplayName = nullableText(body, "supportDisplayName", 180);
       supportEmail = nullableText(body, "supportEmail", 320);
       supportWhatsapp = nullableText(body, "supportWhatsapp", 32);
@@ -161,7 +163,7 @@ export async function POST(request: Request) {
     }
     if (supportEmail && !/^\S+@\S+\.\S+$/.test(supportEmail)) return NextResponse.json({ error: "E-mail do SAC inválido." }, { status: 400 });
 
-    const paymentType = requestedPaymentType;
+    const paymentType = requestedPaymentType as "one_time" | "recurring";
     const differentFirstCharge = paymentType === "recurring" && body.differentFirstCharge === true;
     let recurrenceFrequency: RecurrenceFrequency | null = null;
     let firstChargeCents: number | null = null;
