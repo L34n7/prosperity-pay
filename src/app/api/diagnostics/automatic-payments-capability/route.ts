@@ -27,7 +27,7 @@ export async function GET() {
   }
 
   const existingCustomerId = searchBody.results?.[0]?.id;
-  const customerId = existingCustomerId ?? "999999999-aaaaaaaaaaaaaa";
+  const customerId = existingCustomerId ?? "123456789-jxOV430go9fx2e";
 
   const profileResponse = await fetch(
     `https://api.mercadopago.com/v1/customers/${encodeURIComponent(customerId)}/payment-profiles?limit=1`,
