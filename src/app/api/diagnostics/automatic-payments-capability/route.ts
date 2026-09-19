@@ -26,6 +26,7 @@ export async function GET() {
   }
 
   const message = String(body.message ?? body.error ?? "").slice(0, 500);
+  const safeBody = JSON.stringify(body).slice(0, 1500);
   const available =
     response.ok ||
     (response.status === 404 && /customer|cliente|not found|not_found/i.test(message));
@@ -35,5 +36,6 @@ export async function GET() {
     endpointRecognized: response.status !== 404 || available,
     automaticPaymentsLikelyAvailable: available,
     providerMessage: message || null,
+    providerBody: safeBody,
   });
 }
