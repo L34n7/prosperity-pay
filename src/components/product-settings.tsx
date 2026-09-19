@@ -109,7 +109,7 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
           <label className={styles.field}><span>Frequência</span><select name="recurrenceFrequency" defaultValue={product.recurrence_frequency ?? "monthly"}>{RECURRENCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <div className={styles.toggleRow}><div><strong>Primeira cobrança diferente</strong><small>Use um valor inicial diferente do valor recorrente.</small></div><Switch checked={differentFirstCharge} onChange={setDifferentFirstCharge} label="Primeira cobrança diferente"/></div>
           {differentFirstCharge && <label className={styles.field}><span>Valor da primeira cobrança</span><div className={styles.money}><small>R$</small><input name="firstCharge" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.first_charge_cents)} required/></div></label>}
-          <p className={styles.hint}>Cobranças recorrentes são processadas pela API oficial de Assinaturas do Mercado Pago.</p>
+          <p className={styles.hint}>A recorrência é gerenciada pelo Prosperity Pay e as cobranças são processadas pela Orders API do Mercado Pago.</p>
         </div>}
       </section>
 
