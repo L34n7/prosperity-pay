@@ -18,6 +18,8 @@ export const env = {
   financialEncryptionKey: readOptional(process.env.FINANCIAL_ENCRYPTION_KEY),
   crmProsperityWebhookUrl: readOptional(process.env.CRM_PROSPERITY_WEBHOOK_URL),
   crmProsperityWebhookSecret: readOptional(process.env.CRM_PROSPERITY_WEBHOOK_SECRET),
+  resendApiKey: readOptional(process.env.RESEND_API_KEY),
+  resendFromEmail: readOptional(process.env.RESEND_FROM_EMAIL),
 };
 
 export function requireEnv(value: string | undefined, name: string) {
