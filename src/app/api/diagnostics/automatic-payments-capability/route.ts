@@ -26,15 +26,8 @@ export async function GET() {
     searchBody = {};
   }
 
-  const customerId = searchBody.results?.[0]?.id;
-  if (!searchResponse.ok || !customerId) {
-    return NextResponse.json({
-      customerSearchStatus: searchResponse.status,
-      customerFound: false,
-      paymentProfileProbePerformed: false,
-      providerBody: JSON.stringify(searchBody).slice(0, 1200),
-    });
-  }
+  const existingCustomerId = searchBody.results?.[0]?.id;
+  const customerId = existingCustomerId ?? "999999999-aaaaaaaaaaaaaa";
 
   const profileResponse = await fetch(
     `https://api.mercadopago.com/v1/customers/${encodeURIComponent(customerId)}/payment-profiles?limit=1`,
@@ -51,7 +44,7 @@ export async function GET() {
   const results = Array.isArray(profileBody.results) ? profileBody.results : [];
   return NextResponse.json({
     customerSearchStatus: searchResponse.status,
-    customerFound: true,
+    customerFound: Boolean(existingCustomerId),
     paymentProfileProbePerformed: true,
     paymentProfileStatus: profileResponse.status,
     automaticPaymentsAvailable: profileResponse.ok,
