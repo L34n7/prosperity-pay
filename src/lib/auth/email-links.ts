@@ -4,18 +4,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const FIRST_ACCESS_DURATION_MS = 24 * 60 * 60 * 1000;
 const FIRST_ACCESS_MAX_OPENINGS = 3;
 
+type AuthLinkType = "invite" | "recovery" | "magiclink";
+
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
-function buildConfirmLink(params: {
+function buildAuthConfirmLink(params: {
   appUrl: string;
   tokenHash: string;
-  next: "/redefinir-senha";
+  type: AuthLinkType | "email" | "signup";
+  next: "/definir-senha" | "/redefinir-senha";
 }) {
   const url = new URL("/auth/confirm", params.appUrl);
   url.searchParams.set("token_hash", params.tokenHash);
-  url.searchParams.set("type", "recovery");
+  url.searchParams.set("type", params.type);
   url.searchParams.set("next", params.next);
   return url.toString();
 }
@@ -30,6 +33,32 @@ function tokenHashFrom(data: {
   }
 
   return tokenHash;
+}
+
+function isExistingUserError(error: { message?: string } | null) {
+  const message = String(error?.message || "").toLowerCase();
+
+  return (
+    message.includes("already") ||
+    message.includes("registered") ||
+    message.includes("exists")
+  );
+}
+
+function isFirstAccessSchemaMissing(error: {
+  code?: string;
+  message?: string;
+} | null) {
+  const code = String(error?.code || "").toUpperCase();
+  const message = String(error?.message || "").toLowerCase();
+
+  return (
+    code === "PGRST202" ||
+    code === "42883" ||
+    code === "42P01" ||
+    message.includes("get_auth_user_id_by_email") ||
+    message.includes("first_access_tokens")
+  );
 }
 
 export function hashFirstAccessToken(token: string) {
@@ -100,6 +129,55 @@ async function ensureAuthUser(params: {
   return userId;
 }
 
+async function createLegacyFirstAccessLink(params: {
+  email: string;
+  fullName: string;
+  appUrl: string;
+}) {
+  const admin = createAdminClient();
+  const email = normalizeEmail(params.email);
+
+  let generated = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: {
+      data: { full_name: params.fullName },
+    },
+  });
+
+  let type: AuthLinkType = "invite";
+
+  if (generated.error && isExistingUserError(generated.error)) {
+    generated = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email,
+    });
+    type = "recovery";
+  }
+
+  if (generated.error) {
+    generated = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+    });
+    type = "magiclink";
+  }
+
+  if (generated.error) {
+    throw generated.error;
+  }
+
+  return {
+    mode: "legacy" as const,
+    link: buildAuthConfirmLink({
+      appUrl: params.appUrl,
+      tokenHash: tokenHashFrom(generated.data),
+      type,
+      next: "/definir-senha",
+    }),
+  };
+}
+
 export async function createFirstAccessLink(params: {
   email: string;
   fullName: string;
@@ -107,10 +185,31 @@ export async function createFirstAccessLink(params: {
 }) {
   const admin = createAdminClient();
   const email = normalizeEmail(params.email);
-  const authUserId = await ensureAuthUser({
-    email,
-    fullName: params.fullName,
-  });
+
+  let authUserId: string;
+
+  try {
+    authUserId = await ensureAuthUser({
+      email,
+      fullName: params.fullName,
+    });
+  } catch (error) {
+    if (
+      isFirstAccessSchemaMissing(
+        error && typeof error === "object"
+          ? (error as { code?: string; message?: string })
+          : null,
+      )
+    ) {
+      console.warn(
+        "[FIRST_ACCESS] Estrutura protegida ainda não aplicada; usando fluxo legado temporariamente.",
+      );
+
+      return createLegacyFirstAccessLink(params);
+    }
+
+    throw error;
+  }
 
   const token = randomBytes(32).toString("base64url");
   const tokenHash = hashFirstAccessToken(token);
@@ -130,6 +229,14 @@ export async function createFirstAccessLink(params: {
     .single();
 
   if (inserted.error || !inserted.data) {
+    if (isFirstAccessSchemaMissing(inserted.error)) {
+      console.warn(
+        "[FIRST_ACCESS] Tabela protegida ainda não aplicada; usando fluxo legado temporariamente.",
+      );
+
+      return createLegacyFirstAccessLink(params);
+    }
+
     throw inserted.error ?? new Error("Não foi possível criar o primeiro acesso.");
   }
 
@@ -137,6 +244,7 @@ export async function createFirstAccessLink(params: {
   link.searchParams.set("token", token);
 
   return {
+    mode: "protected" as const,
     link: link.toString(),
     tokenId: inserted.data.id,
     authUserId,
@@ -217,9 +325,10 @@ export async function createPasswordRecoveryLink(params: {
   }
 
   return {
-    link: buildConfirmLink({
+    link: buildAuthConfirmLink({
       appUrl: params.appUrl,
       tokenHash: tokenHashFrom(recovery.data),
+      type: "recovery",
       next: "/redefinir-senha",
     }),
     name: profile.data.full_name,

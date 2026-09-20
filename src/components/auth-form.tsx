@@ -84,13 +84,15 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
 
     try {
       if (mode === "cadastro") {
-        await postJson("/api/auth/signup", {
+        const result = await postJson("/api/auth/signup", {
           email,
           fullName: String(values.get("name") ?? "").trim(),
         });
 
         setSuccess(
-          "Enviamos um link seguro para seu e-mail. Ele é válido por 24 horas e pode ser aberto até 3 vezes. Abra-o para criar sua primeira senha.",
+          result.protectedAccess === true
+            ? "Enviamos um link seguro para seu e-mail. Ele é válido por 24 horas e pode ser aberto até 3 vezes. Abra-o para criar sua primeira senha."
+            : "Enviamos um link seguro para seu e-mail. Abra-o para autenticar sua conta e criar sua primeira senha.",
         );
       } else if (mode === "login") {
         const supabase = createClient();

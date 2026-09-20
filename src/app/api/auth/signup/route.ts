@@ -21,11 +21,29 @@ export async function POST(request: Request) {
       appUrl,
     });
 
+    if (firstAccess.mode === "legacy") {
+      await sendFirstAccessEmail({
+        to: email,
+        name: fullName,
+        link: firstAccess.link,
+        protectedAccess: false,
+      });
+
+      return NextResponse.json(
+        {
+          sent: true,
+          protectedAccess: false,
+        },
+        { status: 201 },
+      );
+    }
+
     try {
       await sendFirstAccessEmail({
         to: email,
         name: fullName,
         link: firstAccess.link,
+        protectedAccess: true,
       });
     } catch (error) {
       await discardFirstAccessToken(firstAccess.tokenId);
@@ -40,6 +58,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         sent: true,
+        protectedAccess: true,
         expiresAt: firstAccess.expiresAt,
         maxOpenings: firstAccess.maxOpenings,
       },

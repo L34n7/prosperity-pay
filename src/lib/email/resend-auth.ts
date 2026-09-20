@@ -134,7 +134,12 @@ export async function sendFirstAccessEmail(params: {
   to: string;
   name: string;
   link: string;
+  protectedAccess: boolean;
 }) {
+  const protectedNotice = params.protectedAccess
+    ? "O link é individual, válido por <strong>24 horas</strong> e pode ser aberto em até <strong>3 vezes</strong>. A senha poderá ser cadastrada apenas uma vez."
+    : "O link é individual e possui validade limitada. Abra-o assim que possível para concluir seu primeiro acesso.";
+
   const html = prosperityPayTemplate({
     eyebrow: "Primeiro acesso",
     title: "Seu acesso foi liberado",
@@ -143,12 +148,16 @@ export async function sendFirstAccessEmail(params: {
     paragraphs: [
       "Sua conta no <strong>Prosperity Pay</strong> já está pronta.",
       "Para concluir o cadastro, autentique seu e-mail pelo botão abaixo e crie sua primeira senha de acesso.",
-      "O link é individual, válido por <strong>24 horas</strong> e pode ser aberto em até <strong>3 vezes</strong>. A senha poderá ser cadastrada apenas uma vez.",
+      protectedNotice,
     ],
     buttonLabel: "Criar senha e acessar",
     link: params.link,
     footer: `© ${new Date().getFullYear()} Prosperity Pay. Todos os direitos reservados.`,
   });
+
+  const protectionText = params.protectedAccess
+    ? "O link é válido por 24 horas, pode ser aberto em até 3 vezes e a senha só pode ser criada uma vez."
+    : "O link possui validade limitada. Abra-o assim que possível.";
 
   await sendEmail({
     to: params.to,
@@ -161,7 +170,7 @@ export async function sendFirstAccessEmail(params: {
       "Abra o link abaixo para autenticar seu e-mail e criar sua primeira senha:",
       params.link,
       "",
-      "O link é válido por 24 horas, pode ser aberto em até 3 vezes e a senha só pode ser criada uma vez.",
+      protectionText,
       "Por segurança, não compartilhe este link.",
     ].join("\n"),
   });
