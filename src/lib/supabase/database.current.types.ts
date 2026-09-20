@@ -129,6 +129,60 @@ type IntegrationWebhookDeliveryTable = {
   ];
 };
 
+type FirstAccessTokenRow = {
+  id: string;
+  auth_user_id: string;
+  email: string;
+  token_hash: string;
+  expires_at: string;
+  openings: number;
+  max_openings: number;
+  last_opened_at: string | null;
+  password_set_at: string | null;
+  invalidated_at: string | null;
+  processing_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type FirstAccessTokenTable = {
+  Row: FirstAccessTokenRow;
+  Insert: {
+    id?: string;
+    auth_user_id: string;
+    email: string;
+    token_hash: string;
+    expires_at: string;
+    openings?: number;
+    max_openings?: number;
+    last_opened_at?: string | null;
+    password_set_at?: string | null;
+    invalidated_at?: string | null;
+    processing_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Update: Partial<FirstAccessTokenRow>;
+  Relationships: [];
+};
+
+type FirstAccessOpenResult = {
+  ok: boolean;
+  reason: string;
+  email: string | null;
+  openings: number;
+  max_openings: number;
+  remaining_openings: number;
+  expires_at: string | null;
+};
+
+type FirstAccessPasswordReservation = {
+  ok: boolean;
+  reason: string;
+  auth_user_id: string | null;
+  email: string | null;
+};
+
 type PublicSchema = GeneratedDatabase["public"];
 type GeneratedTables = PublicSchema["Tables"];
 type GeneratedFunctions = PublicSchema["Functions"];
@@ -137,25 +191,56 @@ type GeneratedFunctions = PublicSchema["Functions"];
  * Database type used by Supabase clients.
  *
  * The checked-in generated file predates the latest product/offer, transparent
- * checkout, platform bootstrap and CRM webhook integration migrations. This
- * layer keeps the client strictly typed against the live schema without
- * weakening mutations with `any`/`never` casts. When database.types.ts is
- * regenerated from Supabase, these additions can be folded back into it.
+ * checkout, platform bootstrap, CRM webhook integration and first-access
+ * migrations. This layer keeps the client strictly typed against the live
+ * schema without weakening mutations with any/never casts. When
+ * database.types.ts is regenerated from Supabase, these additions can be
+ * folded back into it.
  */
 export type Database = Omit<GeneratedDatabase, "public"> & {
   public: Omit<PublicSchema, "Tables" | "Functions"> & {
-    Tables: Omit<GeneratedTables, "products" | "offers" | "subscriptions" | "affiliate_programs"> & {
+    Tables: Omit<
+      GeneratedTables,
+      "products" | "offers" | "subscriptions" | "affiliate_programs"
+    > & {
       products: ExtendTable<GeneratedTables["products"], ProductCommercialColumns>;
       offers: ExtendTable<GeneratedTables["offers"], OfferCommercialColumns>;
-      affiliate_programs: ExtendTable<GeneratedTables["affiliate_programs"], AffiliateProgramSettingsColumns>;
-      subscriptions: ExtendTable<GeneratedTables["subscriptions"], SubscriptionTransparentColumns>;
+      affiliate_programs: ExtendTable<
+        GeneratedTables["affiliate_programs"],
+        AffiliateProgramSettingsColumns
+      >;
+      subscriptions: ExtendTable<
+        GeneratedTables["subscriptions"],
+        SubscriptionTransparentColumns
+      >;
       integration_webhook_routes: IntegrationWebhookRouteTable;
       integration_webhook_deliveries: IntegrationWebhookDeliveryTable;
+      first_access_tokens: FirstAccessTokenTable;
     };
     Functions: GeneratedFunctions & {
       bootstrap_initial_platform_admin: {
         Args: never;
         Returns: boolean;
+      };
+      get_auth_user_id_by_email: {
+        Args: { p_email: string };
+        Returns: string | null;
+      };
+      register_first_access_open: {
+        Args: { p_token_hash: string };
+        Returns: FirstAccessOpenResult[];
+      };
+      reserve_first_access_password: {
+        Args: { p_token_hash: string };
+        Returns: FirstAccessPasswordReservation[];
+      };
+      complete_first_access_password: {
+        Args: { p_token_hash: string };
+        Returns: boolean;
+      };
+      release_first_access_password: {
+        Args: { p_token_hash: string };
+        Returns: undefined;
       };
     };
   };

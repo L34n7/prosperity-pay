@@ -90,7 +90,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
         });
 
         setSuccess(
-          "Enviamos um link seguro para seu e-mail. Abra-o para autenticar sua conta e criar a primeira senha.",
+          "Enviamos um link seguro para seu e-mail. Ele é válido por 24 horas e pode ser aberto até 3 vezes. Abra-o para criar sua primeira senha.",
         );
       } else if (mode === "login") {
         const supabase = createClient();
