@@ -2,7 +2,6 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
 import { ProductAffiliateManagement } from "@/components/product-affiliate-management";
 import { ProductOfferDialog } from "@/components/product-offer-dialog";
 import { ProductOffersList } from "@/components/product-offers-list";
@@ -156,13 +155,12 @@ export function ProductDetail({ id }: { id: string }) {
   }
 
   return <>
-    <PageHeader title={product?.name ?? "Produto"} description={product?.settlement_model === "connected_account" ? "Recebimento direto no Mercado Pago" : "Recebimento no saldo Prosperity Pay"}
-      action={product?<button type="button" className="secondary-button" disabled={busy} onClick={()=>setDeletingProduct(true)}><Trash2 size={14}/>Excluir produto</button>:undefined}/>
+    <PageHeader title={product?.name ?? "Produto"} description={product?.settlement_model === "connected_account" ? "Recebimento direto no Mercado Pago" : "Recebimento no saldo Prosperity Pay"}/>
     <nav className="detail-tabs" aria-label="Gestão do produto">{tabs.map(item => <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>)}</nav>
     {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success" role="status">{message}</p>}
     {!product ? <p>Carregando...</p> : <section className="panel operational-panel">
       {tab === "Visão geral" && <ProductOverview product={product} offers={offers}/>} 
-      {tab === "Configurações" && <ProductSettings key={product.updated_at} product={product} busy={busy} onSave={body => mutate(`/api/products/${id}`, "PATCH", body)} onChangeImage={changeImage} onRemoveImage={removeImage}/>} 
+      {tab === "Configurações" && <ProductSettings key={product.updated_at} product={product} busy={busy} onSave={body => mutate(`/api/products/${id}`, "PATCH", body)} onChangeImage={changeImage} onRemoveImage={removeImage} onDelete={()=>setDeletingProduct(true)}/>} 
       {tab === "Ofertas" && <ProductOffersList paymentType={product.payment_type} offers={offers} onNew={() => setEditingOffer(null)} onEdit={setEditingOffer} onDelete={setDeletingOffer}/>} 
       {tab === "Afiliados" && <ProductAffiliateManagement id={id}/>} 
       {tab === "Co-Produtores" && <ProductCoproducerManagement id={id} offers={offers.map(offer => ({ id: offer.id, name: offer.name }))}/>} 
@@ -190,9 +188,21 @@ function ConfirmDeleteDialog({ offer, busy, onClose, onConfirm }: { offer: Offer
 
 function ConfirmProductDeleteDialog({ productName, busy, onClose, onConfirm }: { productName: string; busy: boolean; onClose: () => void; onConfirm: () => Promise<void> }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const [confirmed, setConfirmed] = useState(false);
   useEffect(() => { ref.current?.showModal(); }, []);
   return <dialog ref={ref} className="product-dialog confirm-dialog" onClose={onClose} onCancel={event => { if (busy) event.preventDefault(); }}>
-    <div className="product-dialog-heading"><div><h2>Excluir produto?</h2><p>Confirme a exclusão de <strong>{productName}</strong>. Produtos com histórico financeiro não podem ser apagados.</p></div></div>
-    <div className="product-dialog-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button type="button" className="primary-button" disabled={busy} onClick={() => void onConfirm()}>{busy ? "Excluindo..." : "Confirmar exclusão"}</button></div>
+    <div className="product-dialog-heading"><div><h2>Excluir produto definitivamente?</h2><p>Você está prestes a excluir <strong>{productName}</strong>. Revise os impactos antes de confirmar.</p></div></div>
+    <div className="delete-impact">
+      <strong>O que será removido:</strong>
+      <ul>
+        <li>o produto, suas configurações e a imagem cadastrada;</li>
+        <li>as ofertas e links de checkout vinculados ao produto;</li>
+        <li>a configuração de afiliados, vínculos e links deste produto;</li>
+        <li>convites e vínculos de coprodutores relacionados ao produto.</li>
+      </ul>
+      <p>Se existir qualquer pedido ou histórico financeiro vinculado, a exclusão será bloqueada para preservar pagamentos e relatórios. Nesse caso, mantenha o produto como <strong>Inativo</strong>.</p>
+      <label className="delete-confirm-check"><input type="checkbox" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}/><span>Estou ciente de que esta ação é permanente e quero excluir o produto.</span></label>
+    </div>
+    <div className="product-dialog-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button type="button" className="danger-button" disabled={busy||!confirmed} onClick={() => void onConfirm()}>{busy ? "Excluindo..." : "Excluir produto definitivamente"}</button></div>
   </dialog>;
 }

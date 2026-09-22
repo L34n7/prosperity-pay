@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent } from "react";
-import { ExternalLink, ImageIcon, LifeBuoy, Link2, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
+import { FormEvent, useState } from "react";
+import { AlertTriangle, ExternalLink, ImageIcon, LifeBuoy, Link2, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
 import { PRODUCT_CATEGORIES, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { productImageUrl } from "@/lib/product-images";
 import styles from "./product-settings.module.css";
@@ -35,6 +35,7 @@ type Props = {
   onSave: (body: object) => Promise<boolean>;
   onChangeImage: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onRemoveImage: () => Promise<void>;
+  onDelete: () => void;
 };
 
 function moneyInput(cents: number | null | undefined) {
@@ -45,7 +46,8 @@ function cents(value: FormDataEntryValue | null) {
   return Math.round(Number(value) * 100);
 }
 
-export function ProductSettings({ product, busy, onSave, onChangeImage, onRemoveImage }: Props) {
+export function ProductSettings({ product, busy, onSave, onChangeImage, onRemoveImage, onDelete }: Props) {
+  const [active, setActive] = useState(product.status === "active");
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -55,7 +57,7 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
       postPurchaseMessage: data.get("postPurchaseMessage"),
       postPurchaseRedirectUrl: data.get("postPurchaseRedirectUrl"),
       affiliateFunnelBaseUrl: data.get("affiliateFunnelBaseUrl"),
-      status: data.get("status"),
+      status: active ? "active" : "inactive",
       paymentType: "one_time",
       productType: data.get("productType"),
       category: data.get("category"),
@@ -85,7 +87,13 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
           <label className={styles.field}><span>Nome</span><input name="name" defaultValue={product.name} required minLength={2}/></label>
           <label className={styles.field}><span>Descrição interna <small className={styles.labelHint}>(Essa descrição não é exibida para os clientes)</small></span><textarea name="description" defaultValue={product.description ?? ""} rows={4} placeholder="Use este campo para observações internas sobre o produto."/></label>
           <div className={styles.gridThree}>
-            <label className={styles.field}><span>Status</span><select name="status" defaultValue={product.status}><option value="draft">Rascunho</option><option value="active">Ativo</option><option value="inactive">Inativo</option><option value="archived">Arquivado</option></select></label>
+            <div className={styles.statusField}>
+              <span>Status</span>
+              <div className={styles.statusControl}>
+                <button type="button" className={`${styles.switch} ${active ? styles.switchOn : ""}`} role="switch" aria-checked={active} aria-label={active ? "Desativar produto" : "Ativar produto"} onClick={() => setActive(value => !value)}><span/></button>
+                <div><strong>{active ? "Ativo" : "Inativo"}</strong><small>{active ? "Disponível para vendas nas ofertas ativas." : "Vendas do produto ficam desativadas."}</small></div>
+              </div>
+            </div>
             <label className={styles.field}><span>Tipo de produto</span><select name="productType" defaultValue={product.product_type}><option value="digital">Digital</option><option value="physical">Físico</option></select></label>
             <label className={styles.field}><span>Categoria</span><select name="category" defaultValue={PRODUCT_CATEGORIES.includes(product.category as typeof PRODUCT_CATEGORIES[number]) ? product.category ?? "" : ""}><option value="">Selecione</option>{PRODUCT_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
           </div>
@@ -141,6 +149,14 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
           <form onSubmit={onChangeImage}><label className={styles.upload}><Upload size={15}/><span>Selecionar imagem</span><input type="file" name="image" accept="image/jpeg,image/png,image/webp" required/></label><button type="submit" className={styles.secondary} disabled={busy}>Enviar imagem</button></form>
           {product.image_path && <button type="button" className={styles.danger} disabled={busy} onClick={() => void onRemoveImage()}><Trash2 size={14}/>Remover imagem</button>}
         </div>
+      </div>
+    </section>
+
+    <section className={`${styles.card} ${styles.dangerCard}`}>
+      <div className={styles.cardHeader}><div><span className={styles.dangerIcon}><AlertTriangle size={16}/></span><div><h3>Excluir produto</h3><p>Remova definitivamente este produto e as configurações vinculadas a ele.</p></div></div></div>
+      <div className={styles.dangerZone}>
+        <div><strong>Esta ação é permanente.</strong><small>Antes de excluir, você verá exatamente o que será impactado e precisará confirmar a operação.</small></div>
+        <button type="button" className={styles.deleteProduct} disabled={busy} onClick={onDelete}><Trash2 size={14}/>Excluir produto</button>
       </div>
     </section>
   </div>;

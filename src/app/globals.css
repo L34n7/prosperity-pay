@@ -617,6 +617,15 @@ a {
 .product-dialog-heading p { margin: 0; color: var(--text-secondary); font-size: .85rem; }
 .product-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .product-dialog .operational-form { max-width: none; }
+.delete-impact { display: grid; gap: 12px; margin: -2px 0 22px; padding: 15px; border: 1px solid rgba(239,100,100,.16); border-radius: 12px; background: rgba(239,100,100,.035); }
+.delete-impact > strong { color: #f4c0c0; font-size: .78rem; }
+.delete-impact ul { display: grid; gap: 7px; margin: 0; padding-left: 20px; color: var(--text-secondary); font-size: .76rem; line-height: 1.45; }
+.delete-impact p { margin: 0; padding-top: 10px; border-top: 1px solid rgba(239,100,100,.12); color: var(--text-muted); font-size: .72rem; line-height: 1.5; }
+.delete-confirm-check { display: flex; align-items: flex-start; gap: 9px; padding-top: 2px; color: #e8c6c6; cursor: pointer; font-size: .72rem; line-height: 1.45; }
+.delete-confirm-check input { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 2px; accent-color: var(--danger); }
+.danger-button { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; padding: 0 14px; border: 1px solid rgba(239,100,100,.32); border-radius: 9px; background: rgba(239,100,100,.12); color: #ffd0d0; cursor: pointer; font-weight: 700; }
+.danger-button:hover { background: rgba(239,100,100,.18); }
+.danger-button:disabled { cursor: not-allowed; opacity: .45; }
 .product-record { justify-content: flex-start; }
 .product-record span:last-child { margin-left: auto; }
 .product-thumb { width: 56px; height: 56px; flex: none; object-fit: cover; border-radius: 9px; }
