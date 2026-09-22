@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUpRight, BadgeDollarSign, CalendarDays, Handshake, Package, ShoppingBag, UsersRound } from "lucide-react";
+import { ArrowUpRight, BadgeDollarSign, CalendarDays, Handshake, ImageIcon, LifeBuoy, Package, ReceiptText, ShoppingBag, UsersRound, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { PRODUCT_CATEGORIES, type ProductPaymentType } from "@/lib/domain/product-rules";
 import { requestJson } from "@/lib/operational";
@@ -276,27 +276,58 @@ export function ProductsView() {
         </div>
       </section>}
 
-    <dialog ref={dialog} className="product-dialog" aria-labelledby="product-dialog-title" onCancel={event => { if (busy) event.preventDefault(); }} onClose={resetDialogState}>
-      <div className="product-dialog-heading"><div><h2 id="product-dialog-title">Novo produto</h2><p>Defina os dados comerciais, suporte e cobrança do produto.</p></div>
-        <button type="button" className="secondary-button" aria-label="Fechar" disabled={busy} onClick={closeDialog}>Fechar</button></div>
-      <form className="operational-form" onSubmit={create}>
-        <label>Nome<input name="name" minLength={2} maxLength={180} required autoFocus/></label>
-        <label>Descrição interna<textarea name="description" rows={3} maxLength={4000}/><small className="form-hint">(Essa descrição não é exibida para os clientes)</small></label>
-        <div className="form-grid">
-          <label>Tipo de produto<select name="productType" defaultValue="digital"><option value="digital">Digital</option><option value="physical">Físico</option></select></label>
-          <label>Tipo de pagamento<select name="paymentType" value="one_time" disabled><option value="one_time">Pagamento único</option></select></label>
-          <label>Categoria<select name="category" defaultValue=""><option value="">Selecione</option>{PRODUCT_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
-          <label>Preço padrão do produto<input name="mainOfferPrice" type="number" min="0.01" step="0.01" required/></label>
+    <dialog ref={dialog} className={styles.createDialog} aria-labelledby="product-dialog-title" onCancel={event => { if (busy) event.preventDefault(); }} onClose={resetDialogState}>
+      <form className={styles.createForm} onSubmit={create}>
+        <header className={styles.createHeader}>
+          <div><span>Novo produto</span><h2 id="product-dialog-title">Cadastrar produto</h2><p>Organize as informações principais, cobrança, suporte e identidade visual do produto.</p></div>
+          <button type="button" className={styles.createClose} aria-label="Fechar" disabled={busy} onClick={closeDialog}><X size={19}/></button>
+        </header>
+
+        <div className={styles.createBody}>
+          <section className={styles.createBlock}>
+            <div className={styles.createBlockTitle}><span><Package size={17}/></span><div><h3>Informações do produto</h3><p>Dados usados para identificar e organizar o produto dentro da Prosperity Pay.</p></div></div>
+            <div className={styles.createStack}>
+              <label className={styles.createField}><span>Nome</span><input name="name" minLength={2} maxLength={180} required autoFocus/></label>
+              <label className={styles.createField}><span>Descrição interna</span><textarea name="description" rows={3} maxLength={4000} placeholder="Observações internas sobre o produto."/>&nbsp;<small>Essa descrição não é exibida para os clientes.</small></label>
+            </div>
+          </section>
+
+          <section className={styles.createBlock}>
+            <div className={styles.createBlockTitle}><span><ReceiptText size={17}/></span><div><h3>Comercial e cobrança</h3><p>Defina o tipo do produto, categoria e preço padrão.</p></div></div>
+            <div className={styles.createGrid}>
+              <label className={styles.createField}><span>Tipo de produto</span><select name="productType" defaultValue="digital"><option value="digital">Digital</option><option value="physical">Físico</option></select></label>
+              <label className={styles.createField}><span>Tipo de pagamento</span><select name="paymentType" value="one_time" disabled><option value="one_time">Pagamento único</option></select></label>
+              <label className={styles.createField}><span>Categoria</span><select name="category" defaultValue=""><option value="">Selecione</option>{PRODUCT_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
+              <label className={styles.createField}><span>Preço padrão</span><div className={styles.priceField}><small>R$</small><input name="mainOfferPrice" type="number" min="0.01" step="0.01" required/></div></label>
+            </div>
+          </section>
+
+          <section className={styles.createBlock}>
+            <div className={styles.createBlockTitle}><span><LifeBuoy size={17}/></span><div><h3>Atendimento e SAC</h3><p>Contatos que poderão ser apresentados ao comprador quando necessário.</p></div></div>
+            <div className={styles.createGridThree}>
+              <label className={styles.createField}><span>Nome de exibição</span><input name="supportDisplayName" maxLength={180}/></label>
+              <label className={styles.createField}><span>E-mail do SAC</span><input name="supportEmail" type="email" maxLength={320}/></label>
+              <label className={styles.createField}><span>WhatsApp</span><input name="supportWhatsapp" maxLength={32} placeholder="5531999999999"/></label>
+            </div>
+          </section>
+
+          <section className={styles.createBlock}>
+            <div className={styles.createBlockTitle}><span><ImageIcon size={17}/></span><div><h3>Imagem do produto</h3><p>Opcional. Envie JPEG, PNG ou WebP com até 3 MB.</p></div></div>
+            <label className={styles.createUpload}>
+              <ImageIcon size={18}/>
+              <div><strong>{image ? image.name : "Selecionar imagem"}</strong><small>{image ? "Arquivo pronto para envio." : "Clique para escolher uma imagem do seu dispositivo."}</small></div>
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => selectImage(event.currentTarget.files?.[0] ?? null)}/>
+            </label>
+            {preview && <Image className={styles.createPreview} src={preview} alt="Prévia da imagem do produto" width={420} height={236} unoptimized/>}
+          </section>
+
+          {dialogError && <p className={styles.createError} role="alert">{dialogError}</p>}
         </div>
-        <div className="form-grid">
-          <label>Nome de exibição do SAC<input name="supportDisplayName" maxLength={180}/></label>
-          <label>E-mail do SAC<input name="supportEmail" type="email" maxLength={320}/></label>
-          <label>WhatsApp do SAC<input name="supportWhatsapp" maxLength={32} placeholder="Ex.: 5531999999999"/></label>
-        </div>
-        <label>Imagem (opcional, até 3 MB)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => selectImage(event.currentTarget.files?.[0] ?? null)}/></label>
-        {preview && <Image className="product-image-preview" src={preview} alt="Prévia da imagem do produto" width={320} height={180} unoptimized/>}
-        {dialogError && <p className="form-error" role="alert">{dialogError}</p>}
-        <div className="product-dialog-actions"><button type="button" className="secondary-button" disabled={busy} onClick={closeDialog}>Cancelar</button><button className="primary-button" disabled={busy}>{busy ? "Salvando..." : "Criar produto"}</button></div>
+
+        <footer className={styles.createFooter}>
+          <span>Você poderá editar todas essas informações depois.</span>
+          <div><button type="button" className={styles.createSecondary} disabled={busy} onClick={closeDialog}>Cancelar</button><button className={styles.createPrimary} disabled={busy}>{busy ? "Salvando..." : "Criar produto"}</button></div>
+        </footer>
       </form>
     </dialog>
   </>;

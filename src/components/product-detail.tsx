@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, Trash2, X } from "lucide-react";
 import { ProductAffiliateManagement } from "@/components/product-affiliate-management";
 import { ProductOfferDialog } from "@/components/product-offer-dialog";
 import { ProductOffersList } from "@/components/product-offers-list";
@@ -190,19 +191,40 @@ function ConfirmProductDeleteDialog({ productName, busy, onClose, onConfirm }: {
   const ref = useRef<HTMLDialogElement>(null);
   const [confirmed, setConfirmed] = useState(false);
   useEffect(() => { ref.current?.showModal(); }, []);
-  return <dialog ref={ref} className="product-dialog confirm-dialog" onClose={onClose} onCancel={event => { if (busy) event.preventDefault(); }}>
-    <div className="product-dialog-heading"><div><h2>Excluir produto definitivamente?</h2><p>Você está prestes a excluir <strong>{productName}</strong>. Revise os impactos antes de confirmar.</p></div></div>
-    <div className="delete-impact">
-      <strong>O que será removido:</strong>
-      <ul>
-        <li>o produto, suas configurações e a imagem cadastrada;</li>
-        <li>as ofertas e links de checkout vinculados ao produto;</li>
-        <li>a configuração de afiliados, vínculos e links deste produto;</li>
-        <li>convites e vínculos de coprodutores relacionados ao produto.</li>
-      </ul>
-      <p>Se existir qualquer pedido ou histórico financeiro vinculado, a exclusão será bloqueada para preservar pagamentos e relatórios. Nesse caso, mantenha o produto como <strong>Inativo</strong>.</p>
-      <label className="delete-confirm-check"><input type="checkbox" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}/><span>Estou ciente de que esta ação é permanente e quero excluir o produto.</span></label>
+  return <dialog ref={ref} className="delete-product-dialog" onClose={onClose} onCancel={event => { if (busy) event.preventDefault(); }}>
+    <div className="delete-product-form">
+      <header className="delete-product-header">
+        <div>
+          <span>Zona de perigo</span>
+          <h2>Excluir produto definitivamente?</h2>
+          <p>Você está prestes a excluir <strong>{productName}</strong>. Revise os impactos antes de confirmar.</p>
+        </div>
+        <button type="button" className="delete-product-close" aria-label="Fechar" disabled={busy} onClick={()=>ref.current?.close()}><X size={19}/></button>
+      </header>
+
+      <div className="delete-product-body">
+        <section className="delete-product-block">
+          <div className="delete-product-block-title"><span><AlertTriangle size={18}/></span><div><h3>O que será removido</h3><p>A exclusão remove os vínculos operacionais deste produto.</p></div></div>
+          <ul>
+            <li>o produto, suas configurações e a imagem cadastrada;</li>
+            <li>as ofertas e links de checkout vinculados ao produto;</li>
+            <li>a configuração de afiliados, vínculos e links deste produto;</li>
+            <li>convites e vínculos de coprodutores relacionados ao produto.</li>
+          </ul>
+        </section>
+
+        <section className="delete-product-warning">
+          <strong>Proteção do histórico financeiro</strong>
+          <p>Se existir qualquer pedido ou histórico financeiro vinculado, a exclusão será bloqueada para preservar pagamentos e relatórios. Nesse caso, mantenha o produto como <strong>Inativo</strong>.</p>
+        </section>
+
+        <label className="delete-product-confirm"><input type="checkbox" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)}/><span>Estou ciente de que esta ação é permanente e quero excluir o produto.</span></label>
+      </div>
+
+      <footer className="delete-product-footer">
+        <span>Esta ação não pode ser desfeita.</span>
+        <div><button type="button" className="delete-product-secondary" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button type="button" className="delete-product-primary" disabled={busy||!confirmed} onClick={() => void onConfirm()}><Trash2 size={15}/>{busy ? "Excluindo..." : "Excluir produto"}</button></div>
+      </footer>
     </div>
-    <div className="product-dialog-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => ref.current?.close()}>Cancelar</button><button type="button" className="danger-button" disabled={busy||!confirmed} onClick={() => void onConfirm()}>{busy ? "Excluindo..." : "Excluir produto definitivamente"}</button></div>
   </dialog>;
 }
