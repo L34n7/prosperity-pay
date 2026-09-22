@@ -1,6 +1,7 @@
 import { HttpError } from "@/lib/api/http";
 import { FinancialDistributionService, type FeeRule } from "@/lib/financial/financial-distribution-service";
 import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
+import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { digits, sha256 } from "@/lib/security/hash";
 import { createRecurringSnapshot } from "@/lib/subscriptions/recurring-financials";
@@ -445,7 +446,10 @@ export async function syncTransparentOrder(input: {
     await admin.from("orders").update({ status: "pending_payment" }).eq("id", internalOrderId);
   }
 
-  await dispatchPaymentIntegrationEventsSafe(admin, currentPayment.id);
+  await Promise.all([
+    dispatchPaymentIntegrationEventsSafe(admin, currentPayment.id),
+    dispatchPaymentEmailNotificationsSafe(admin, currentPayment.id),
+  ]);
 
   return transparentResult(internalOrderId, status, mpOrder);
 }

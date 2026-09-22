@@ -324,3 +324,107 @@ export async function sendCoproducerInvitationEmail(params: {
     ].join("\n"),
   });
 }
+
+
+type PaymentNotificationRole = "producer" | "coproducer" | "affiliate";
+type PaymentNotificationEvent = "pix_generated" | "payment_approved";
+
+function paymentRoleLabel(role: PaymentNotificationRole) {
+  if (role === "producer") return "Produtor";
+  if (role === "coproducer") return "Coprodutor";
+  return "Afiliado";
+}
+
+function paymentMethodLabel(method: "pix" | "card") {
+  return method === "pix" ? "PIX" : "Cartão";
+}
+
+function emailMoney(cents: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(cents || 0) / 100);
+}
+
+export async function sendPaymentNotificationEmail(params: {
+  to: string;
+  name: string;
+  event: PaymentNotificationEvent;
+  role: PaymentNotificationRole;
+  buyerName: string;
+  buyerEmail: string;
+  productName: string;
+  offerName: string;
+  amountCents: number;
+  method: "pix" | "card";
+  orderNumber: number | null;
+  link: string;
+}) {
+  const buyerName = escapeHtml(params.buyerName || "Comprador");
+  const productName = escapeHtml(params.productName);
+  const offerName = escapeHtml(params.offerName);
+  const roleLabel = paymentRoleLabel(params.role);
+  const methodLabel = paymentMethodLabel(params.method);
+  const orderLabel = params.orderNumber ? `#${params.orderNumber}` : "—";
+
+  const isPixGenerated = params.event === "pix_generated";
+  const html = prosperityPayTemplate({
+    eyebrow: isPixGenerated ? "Novo PIX" : "Venda confirmada",
+    title: isPixGenerated ? "Um PIX foi gerado" : "Pagamento aprovado",
+    subtitle: isPixGenerated
+      ? "Uma nova cobrança está aguardando pagamento"
+      : "Uma venda foi confirmada no Prosperity Pay",
+    name: params.name,
+    paragraphs: isPixGenerated
+      ? [
+          `Um cliente gerou um <strong>PIX</strong> para o produto <strong>${productName}</strong>.`,
+          `Você está vinculado a esta venda como <strong>${escapeHtml(roleLabel)}</strong>. O pagamento ainda está aguardando confirmação.`,
+          "Assim que o PIX for pago e aprovado, você receberá uma nova notificação.",
+        ]
+      : [
+          `O pagamento da venda de <strong>${productName}</strong> foi <strong>aprovado</strong>.`,
+          `Você está vinculado a esta venda como <strong>${escapeHtml(roleLabel)}</strong>.`,
+          "Os valores e comissões seguem as regras financeiras configuradas para o produto e a oferta.",
+        ],
+    details: [
+      { label: "Pedido", value: orderLabel },
+      { label: "Comprador", value: params.buyerName || "Comprador" },
+      { label: "E-mail do comprador", value: params.buyerEmail || "Não informado" },
+      { label: "Produto", value: params.productName },
+      { label: "Plano / oferta", value: params.offerName },
+      { label: "Valor da venda", value: emailMoney(params.amountCents) },
+      { label: "Forma de pagamento", value: methodLabel },
+      { label: "Sua participação", value: roleLabel },
+      { label: "Status", value: isPixGenerated ? "Aguardando pagamento" : "Aprovado" },
+    ],
+    buttonLabel: isPixGenerated ? "Acompanhar no Prosperity Pay" : "Ver venda no Prosperity Pay",
+    link: params.link,
+    notice: isPixGenerated
+      ? "Este e-mail é apenas uma notificação. A venda só será considerada confirmada após a aprovação do pagamento."
+      : "Este e-mail confirma a atualização registrada no Prosperity Pay. Consulte o painel para acompanhar saldo, comissões e detalhes financeiros.",
+    footer: `© ${new Date().getFullYear()} Prosperity Pay. Notificação financeira automática.`,
+  });
+
+  await sendEmail({
+    to: params.to,
+    subject: isPixGenerated
+      ? `PIX gerado • ${params.productName} • Prosperity Pay`
+      : `Pagamento aprovado • ${params.productName} • Prosperity Pay`,
+    html,
+    text: [
+      `Olá, ${params.name}!`,
+      "",
+      isPixGenerated
+        ? `Um PIX foi gerado para ${params.productName} e está aguardando pagamento.`
+        : `O pagamento de ${params.productName} foi aprovado.`,
+      `Pedido: ${orderLabel}`,
+      `Comprador: ${params.buyerName} (${params.buyerEmail})`,
+      `Plano / oferta: ${params.offerName}`,
+      `Valor: ${emailMoney(params.amountCents)}`,
+      `Forma: ${methodLabel}`,
+      `Participação: ${roleLabel}`,
+      "",
+      params.link,
+    ].join("\n"),
+  });
+}

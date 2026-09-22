@@ -129,6 +129,57 @@ type IntegrationWebhookDeliveryTable = {
   ];
 };
 
+
+type PaymentEmailDeliveryRow = {
+  id: string;
+  payment_id: string;
+  event_type: "pix_generated" | "payment_approved";
+  recipient_user_id: string;
+  recipient_email: string;
+  recipient_role: "producer" | "coproducer" | "affiliate";
+  status: "pending" | "sent" | "failed";
+  attempts: number;
+  last_error: string | null;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type PaymentEmailDeliveryTable = {
+  Row: PaymentEmailDeliveryRow;
+  Insert: {
+    id?: string;
+    payment_id: string;
+    event_type: "pix_generated" | "payment_approved";
+    recipient_user_id: string;
+    recipient_email: string;
+    recipient_role: "producer" | "coproducer" | "affiliate";
+    status?: "pending" | "sent" | "failed";
+    attempts?: number;
+    last_error?: string | null;
+    sent_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Update: Partial<PaymentEmailDeliveryRow>;
+  Relationships: [
+    {
+      foreignKeyName: "payment_email_deliveries_payment_id_fkey";
+      columns: ["payment_id"];
+      isOneToOne: false;
+      referencedRelation: "payments";
+      referencedColumns: ["id"];
+    },
+    {
+      foreignKeyName: "payment_email_deliveries_recipient_user_id_fkey";
+      columns: ["recipient_user_id"];
+      isOneToOne: false;
+      referencedRelation: "profiles";
+      referencedColumns: ["id"];
+    },
+  ];
+};
+
 type FirstAccessTokenRow = {
   id: string;
   auth_user_id: string;
@@ -215,6 +266,7 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       >;
       integration_webhook_routes: IntegrationWebhookRouteTable;
       integration_webhook_deliveries: IntegrationWebhookDeliveryTable;
+      payment_email_deliveries: PaymentEmailDeliveryTable;
       first_access_tokens: FirstAccessTokenTable;
     };
     Functions: GeneratedFunctions & {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { env, requireEnv } from "@/lib/env";
 import { fetchMercadoPagoOrder, syncTransparentOrder } from "@/lib/checkout/transparent-checkout-service";
 import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
+import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 import { getPaymentProvider, type ProviderPayment } from "@/lib/payments";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { verifyMercadoPagoSignature } from "@/lib/payments/providers/mercadopago/webhook-signature";
@@ -137,7 +138,10 @@ async function applyPaymentState(input: {
     for (const update of updates) if (update.error) throw update.error;
   }
 
-  await dispatchPaymentIntegrationEventsSafe(admin, storedPayment.id);
+  await Promise.all([
+    dispatchPaymentIntegrationEventsSafe(admin, storedPayment.id),
+    dispatchPaymentEmailNotificationsSafe(admin, storedPayment.id),
+  ]);
 
   return { storedPayment, becameApproved };
 }
