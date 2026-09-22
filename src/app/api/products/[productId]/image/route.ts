@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { HttpError, jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { MAX_PRODUCT_IMAGE_BYTES, PRODUCT_IMAGE_BUCKET, productImageUrl } from "@/lib/product-images";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ productId: string }> };
 
@@ -35,7 +36,7 @@ export async function POST(request: Request, context: Context) {
     if (!matchesImageType(bytes, imageType)) throw new HttpError(400, "O arquivo não corresponde ao formato de imagem informado.");
 
     const path = `${user.id}/${productId}/${crypto.randomUUID()}.${imageTypes[imageType]}`;
-    const storage = supabase.storage.from(PRODUCT_IMAGE_BUCKET);
+    const storage = createAdminClient().storage.from(PRODUCT_IMAGE_BUCKET);
     const { error: uploadError } = await storage.upload(path, bytes, { contentType: imageType, upsert: false });
     if (uploadError) {
       console.error("Falha no upload da imagem do produto", uploadError);
@@ -68,7 +69,7 @@ export async function DELETE(_: Request, context: Context) {
       const { error: updateError } = await supabase.from("products")
         .update({ image_path: null }).eq("id", productId).eq("producer_id", user.id).select("id").single();
       if (updateError) throw updateError;
-      const { error: removeError } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove([product.image_path]);
+      const { error: removeError } = await createAdminClient().storage.from(PRODUCT_IMAGE_BUCKET).remove([product.image_path]);
       if (removeError) console.error("Falha ao remover imagem do produto", removeError);
     }
     return NextResponse.json({ imagePath: null, imageUrl: null });
