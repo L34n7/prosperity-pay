@@ -159,11 +159,14 @@ async function selectCentralConnection(admin: AdminClient, product: Product) {
     throw new HttpError(409, "Checkout transparente central disponível somente para ofertas com Saldo Prosperity.");
   }
   const { data, error } = await admin.from("payment_provider_connections")
-    .select("id,provider_id")
+    .select("id,provider_id,payment_providers!inner(code)")
     .eq("connection_kind", "prosperity_balance")
     .is("owner_user_id", null)
     .eq("status", "active")
-    .single();
+    .eq("payment_providers.code", "mercadopago")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   if (error || !data) throw new HttpError(503, "Conta Mercado Pago central não configurada.");
   return data;
 }
