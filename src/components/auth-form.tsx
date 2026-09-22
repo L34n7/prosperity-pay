@@ -1,6 +1,7 @@
 "use client";
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Brand } from "@/components/ui/brand";
@@ -71,6 +72,8 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -168,28 +171,50 @@ export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
           {mode !== "esqueci-senha" && mode !== "cadastro" && (
             <label>
               Senha
-              <input
-                name="password"
-                type="password"
-                required
-                minLength={8}
-                autoComplete={
-                  mode === "login" ? "current-password" : "new-password"
-                }
-              />
+              <span className="auth-password-field">
+                <input
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={8}
+                  autoComplete={
+                    mode === "login" ? "current-password" : "new-password"
+                  }
+                />
+                <button
+                  className="auth-password-toggle"
+                  type="button"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? "Ocultar senha" : "Exibir senha"}
+                  title={showPassword ? "Ocultar senha" : "Exibir senha"}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </span>
             </label>
           )}
 
           {passwordOnly && (
             <label>
               Confirme a senha
-              <input
-                name="confirm"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-              />
+              <span className="auth-password-field">
+                <input
+                  name="confirm"
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                />
+                <button
+                  className="auth-password-toggle"
+                  type="button"
+                  onClick={() => setShowConfirmPassword((visible) => !visible)}
+                  aria-label={showConfirmPassword ? "Ocultar confirmação de senha" : "Exibir confirmação de senha"}
+                  title={showConfirmPassword ? "Ocultar senha" : "Exibir senha"}
+                >
+                  {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </span>
             </label>
           )}
 
