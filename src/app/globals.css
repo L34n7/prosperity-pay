@@ -610,22 +610,34 @@ a {
   min-height: 100vh;
   place-items: center;
   overflow: hidden;
-  padding: 28px 20px;
+  padding: 20px;
   background:
-    radial-gradient(circle at 14% 14%, rgba(21, 112, 81, .22), transparent 34rem),
-    radial-gradient(circle at 88% 88%, rgba(19, 101, 111, .28), transparent 40rem),
-    linear-gradient(135deg, #03120d 0%, #06161a 50%, #062630 100%);
+    radial-gradient(circle at 12% 14%, rgba(25, 210, 137, .08), transparent 30%),
+    radial-gradient(circle at 88% 82%, rgba(15, 118, 110, .14), transparent 28%),
+    linear-gradient(135deg, #040b10 0%, #07151a 48%, #08131f 100%);
 }
 .auth-page::before {
   position: absolute;
   content: "";
-  width: 560px;
-  height: 560px;
-  right: -220px;
-  bottom: -300px;
-  border: 1px solid rgba(34, 230, 161, .06);
-  border-radius: 50%;
-  box-shadow: 0 0 0 70px rgba(34, 230, 161, .018), 0 0 0 140px rgba(34, 230, 161, .012);
+  top: -160px;
+  left: -120px;
+  width: 320px;
+  height: 320px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, .20);
+  filter: blur(80px);
+  pointer-events: none;
+}
+.auth-page::after {
+  position: absolute;
+  content: "";
+  right: -120px;
+  bottom: -160px;
+  width: 320px;
+  height: 320px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, .14);
+  filter: blur(80px);
   pointer-events: none;
 }
 .auth-card {
