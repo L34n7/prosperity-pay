@@ -246,7 +246,10 @@ export async function GET(_: Request, context: Context) {
         return {
           id: order.id,
           customer_name: customer?.name || "Comprador",
-          customer_email: customer?.email || "E-mail não informado",
+          customer_email:
+            customer?.email && !customer.email.endsWith(".invalid")
+              ? customer.email
+              : "E-mail não informado",
           plan_name: metadataText(raw, "plan_label") ?? offer?.name ?? "Plano não identificado",
           offer_name: offer?.name ?? "Oferta",
           amount_cents: Number(order.gross_amount_cents ?? 0),

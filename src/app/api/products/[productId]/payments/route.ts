@@ -133,7 +133,10 @@ export async function GET(_: Request, context: Context) {
           offer_name: offer?.name ?? "Oferta",
           plan_name: planName,
           customer_name: customer?.name ?? null,
-          customer_email: customer?.email ?? "—",
+          customer_email:
+            customer?.email && !customer.email.endsWith(".invalid")
+              ? customer.email
+              : "E-mail não informado",
           customer_phone: customer?.phone ?? null,
           amount_cents: Number(
             payment.gross_amount_cents ?? order.gross_amount_cents ?? 0,

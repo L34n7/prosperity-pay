@@ -69,7 +69,13 @@ export async function getFinanceView() {
   }
 
   const customerMap = new Map(
-    (customersResult.data ?? []).map((customer) => [customer.id, customer]),
+    (customersResult.data ?? []).map((customer) => [
+      customer.id,
+      {
+        ...customer,
+        email: customer.email.endsWith(".invalid") ? "" : customer.email,
+      },
+    ]),
   );
 
   return {
