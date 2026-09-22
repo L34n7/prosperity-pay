@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { calculateMaxInstallments } from "@/lib/domain/offer-rules";
 import { isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import type { Database } from "@/lib/supabase/database.types";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { hasActivePlatformMercadoPagoConnection } from "@/lib/payments/platform-connection";
 
 type Context = { params: Promise<{ productId: string; offerId: string }> };
 type OfferUpdate = Database["public"]["Tables"]["offers"]["Update"] & {
@@ -53,8 +53,9 @@ async function activationError(
     const { data } = await supabase.from("payment_provider_connections").select("id").eq("owner_user_id", product.producer_id).eq("status", "active").maybeSingle();
     return data ? null : "Conecte o Mercado Pago antes de ativar a oferta.";
   }
-  const { data } = await createAdminClient().from("payment_provider_connections").select("id").eq("connection_kind", "prosperity_balance").eq("status", "active").maybeSingle();
-  return data ? null : "A conta central Prosperity ainda não foi configurada.";
+  return (await hasActivePlatformMercadoPagoConnection())
+    ? null
+    : "A conta central Prosperity ainda não foi configurada.";
 }
 
 export async function PATCH(request: Request, context: Context) {

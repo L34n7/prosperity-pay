@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { isProductCategory, isProductKind, isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import type { Database } from "@/lib/supabase/database.types";
 import { PRODUCT_IMAGE_BUCKET } from "@/lib/product-images";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { hasActivePlatformMercadoPagoConnection } from "@/lib/payments/platform-connection";
 
 type Context = { params: Promise<{ productId: string }> };
 type ProductUpdate = Database["public"]["Tables"]["products"]["Update"] & {
@@ -151,8 +151,8 @@ export async function PATCH(request: Request, context: Context) {
         const { data: ready } = await supabase.from("payment_provider_connections").select("id").eq("owner_user_id", current.producer_id).eq("status", "active").maybeSingle();
         if (!ready) return NextResponse.json({ error: "Conecte o Mercado Pago antes de ativar o produto." }, { status: 409 });
       } else {
-        const { data: platform } = await createAdminClient().from("payment_provider_connections").select("id").eq("connection_kind", "prosperity_balance").eq("status", "active").maybeSingle();
-        if (!platform) return NextResponse.json({ error: "A conta central Prosperity ainda não foi configurada." }, { status: 409 });
+        const platformReady = await hasActivePlatformMercadoPagoConnection();
+        if (!platformReady) return NextResponse.json({ error: "A conta central Prosperity ainda não foi configurada." }, { status: 409 });
       }
     }
 
