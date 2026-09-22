@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
+import { env, requireEnv } from "@/lib/env";
+import { sendAffiliateInvitationEmail } from "@/lib/email/resend-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dispatchAffiliateMembershipWebhooksSafe } from "@/lib/integrations/affiliate-webhook";
 
@@ -23,11 +25,17 @@ export async function POST(request: Request, context: Context) {
     const email = requiredString(body, "email", 320).trim().toLowerCase();
     const admin = createAdminClient();
 
-    const { data: program, error: programError } = await admin.from("affiliate_programs")
-      .select("id, mode, active")
-      .eq("product_id", productId)
-      .maybeSingle();
-    if (programError) throw programError;
+    const [{ data: program, error: programError }, { data: product, error: productError }] = await Promise.all([
+      admin.from("affiliate_programs")
+        .select("id, mode, active")
+        .eq("product_id", productId)
+        .maybeSingle(),
+      admin.from("products")
+        .select("name")
+        .eq("id", productId)
+        .maybeSingle(),
+    ]);
+    if (programError || productError) throw programError ?? productError;
     if (!program || !program.active || program.mode !== "invite") {
       return NextResponse.json({ error: "Ative o programa no modo Convite antes de convidar afiliados." }, { status: 409 });
     }
@@ -86,12 +94,27 @@ export async function POST(request: Request, context: Context) {
       membership = data;
     }
 
+    const invitationPath = `/convites/afiliacao?code=${encodeURIComponent(membership.code)}`;
+    const invitationUrl = new URL(
+      invitationPath,
+      requireEnv(env.appUrl, "NEXT_PUBLIC_APP_URL"),
+    ).toString();
+
+    await sendAffiliateInvitationEmail({
+      to: profile.email,
+      name: profile.full_name || profile.email.split("@")[0] || "parceiro",
+      productName: product?.name || "Produto Prosperity Pay",
+      link: invitationUrl,
+    });
+
     await dispatchAffiliateMembershipWebhooksSafe(admin, membership.id);
 
     return NextResponse.json({
       membership,
       invited: { full_name: profile.full_name, email: profile.email },
-      invitationPath: `/convites/afiliacao?code=${encodeURIComponent(membership.code)}`,
+      invitationPath,
+      invitationUrl,
+      emailSent: true,
     }, { status: existing?.status === "pending" ? 200 : 201 });
   } catch (error) {
     return jsonError(error);

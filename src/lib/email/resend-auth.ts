@@ -25,6 +25,8 @@ function prosperityPayTemplate(params: {
   buttonLabel: string;
   link: string;
   footer: string;
+  details?: Array<{ label: string; value: string }>;
+  notice?: string;
 }) {
   const name = escapeHtml(params.name || "cliente");
   const link = escapeHtml(params.link);
@@ -34,6 +36,18 @@ function prosperityPayTemplate(params: {
         `<p style="margin:0 0 18px;color:#475569;font-size:15px;line-height:1.7;">${paragraph}</p>`,
     )
     .join("");
+  const details = params.details?.length
+    ? `<div style="background:#f7faf8;border:1px solid #dce8e1;border-radius:16px;padding:4px 20px;margin:6px 0 24px;">${params.details
+        .map(
+          (detail) =>
+            `<div style="display:flex;gap:16px;justify-content:space-between;padding:14px 0;border-bottom:1px solid #e6eee9;"><span style="color:#64748b;font-size:13px;">${escapeHtml(detail.label)}</span><strong style="color:#0f172a;font-size:13px;text-align:right;">${escapeHtml(detail.value)}</strong></div>`,
+        )
+        .join("")}</div>`
+    : "";
+  const notice = escapeHtml(
+    params.notice ||
+      "Por segurança, não compartilhe este link. Ele concede acesso temporário para concluir a configuração da sua conta.",
+  );
 
   return `
   <!DOCTYPE html>
@@ -68,6 +82,7 @@ function prosperityPayTemplate(params: {
                 <td style="padding:38px 34px 32px;">
                   <p style="margin:0 0 18px;color:#0f172a;font-size:18px;line-height:1.6;font-weight:800;">Olá, ${name}!</p>
                   ${paragraphs}
+                  ${details}
                   <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
                     <tr>
                       <td align="center" style="padding:8px 0 32px;">
@@ -79,7 +94,7 @@ function prosperityPayTemplate(params: {
                     <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">Se o botão não funcionar, copie e cole este link no navegador:</p>
                     <p style="margin:10px 0 0;color:#0c8f62;font-size:12px;line-height:1.6;word-break:break-all;">${link}</p>
                   </div>
-                  <p style="margin:0;color:#64748b;font-size:13px;line-height:1.7;">Por segurança, não compartilhe este link. Ele concede acesso temporário para concluir a configuração da sua conta.</p>
+                  <p style="margin:0;color:#64748b;font-size:13px;line-height:1.7;">${notice}</p>
                 </td>
               </tr>
               <tr>
@@ -118,14 +133,14 @@ async function sendEmail(payload: EmailPayload) {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    console.error("[RESEND_AUTH] Falha ao enviar e-mail.", {
+    console.error("[RESEND_EMAIL] Falha ao enviar e-mail.", {
       status: response.status,
       name: body?.name,
       message: body?.message,
     });
 
     throw new Error(
-      "Não foi possível enviar o e-mail de acesso agora. Tente novamente em alguns minutos.",
+      "Não foi possível enviar o e-mail agora. Tente novamente em alguns minutos.",
     );
   }
 }
@@ -208,6 +223,104 @@ export async function sendPasswordRecoveryEmail(params: {
       params.link,
       "",
       "Se você não solicitou esta alteração, ignore este e-mail.",
+    ].join("\n"),
+  });
+}
+
+
+export async function sendAffiliateInvitationEmail(params: {
+  to: string;
+  name: string;
+  productName: string;
+  link: string;
+}) {
+  const productName = escapeHtml(params.productName);
+
+  const html = prosperityPayTemplate({
+    eyebrow: "Convite de parceria",
+    title: "Você recebeu um convite de afiliação",
+    subtitle: "Uma nova oportunidade espera por você no Prosperity Pay",
+    name: params.name,
+    paragraphs: [
+      `Você foi convidado para participar como <strong>afiliado</strong> do produto <strong>${productName}</strong>.`,
+      "Ao aceitar o convite, sua afiliação será ativada e você poderá acessar seu código de indicação, links e acompanhar as comissões pelo Prosperity Pay.",
+      "Clique no botão abaixo para abrir a página do convite e escolher se deseja aceitar ou recusar.",
+    ],
+    details: [
+      { label: "Produto", value: params.productName },
+      { label: "Participação", value: "Afiliado" },
+    ],
+    buttonLabel: "Ver e aceitar convite",
+    link: params.link,
+    notice:
+      "Este convite é pessoal e está vinculado ao e-mail que o recebeu. Entre no Prosperity Pay com esta mesma conta para responder.",
+    footer: `© ${new Date().getFullYear()} Prosperity Pay. Convite de parceria.`,
+  });
+
+  await sendEmail({
+    to: params.to,
+    subject: `Convite para ser afiliado de ${params.productName} • Prosperity Pay`,
+    html,
+    text: [
+      `Olá, ${params.name}!`,
+      "",
+      `Você foi convidado para participar como afiliado do produto ${params.productName} no Prosperity Pay.`,
+      "Abra o link abaixo para visualizar e responder ao convite:",
+      params.link,
+      "",
+      "Entre com a mesma conta que recebeu este e-mail.",
+    ].join("\n"),
+  });
+}
+
+export async function sendCoproducerInvitationEmail(params: {
+  to: string;
+  name: string;
+  productName: string;
+  participationPercent: string;
+  scopeLabel: string;
+  link: string;
+}) {
+  const productName = escapeHtml(params.productName);
+  const participationPercent = escapeHtml(params.participationPercent);
+
+  const html = prosperityPayTemplate({
+    eyebrow: "Convite de parceria",
+    title: "Você recebeu um convite de coprodução",
+    subtitle: "Participe de um produto dentro do Prosperity Pay",
+    name: params.name,
+    paragraphs: [
+      `Você foi convidado para participar como <strong>coprodutor</strong> do produto <strong>${productName}</strong>.`,
+      `A participação definida para este convite é de <strong>${participationPercent}</strong> sobre o escopo informado pelo produtor.`,
+      "Clique no botão abaixo para acessar a página do convite e escolher se deseja aceitar ou recusar a coprodução.",
+    ],
+    details: [
+      { label: "Produto", value: params.productName },
+      { label: "Participação", value: params.participationPercent },
+      { label: "Escopo", value: params.scopeLabel },
+      { label: "Validade do convite", value: "7 dias" },
+    ],
+    buttonLabel: "Ver e aceitar coprodução",
+    link: params.link,
+    notice:
+      "Este convite é pessoal, válido por 7 dias e está vinculado ao e-mail que o recebeu. Se ainda não tiver uma conta, cadastre-se com este mesmo e-mail antes de responder.",
+    footer: `© ${new Date().getFullYear()} Prosperity Pay. Convite de coprodução.`,
+  });
+
+  await sendEmail({
+    to: params.to,
+    subject: `Convite de coprodução para ${params.productName} • Prosperity Pay`,
+    html,
+    text: [
+      `Olá, ${params.name}!`,
+      "",
+      `Você foi convidado para participar como coprodutor do produto ${params.productName}.`,
+      `Participação: ${params.participationPercent}.`,
+      `Escopo: ${params.scopeLabel}.`,
+      "Abra o link abaixo para visualizar e responder ao convite:",
+      params.link,
+      "",
+      "O convite é válido por 7 dias e deve ser respondido usando o mesmo e-mail que o recebeu.",
     ].join("\n"),
   });
 }
