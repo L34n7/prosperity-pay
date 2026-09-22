@@ -65,6 +65,10 @@ function saleDateOf(payment: Payment, order: Order | undefined) {
   return payment.paid_at ?? order?.paid_at ?? payment.created_at;
 }
 
+function paymentDateOf(payment: Payment, order: Order | undefined) {
+  return payment.paid_at ?? order?.paid_at ?? null;
+}
+
 export function PaymentsView({
   orders,
   payments,
@@ -215,7 +219,7 @@ export function PaymentsView({
                   <th>Método</th>
                   <th>Status</th>
                   <th>Valor</th>
-                  <th>Data</th>
+                  <th>Data do pagamento</th>
                   <th aria-label="Abrir detalhes" />
                 </tr>
               </thead>
@@ -249,7 +253,7 @@ export function PaymentsView({
                         <StatusBadge status={payment.status as PaymentStatus} />
                       </td>
                       <td className="payment-value">{formatCents(payment.gross_amount_cents)}</td>
-                      <td className="payment-date">{formatDate(saleDateOf(payment, order))}</td>
+                      <td className="payment-date">{paymentDateOf(payment, order) ? formatDate(paymentDateOf(payment, order)!) : "—"}</td>
                       <td className="payment-open-cell">
                         <span aria-hidden="true">→</span>
                       </td>
@@ -292,7 +296,7 @@ export function PaymentsView({
                 ["Comprador", detail.customers?.name || "—"],
                 ["E-mail", detail.customers?.email || "—"],
                 ["Plano", planOf(chosen, detail)],
-                ["Data da venda", formatDate(saleDateOf(chosen, detail))],
+                ["Data do pagamento", paymentDateOf(chosen, detail) ? formatDate(paymentDateOf(chosen, detail)!) : "—"],
                 ["Bruto", formatCents(chosen.gross_amount_cents)],
                 ["Taxa gateway apurada", formatCents(chosen.provider_fee_amount_cents)],
                 [

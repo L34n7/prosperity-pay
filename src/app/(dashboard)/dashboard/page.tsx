@@ -4,6 +4,7 @@ import { PaymentVolumeChart } from "@/components/dashboard/payment-volume-chart"
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PaymentStatus } from "@/lib/payments";
+import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 import { getFinanceView } from "@/lib/finance-view";
 import { formatCents, formatDate } from "@/lib/operational";
 import { createClient } from "@/lib/supabase/server";
@@ -14,6 +15,11 @@ function metadataText(value: unknown, key: string) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = (value as Record<string, unknown>)[key];
   return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
+}
+
+function paymentMethodOf(rawProviderData: unknown) {
+  const method = mercadoPagoPaymentMetadata(rawProviderData).method;
+  return method === "pix" ? "PIX" : method === "card" ? "Cartão" : "—";
 }
 
 export default async function Page() {
@@ -144,9 +150,10 @@ export default async function Page() {
                 <tr>
                   <th>Comprador</th>
                   <th>Plano / produto</th>
+                  <th>Método</th>
                   <th>Status</th>
                   <th>Valor</th>
-                  <th>Data</th>
+                  <th>Data do pagamento</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,6 +164,8 @@ export default async function Page() {
                     order?.offers?.name ??
                     "Plano não identificado";
                   const customer = order?.customers;
+                  const method = paymentMethodOf(payment.raw_provider_data);
+                  const paidAt = payment.paid_at ?? order?.paid_at ?? null;
 
                   return (
                     <tr key={payment.id}>
@@ -169,15 +178,18 @@ export default async function Page() {
                         <span>{order?.products?.name ?? "Produto"}</span>
                       </td>
                       <td>
+                        <span className={"payment-method-pill " + (method === "PIX" ? "is-pix" : method === "Cartão" ? "is-card" : "")}>
+                          {method}
+                        </span>
+                      </td>
+                      <td>
                         <StatusBadge status={payment.status as PaymentStatus} />
                       </td>
                       <td className="payment-value">
                         {formatCents(payment.gross_amount_cents)}
                       </td>
                       <td className="payment-date">
-                        {formatDate(
-                          payment.paid_at ?? order?.paid_at ?? payment.created_at,
-                        )}
+                        {paidAt ? formatDate(paidAt) : "—"}
                       </td>
                     </tr>
                   );
