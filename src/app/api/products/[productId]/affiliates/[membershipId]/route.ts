@@ -14,11 +14,13 @@ export async function PATCH(request: Request, context: Context) {
     const { data: owns } = await supabase.rpc("owns_product", { target_product_id: productId });
     if (!owns) return NextResponse.json({ error: "Produto nao encontrado." }, { status: 404 });
     const body = asObject(await request.json());
-    const status = typeof body.status === "string" ? body.status : undefined;
+    const rawStatus = typeof body.status === "string" ? body.status : undefined;
     const hasCommissionOverride = Object.prototype.hasOwnProperty.call(body, "commissionBpsOverride");
-    if (status && status !== "active" && status !== "rejected" && status !== "blocked") {
+    if (rawStatus && rawStatus !== "active" && rawStatus !== "rejected" && rawStatus !== "blocked") {
       return NextResponse.json({ error: "Status invalido." }, { status: 400 });
     }
+    const status: "active" | "rejected" | "blocked" | undefined =
+      rawStatus === "active" || rawStatus === "rejected" || rawStatus === "blocked" ? rawStatus : undefined;
     if (!status && !hasCommissionOverride) {
       return NextResponse.json({ error: "Nenhuma alteração informada." }, { status: 400 });
     }
