@@ -59,6 +59,13 @@ function rule(type: "percentage" | "fixed" | "hybrid", basisPoints: number, fixe
   return { type, basisPoints, fixedCents };
 }
 
+function affiliateCommissionRule(offer: CommercialOffer, overrideBasisPoints: number | null | undefined): FeeRule {
+  if (overrideBasisPoints !== null && overrideBasisPoints !== undefined) {
+    return rule("percentage", Number(overrideBasisPoints), 0);
+  }
+  return rule(offer.affiliate_commission_type, Number(offer.affiliate_commission_bps), Number(offer.affiliate_commission_fixed_cents));
+}
+
 function paymentMethods(offer: CheckoutOfferSettings) {
   return {
     card: offer.payment_card_enabled,
@@ -92,7 +99,7 @@ async function selectConnection(admin: ReturnType<typeof createAdminClient>, pro
 async function resolveAffiliate(admin: ReturnType<typeof createAdminClient>, input: CheckoutRequest, offer: CommercialOffer, product: CommercialProduct) {
   if (!input.refCode || !offer.affiliate_enabled) return undefined;
   const { data: link } = await admin.from("affiliate_links")
-    .select("id, membership_id, affiliate_memberships!inner(user_id, status, affiliate_programs!inner(product_id, active))")
+    .select("id, membership_id, affiliate_memberships!inner(user_id, status, affiliate_commission_bps_override, affiliate_programs!inner(product_id, active))")
     .eq("ref_code", input.refCode).eq("active", true).maybeSingle();
   const membership = link?.affiliate_memberships;
   if (!link || !membership || Array.isArray(membership) || membership.status !== "active" || membership.affiliate_programs?.product_id !== product.id || !membership.affiliate_programs.active) return undefined;
@@ -290,7 +297,7 @@ export async function createCheckout(input: CheckoutRequest) {
   let affiliate: { userId: string; rule: FeeRule; membershipId: string; linkId: string } | undefined;
   if (input.refCode && offer.affiliate_enabled) {
     const { data: link } = await admin.from("affiliate_links")
-      .select("id, membership_id, affiliate_memberships!inner(user_id, status, affiliate_programs!inner(product_id, active))")
+      .select("id, membership_id, affiliate_memberships!inner(user_id, status, affiliate_commission_bps_override, affiliate_programs!inner(product_id, active))")
       .eq("ref_code", input.refCode).eq("active", true).maybeSingle();
     const membership = link?.affiliate_memberships;
     if (link && membership && !Array.isArray(membership) && membership.status === "active" && membership.affiliate_programs?.product_id === product.id && membership.affiliate_programs.active) {
@@ -298,7 +305,7 @@ export async function createCheckout(input: CheckoutRequest) {
         userId: membership.user_id,
         membershipId: link.membership_id,
         linkId: link.id,
-        rule: rule(offer.affiliate_commission_type, offer.affiliate_commission_bps, Number(offer.affiliate_commission_fixed_cents)),
+        rule: affiliateCommissionRule(offer, membership.affiliate_commission_bps_override),
       };
     }
   }

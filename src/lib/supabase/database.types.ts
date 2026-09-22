@@ -125,6 +125,7 @@ export type Database = {
       }
       affiliate_memberships: {
         Row: {
+          affiliate_commission_bps_override: number | null
           approved_at: string | null
           approved_by: string | null
           code: string
@@ -137,6 +138,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          affiliate_commission_bps_override?: number | null
           approved_at?: string | null
           approved_by?: string | null
           code: string
@@ -149,6 +151,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          affiliate_commission_bps_override?: number | null
           approved_at?: string | null
           approved_by?: string | null
           code?: string

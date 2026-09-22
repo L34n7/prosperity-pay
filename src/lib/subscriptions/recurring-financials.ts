@@ -72,20 +72,23 @@ export async function createRecurringSnapshot(input: {
 
     if (affiliateApplies(offer, cycleNumber)) {
       const { data: attribution, error: attributionError } = await admin.from("affiliate_attributions")
-        .select("affiliate_memberships!inner(user_id)")
+        .select("affiliate_memberships!inner(user_id,affiliate_commission_bps_override)")
         .eq("order_id", originOrderId)
         .maybeSingle();
       if (attributionError) throw attributionError;
       const membership = attribution?.affiliate_memberships;
       const membershipRow = Array.isArray(membership) ? membership[0] : membership;
       if (membershipRow?.user_id) {
+        const overrideBasisPoints = membershipRow.affiliate_commission_bps_override;
         affiliate = {
           userId: membershipRow.user_id,
-          rule: feeRule(
-            offer.affiliate_commission_type,
-            Number(offer.affiliate_commission_bps),
-            Number(offer.affiliate_commission_fixed_cents),
-          ),
+          rule: overrideBasisPoints === null || overrideBasisPoints === undefined
+            ? feeRule(
+                offer.affiliate_commission_type,
+                Number(offer.affiliate_commission_bps),
+                Number(offer.affiliate_commission_fixed_cents),
+              )
+            : feeRule("percentage", Number(overrideBasisPoints), 0),
         };
       }
     }

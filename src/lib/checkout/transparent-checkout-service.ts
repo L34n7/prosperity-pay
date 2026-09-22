@@ -97,6 +97,13 @@ function rule(type: FeeType, basisPoints: number, fixedCents: number): FeeRule {
   return { type, basisPoints, fixedCents };
 }
 
+function affiliateCommissionRule(offer: Offer, overrideBasisPoints: number | null | undefined): FeeRule {
+  if (overrideBasisPoints !== null && overrideBasisPoints !== undefined) {
+    return rule("percentage", Number(overrideBasisPoints), 0);
+  }
+  return rule(offer.affiliate_commission_type, Number(offer.affiliate_commission_bps), Number(offer.affiliate_commission_fixed_cents));
+}
+
 function money(cents: number) {
   return (cents / 100).toFixed(2);
 }
@@ -193,14 +200,14 @@ async function resolveCustomer(admin: AdminClient, input: TransparentCheckoutInp
 async function resolveAffiliate(admin: AdminClient, refCode: string | undefined, offer: Offer, product: Product) {
   if (!refCode || !offer.affiliate_enabled) return undefined;
   const { data: link } = await admin.from("affiliate_links")
-    .select("id,membership_id,affiliate_memberships!inner(user_id,status,affiliate_programs!inner(product_id,active,cookie_days))")
+    .select("id,membership_id,affiliate_memberships!inner(user_id,status,affiliate_commission_bps_override,affiliate_programs!inner(product_id,active,cookie_days))")
     .eq("ref_code", refCode).eq("active", true).maybeSingle();
   const membership = link?.affiliate_memberships;
   if (!link || !membership || Array.isArray(membership) || membership.status !== "active" || membership.affiliate_programs?.product_id !== product.id || !membership.affiliate_programs.active) return undefined;
-  return { linkId: link.id, membershipId: link.membership_id, userId: membership.user_id, cookieDays: Number(membership.affiliate_programs.cookie_days ?? 30) };
+  return { linkId: link.id, membershipId: link.membership_id, userId: membership.user_id, commissionBpsOverride: membership.affiliate_commission_bps_override, cookieDays: Number(membership.affiliate_programs.cookie_days ?? 30) };
 }
 
-async function createFinancialSnapshot(admin: AdminClient, orderId: string, offer: Offer, product: Product, affiliateUserId?: string) {
+async function createFinancialSnapshot(admin: AdminClient, orderId: string, offer: Offer, product: Product, affiliate?: { userId: string; commissionBpsOverride: number | null }) {
   const { data: participants, error: participantError } = await admin.from("product_participants")
     .select("user_id,participation_bps,offer_id")
     .eq("product_id", product.id).eq("active", true)
@@ -217,9 +224,9 @@ async function createFinancialSnapshot(admin: AdminClient, orderId: string, offe
       Number(offer.prosperity_fee_bps ?? product.prosperity_fee_bps),
       Number(offer.prosperity_fee_fixed_cents ?? product.prosperity_fee_fixed_cents),
     ),
-    affiliate: affiliateUserId ? {
-      userId: affiliateUserId,
-      rule: rule(offer.affiliate_commission_type, Number(offer.affiliate_commission_bps), Number(offer.affiliate_commission_fixed_cents)),
+    affiliate: affiliate ? {
+      userId: affiliate.userId,
+      rule: affiliateCommissionRule(offer, affiliate.commissionBpsOverride),
     } : undefined,
     coproducers: (participants ?? []).map((item) => ({ userId: item.user_id, basisPoints: item.participation_bps })),
   });
@@ -296,7 +303,7 @@ async function createInternalOrder(admin: AdminClient, input: TransparentCheckou
       offer,
     });
   } else {
-    await createFinancialSnapshot(admin, order.id, offer, product, affiliate?.userId);
+    await createFinancialSnapshot(admin, order.id, offer, product, affiliate ? { userId: affiliate.userId, commissionBpsOverride: affiliate.commissionBpsOverride } : undefined);
   }
 
   const paymentId = crypto.randomUUID();

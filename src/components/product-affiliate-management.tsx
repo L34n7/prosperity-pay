@@ -6,7 +6,7 @@ import { ProductAffiliateSettingsDialog, type AffiliateOfferSettings, type Affil
 import { requestJson } from "@/lib/operational";
 import styles from "./product-partner-management.module.css";
 
-type AffiliateMember = { id:string; code:string; status:string; created_at?:string; profiles:{full_name:string;email:string}|null };
+type AffiliateMember = { id:string; code:string; status:string; created_at?:string; affiliate_commission_bps_override:number|null; profiles:{full_name:string;email:string}|null };
 
 function StatusBadge({status}:{status:string}) {
   const label:Record<string,string>={active:"Ativo",pending:"Pendente",rejected:"Recusado",blocked:"Bloqueado",cancelled:"Cancelado"};
@@ -19,6 +19,7 @@ export function ProductAffiliateManagement({id}:{id:string}) {
   const [offers,setOffers]=useState<AffiliateOfferSettings[]>([]);
   const [product,setProduct]=useState<AffiliateProductSettings|null>(null);
   const [members,setMembers]=useState<AffiliateMember[]>([]);
+  const [commissionDrafts,setCommissionDrafts]=useState<Record<string,string>>({});
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [inviteOpen,setInviteOpen]=useState(false);
   const [error,setError]=useState("");
@@ -31,7 +32,10 @@ export function ProductAffiliateManagement({id}:{id:string}) {
   const load=useCallback(async()=>{
     try{
       const data=await requestJson<{program:AffiliateProgramSettings|null;memberships:AffiliateMember[];offers:AffiliateOfferSettings[];product:AffiliateProductSettings}>(`/api/products/${id}/affiliates`);
-      setProgram(data.program); setMembers(data.memberships??[]); setOffers(data.offers??[]); setProduct(data.product??null); setError("");
+      const nextMembers=data.memberships??[];
+      setProgram(data.program); setMembers(nextMembers); setOffers(data.offers??[]); setProduct(data.product??null);
+      setCommissionDrafts(Object.fromEntries(nextMembers.map(member=>[member.id,member.affiliate_commission_bps_override==null?"":String(member.affiliate_commission_bps_override/100)])));
+      setError("");
     }catch(cause){setError(cause instanceof Error?cause.message:"Falha ao carregar afiliados.");}
   },[id]);
   useEffect(()=>{void load();},[load]);
@@ -50,6 +54,22 @@ export function ProductAffiliateManagement({id}:{id:string}) {
     setBusy(true);setError("");
     try{await requestJson(`/api/products/${id}/affiliates/${memberId}`,{method:"PATCH",body:JSON.stringify({status})});await load();}
     catch(cause){setError(cause instanceof Error?cause.message:"Falha ao atualizar afiliado.");}finally{setBusy(false);}
+  }
+
+  async function saveMemberCommission(memberId:string){
+    const raw=(commissionDrafts[memberId]??"").trim().replace(",",".");
+    const percentage=raw===""?null:Number(raw);
+    if(percentage!==null&&(!Number.isFinite(percentage)||percentage<0||percentage>100)){
+      setError("Informe uma comissão entre 0% e 100%, ou deixe em branco para usar a comissão padrão.");
+      return;
+    }
+    const commissionBpsOverride=percentage===null?null:Math.round(percentage*100);
+    setBusy(true);setError("");setMessage("");
+    try{
+      await requestJson("/api/products/"+id+"/affiliates/"+memberId,{method:"PATCH",body:JSON.stringify({commissionBpsOverride})});
+      setMessage(commissionBpsOverride==null?"Comissão personalizada removida. O afiliado voltou a usar a comissão padrão.":"Comissão personalizada do afiliado salva.");
+      await load();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Falha ao salvar comissão do afiliado.");}finally{setBusy(false);}
   }
 
   async function copyInvite(member:AffiliateMember){
@@ -85,11 +105,24 @@ export function ProductAffiliateManagement({id}:{id:string}) {
     <section className={styles.card}>
       <div className={styles.cardHeader}><div><span><ShieldCheck size={16}/></span><div><h3>Afiliados do produto</h3><p>Acompanhe solicitações, aprovações e bloqueios.</p></div></div></div>
       {members.length?<div className={styles.list}>{members.map(member=><div className={styles.row} key={member.id}>
-        <div className={styles.identity}><strong>{member.profiles?.full_name||"Afiliado"}</strong><small>{member.profiles?.email||"Conta vinculada"}</small></div>
-        <code className={styles.code}>{member.code}</code><StatusBadge status={member.status}/>
+        <div className={styles.identity}><strong>{member.profiles?.full_name||"Afiliado"}</strong><small>{member.profiles?.email||"E-mail não disponível"}</small></div>
+        <code className={styles.code}>{member.code}</code>
+        <div className={styles.commissionControl}>
+          <span>Comissão individual</span>
+          <div className={styles.commissionInputRow}>
+            <label className={styles.commissionInputWrap}>
+              <input type="number" min="0" max="100" step="0.01" inputMode="decimal" placeholder="Padrão" aria-label={"Comissão individual de "+(member.profiles?.email||"afiliado")} value={commissionDrafts[member.id]??""} onChange={event=>setCommissionDrafts(current=>({...current,[member.id]:event.target.value}))}/>
+              <em>%</em>
+            </label>
+            <button type="button" className={styles.secondary} disabled={busy} onClick={()=>void saveMemberCommission(member.id)}>Salvar</button>
+          </div>
+          <small>{member.affiliate_commission_bps_override==null?"Usa a comissão padrão da oferta.":"Personalizada: "+(member.affiliate_commission_bps_override/100).toLocaleString("pt-BR",{maximumFractionDigits:2})+"% · sobrepõe a padrão."}</small>
+        </div>
+        <StatusBadge status={member.status}/>
         <div className={styles.rowActions}>
           {member.status==="pending"&&program?.mode==="approval"&&<button type="button" className={styles.secondary} disabled={busy} onClick={()=>void setMemberStatus(member.id,"active")}><Check size={14}/>Aprovar</button>}
           {member.status==="pending"&&program?.mode==="invite"&&<button type="button" className={styles.secondary} onClick={()=>void copyInvite(member)}>{copied===member.id?<Check size={14}/>:<Copy size={14}/>}Convite</button>}
+          {(member.status==="blocked"||member.status==="rejected"||member.status==="cancelled")&&<button type="button" className={styles.secondary} disabled={busy} onClick={()=>void setMemberStatus(member.id,"active")}><Check size={14}/>Ativar</button>}
           {member.status==="active"&&<button type="button" className={styles.danger} disabled={busy} onClick={()=>void setMemberStatus(member.id,"blocked")}>Bloquear</button>}
         </div>
       </div>)}</div>:<div className={styles.empty}>Nenhum afiliado vinculado a este produto ainda.</div>}

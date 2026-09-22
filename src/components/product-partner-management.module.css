@@ -41,11 +41,20 @@
 .linkBox { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 9px 10px; border: 1px solid rgba(34,230,161,.14); border-radius: 9px; background: rgba(34,230,161,.035); }
 .linkBox code { min-width: 0; flex: 1; overflow: hidden; color: #a9dfca; font-size: .59rem; text-overflow: ellipsis; white-space: nowrap; }
 .list { display: grid; gap: 7px; }
-.row { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(145px,.7fr) minmax(120px,.55fr) auto; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid rgba(92,133,111,.12); border-radius: 10px; background: rgba(255,255,255,.012); }
+.row { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(120px,.55fr) minmax(250px,.95fr) minmax(105px,.42fr) auto; align-items: center; gap: 10px; padding: 10px 11px; border: 1px solid rgba(92,133,111,.12); border-radius: 10px; background: rgba(255,255,255,.012); }
 .identity { min-width: 0; }
 .identity strong, .identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .identity strong { color: var(--text-secondary); font-size: .68rem; }
 .identity small { margin-top: 2px; color: var(--text-subtle); font-size: .56rem; }
+.commissionControl { display: grid; min-width: 0; gap: 4px; }
+.commissionControl > span { color: var(--text-muted); font-size: .55rem; font-weight: 700; }
+.commissionControl > small { overflow: hidden; color: var(--text-subtle); font-size: .51rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.commissionInputRow { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.commissionInputWrap { position: relative; width: 102px; min-width: 92px; }
+.commissionInputWrap input { width: 100%; min-height: 34px; padding: 0 25px 0 9px; border: 1px solid rgba(92,133,111,.18); border-radius: 8px; outline: none; background: rgba(4,10,7,.62); color: var(--text); font-size: .65rem; }
+.commissionInputWrap input:focus { border-color: rgba(34,230,161,.38); box-shadow: 0 0 0 3px rgba(34,230,161,.05); }
+.commissionInputWrap em { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); color: var(--text-subtle); font-size: .58rem; font-style: normal; pointer-events: none; }
+.commissionInputRow .secondary { min-height: 34px; padding: 0 9px; }
 .detail { color: var(--text-muted); font-size: .6rem; }
 .code { overflow: hidden; color: #9fdac3; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: .57rem; text-overflow: ellipsis; white-space: nowrap; }
 .badge { display: inline-flex; width: fit-content; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid rgba(92,133,111,.15); border-radius: 999px; color: var(--text-muted); font-size: .54rem; font-weight: 720; }
@@ -60,7 +69,7 @@
 .sectionTitle { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 2px 0 7px; }
 .sectionTitle h3 { margin: 0; color: var(--text-secondary); font-size: .71rem; }
 .sectionTitle small { color: var(--text-subtle); font-size: .55rem; }
-@media (max-width: 900px) { .formGrid { grid-template-columns: 1fr 1fr; } .formGrid > button { width: 100%; } .row { grid-template-columns: minmax(0,1fr) minmax(120px,.65fr) auto; } .code { display: none; } }
+@media (max-width: 900px) { .formGrid { grid-template-columns: 1fr 1fr; } .formGrid > button { width: 100%; } .row { grid-template-columns: minmax(0,1fr) minmax(230px,.9fr) auto auto; } .code { display: none; } }
 @media (max-width: 620px) { .hero { align-items: flex-start; } .hero p, .statusBox > span { display: none; } .modeSelector, .formGrid, .inviteGrid { grid-template-columns: 1fr; max-width:none; } .configFooter { align-items: stretch; flex-direction: column; } .configFooter button { width: 100%; } .row { grid-template-columns: 1fr; align-items: start; } .rowActions { justify-content: flex-start; } .linkBox { align-items: stretch; flex-direction: column; } .linkBox button { width: 100%; } }
 
 .heroActions{display:flex;align-items:center;gap:18px}.heroButtonGroup{display:flex;align-items:center;gap:8px}.statusDot{width:9px;height:9px;border-radius:50%;background:#657067;box-shadow:0 0 0 4px rgba(101,112,103,.08)}.statusDotOn{background:var(--primary);box-shadow:0 0 0 4px rgba(34,230,161,.08)}@media(max-width:620px){.heroActions{width:100%;align-items:stretch;flex-direction:column-reverse;gap:10px}.heroButtonGroup{display:grid;grid-template-columns:1fr 1fr}.heroActions .primary,.heroActions .secondary{width:100%}}
