@@ -198,7 +198,7 @@ export function ProductCoproducerManagement({ id, offers }: { id: string; offers
     setBusy(true); setError(""); setMessage("");
     try {
       const result = await requestJson<{ invitationUrl: string }>(`/api/products/${id}/coproducers/invitations`, { method: "POST", body: JSON.stringify({ email: data.get("email"), participationBps: Math.round(Number(data.get("share")) * 100), offerId: data.get("offerId") || undefined }) });
-      setLink(result.invitationUrl); setMessage("Convite de coprodução criado."); form.reset(); await load();
+      setLink(result.invitationUrl); setMessage("Convite de coprodução enviado por e-mail. O link também está disponível abaixo."); form.reset(); await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao criar convite."); }
     finally { setBusy(false); }
   }
@@ -250,7 +250,7 @@ function CoproducerInviteDialog({offers,busy,link,copied,error,message,onInvite,
         <label className={styles.field}>E-mail<input name="email" type="email" placeholder="parceiro@exemplo.com" required autoFocus/></label>
         <label className={styles.field}>Participação (%)<input name="share" type="number" min="0.01" max="100" step="0.01" placeholder="10" required/></label>
         <label className={styles.field}>Aplicação<select name="offerId"><option value="">Produto inteiro</option>{offers.map(offer=><option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label>
-        <button className={styles.primary} disabled={busy}>{busy?"Criando...":"Criar convite"}</button>
+        <button className={styles.primary} disabled={busy}>{busy?"Enviando...":"Enviar convite"}</button>
       </form>
       {error&&<p className={styles.error} role="alert">{error}</p>}
       {message&&<p className={styles.success} role="status">{message}</p>}

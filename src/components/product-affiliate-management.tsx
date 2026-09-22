@@ -46,7 +46,7 @@ export function ProductAffiliateManagement({id}:{id:string}) {
     setBusy(true);setError("");setMessage("");
     try{
       const result=await requestJson<{invitationPath:string}>(`/api/products/${id}/affiliates/invite`,{method:"POST",body:JSON.stringify({email})});
-      setInviteUrl(`${location.origin}${result.invitationPath}`); setMessage("Convite criado. Envie o link ao afiliado."); form.reset(); await load();
+      setInviteUrl(`${location.origin}${result.invitationPath}`); setMessage("Convite enviado por e-mail ao afiliado. O link também está disponível abaixo."); form.reset(); await load();
     }catch(cause){setError(cause instanceof Error?cause.message:"Falha ao criar convite.");}finally{setBusy(false);}
   }
 
@@ -143,7 +143,7 @@ function AffiliateInviteDialog({busy,enabled,inviteUrl,error,message,onInvite,on
     <div className={styles.inviteModalBody}>
       <form className={styles.inviteGrid} onSubmit={event=>void onInvite(event)}>
         <label className={styles.field}>E-mail do afiliado<input name="email" type="email" placeholder="afiliado@exemplo.com" required autoFocus/></label>
-        <button className={styles.primary} disabled={busy||!enabled}><UserPlus size={15}/>{busy?"Criando...":"Criar convite"}</button>
+        <button className={styles.primary} disabled={busy||!enabled}><UserPlus size={15}/>{busy?"Enviando...":"Enviar convite"}</button>
       </form>
       {!enabled&&<p className={styles.notice}>Ative o programa e selecione o modo Somente convite nas configurações para enviar convites.</p>}
       {error&&<p className={styles.error} role="alert">{error}</p>}
