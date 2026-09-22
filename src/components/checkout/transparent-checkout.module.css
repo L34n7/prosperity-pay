@@ -71,8 +71,10 @@
   height: clamp(310px, 36vh, 390px);
   max-height: none;
   margin-bottom: 18px;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
   border: 1px solid rgba(92, 133, 111, .18);
+  background: rgba(2, 10, 6, .5);
   border-radius: 18px;
   box-shadow: 0 28px 70px rgba(0, 0, 0, .26);
 }
@@ -96,7 +98,7 @@
 .productContent h1 {
   max-width: 620px;
   margin: 14px 0 10px;
-  font-size: clamp(2.65rem, 4.2vw, 4.8rem);
+  font-size: clamp(2.4rem, 3.8vw, 4.25rem);
   font-weight: 690;
   letter-spacing: -.065em;
   line-height: .98;
@@ -130,7 +132,7 @@
 
 .priceBlock strong {
   color: #f7fbf8;
-  font-size: clamp(2.1rem, 4vw, 3.25rem);
+  font-size: clamp(1.95rem, 3.4vw, 2.9rem);
   letter-spacing: -.05em;
 }
 
@@ -686,9 +688,9 @@
   .productPane { padding-top: 78px; padding-bottom: 6px; }
   .productImage { height: clamp(230px, 30vh, 270px); margin-bottom: 12px; }
   .productBadge { padding: 5px 9px; }
-  .productContent h1 { margin-top: 10px; font-size: clamp(2.3rem, 3.6vw, 3.8rem); }
+  .productContent h1 { margin-top: 10px; font-size: clamp(2.1rem, 3.25vw, 3.35rem); }
   .priceBlock { margin: 14px 0; padding: 10px 0; }
-  .priceBlock strong { font-size: clamp(1.85rem, 3vw, 2.6rem); }
+  .priceBlock strong { font-size: clamp(1.72rem, 2.7vw, 2.35rem); }
   .securityNote { padding: 9px 11px; }
   .checkoutPane { padding-top: 55px; padding-bottom: 4px; }
   .cardHeader { padding-top: 13px; padding-bottom: 11px; }
