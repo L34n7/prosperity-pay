@@ -1,9 +1,10 @@
 import { getCrmProsperityRuntimeConfig, signCrmProsperityPayload } from "@/lib/integrations/crm-prosperity-config";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 import type { Json } from "@/lib/supabase/database.types";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
-type SupportedPaymentStatus = "approved" | "rejected" | "cancelled" | "refunded" | "charged_back";
+type SupportedPaymentStatus = "pending" | "approved" | "rejected" | "cancelled" | "refunded" | "charged_back";
 
 type DeliveryRecord = {
   id: string;
@@ -13,6 +14,7 @@ type DeliveryRecord = {
 };
 
 function eventTypeFor(status: SupportedPaymentStatus) {
+  if (status === "pending") return "payment.pending" as const;
   if (status === "approved") return "payment.approved" as const;
   if (status === "refunded") return "payment.refunded" as const;
   if (status === "charged_back") return "payment.chargeback" as const;
@@ -22,7 +24,7 @@ function eventTypeFor(status: SupportedPaymentStatus) {
 async function hydratePayment(admin: AdminClient, paymentId: string) {
   const { data: payment, error: paymentError } = await admin
     .from("payments")
-    .select("id,order_id,external_payment_id,status,gross_amount_cents,currency,paid_at,refunded_at")
+    .select("id,order_id,external_payment_id,status,gross_amount_cents,currency,paid_at,refunded_at,raw_provider_data")
     .eq("id", paymentId)
     .single();
   if (paymentError || !payment) throw paymentError ?? new Error("Pagamento não encontrado para integração com o CRM.");
@@ -51,6 +53,25 @@ async function hydratePayment(admin: AdminClient, paymentId: string) {
     customer: customerResult.data,
     product: productResult.data,
   };
+}
+
+function pixDataFromRaw(raw: unknown) {
+  const root = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : null;
+  const transactions = root?.transactions && typeof root.transactions === "object" && !Array.isArray(root.transactions)
+    ? root.transactions as Record<string, unknown>
+    : null;
+  const payments = Array.isArray(transactions?.payments) ? transactions?.payments : [];
+  const first = payments[0] && typeof payments[0] === "object" && !Array.isArray(payments[0])
+    ? payments[0] as Record<string, unknown>
+    : null;
+  const method = first?.payment_method && typeof first.payment_method === "object" && !Array.isArray(first.payment_method)
+    ? first.payment_method as Record<string, unknown>
+    : null;
+  const code = typeof method?.qr_code === "string" && method.qr_code.trim() ? method.qr_code.trim() : null;
+  const ticketUrl = typeof method?.ticket_url === "string" && method.ticket_url.trim() ? method.ticket_url.trim() : null;
+  return { code, ticketUrl };
 }
 
 async function isOfferRoutedToCrm(admin: AdminClient, offerReference: string) {
@@ -106,7 +127,7 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
   paymentStatus: string;
 }) {
   const status = input.paymentStatus as SupportedPaymentStatus;
-  if (!["approved", "rejected", "cancelled", "refunded", "charged_back"].includes(status)) {
+  if (!["pending", "approved", "rejected", "cancelled", "refunded", "charged_back"].includes(status)) {
     return { sent: false, reason: "status_not_supported" as const };
   }
 
@@ -129,9 +150,16 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
 
   const eventType = eventTypeFor(status);
   const occurredAt = new Date().toISOString();
+  const providerMetadata = mercadoPagoPaymentMetadata(hydrated.payment.raw_provider_data);
+  const method = providerMetadata.method === "pix"
+    ? "pix"
+    : providerMetadata.method === "card"
+      ? "card"
+      : null;
+  const pix = pixDataFromRaw(hydrated.payment.raw_provider_data);
 
   const basePayload = {
-    version: "2026-09-16",
+    version: "2026-09-22",
     event: eventType,
     occurred_at: occurredAt,
     payment: {
@@ -142,7 +170,18 @@ export async function deliverCrmProsperityPaymentWebhook(input: {
       currency: hydrated.payment.currency,
       paid_at: hydrated.payment.paid_at,
       refunded_at: hydrated.payment.refunded_at,
+      method,
+      pix_code: pix.code,
+      pix_ticket_url: pix.ticketUrl,
     },
+    ...(pix.code ? {
+      transaction: {
+        pix: {
+          code: pix.code,
+          ticket_url: pix.ticketUrl,
+        },
+      },
+    } : {}),
     order: {
       id: hydrated.order.id,
     },

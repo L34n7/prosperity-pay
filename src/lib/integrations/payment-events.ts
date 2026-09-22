@@ -1,10 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deliverIntegrationWebhook } from "@/lib/integrations/outbound-webhook";
+import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 import type { Json } from "@/lib/supabase/database.types";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 type SupportedPaymentStatus =
+  | "pending"
   | "approved"
   | "rejected"
   | "cancelled"
@@ -16,6 +18,7 @@ type RoutedIntegration = {
 };
 
 function eventTypeFor(status: SupportedPaymentStatus) {
+  if (status === "pending") return "payment.pending" as const;
   if (status === "approved") return "payment.approved" as const;
   if (status === "refunded") return "payment.refunded" as const;
   if (status === "charged_back") return "payment.chargeback" as const;
@@ -24,6 +27,7 @@ function eventTypeFor(status: SupportedPaymentStatus) {
 
 function isSupportedStatus(status: string): status is SupportedPaymentStatus {
   return [
+    "pending",
     "approved",
     "rejected",
     "cancelled",
@@ -36,7 +40,7 @@ async function hydratePayment(admin: AdminClient, paymentId: string) {
   const { data: payment, error: paymentError } = await admin
     .from("payments")
     .select(
-      "id,order_id,external_payment_id,status,gross_amount_cents,currency,paid_at,refunded_at"
+      "id,order_id,external_payment_id,status,gross_amount_cents,currency,paid_at,refunded_at,raw_provider_data"
     )
     .eq("id", paymentId)
     .single();
@@ -92,6 +96,25 @@ async function hydratePayment(admin: AdminClient, paymentId: string) {
   };
 }
 
+function pixDataFromRaw(raw: unknown) {
+  const root = raw && typeof raw === "object" && !Array.isArray(raw)
+    ? raw as Record<string, unknown>
+    : null;
+  const transactions = root?.transactions && typeof root.transactions === "object" && !Array.isArray(root.transactions)
+    ? root.transactions as Record<string, unknown>
+    : null;
+  const payments = Array.isArray(transactions?.payments) ? transactions?.payments : [];
+  const first = payments[0] && typeof payments[0] === "object" && !Array.isArray(payments[0])
+    ? payments[0] as Record<string, unknown>
+    : null;
+  const method = first?.payment_method && typeof first.payment_method === "object" && !Array.isArray(first.payment_method)
+    ? first.payment_method as Record<string, unknown>
+    : null;
+  const code = typeof method?.qr_code === "string" && method.qr_code.trim() ? method.qr_code.trim() : null;
+  const ticketUrl = typeof method?.ticket_url === "string" && method.ticket_url.trim() ? method.ticket_url.trim() : null;
+  return { code, ticketUrl };
+}
+
 async function routedIntegrations(admin: AdminClient, offerReference: string) {
   const { data, error } = await (admin as any)
     .from("integration_webhook_routes")
@@ -140,6 +163,13 @@ export async function dispatchPaymentIntegrationEvents(
 
   const eventType = eventTypeFor(status);
   const occurredAt = new Date().toISOString();
+  const providerMetadata = mercadoPagoPaymentMetadata(hydrated.payment.raw_provider_data);
+  const method = providerMetadata.method === "pix"
+    ? "pix"
+    : providerMetadata.method === "card"
+      ? "card"
+      : null;
+  const pix = pixDataFromRaw(hydrated.payment.raw_provider_data);
   const results: Array<{
     integration: string;
     sent: boolean;
@@ -148,7 +178,7 @@ export async function dispatchPaymentIntegrationEvents(
 
   for (const integrationKey of integrations) {
     const payload = {
-      version: "2026-09-18",
+      version: "2026-09-22",
       event: eventType,
       occurred_at: occurredAt,
       integration: {
@@ -162,7 +192,18 @@ export async function dispatchPaymentIntegrationEvents(
         currency: hydrated.payment.currency,
         paid_at: hydrated.payment.paid_at,
         refunded_at: hydrated.payment.refunded_at,
+        method,
+        pix_code: pix.code,
+        pix_ticket_url: pix.ticketUrl,
       },
+      ...(pix.code ? {
+        transaction: {
+          pix: {
+            code: pix.code,
+            ticket_url: pix.ticketUrl,
+          },
+        },
+      } : {}),
       order: {
         id: hydrated.order.id,
       },
