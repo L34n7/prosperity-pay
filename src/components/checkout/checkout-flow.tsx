@@ -244,12 +244,21 @@ export function CheckoutFlow({
     }
   }
 
+  function validateBuyerData(data: typeof buyer) {
+    if (!data.name.trim()) return "Preencha o nome completo.";
+    if (!data.email.trim()) return "Preencha o e-mail.";
+    if (!data.document) return "Preencha o CPF.";
+    if (data.document.length !== 11) return "O CPF deve conter 11 dígitos.";
+    return "";
+  }
+
   async function submitCard(cardForm: CardFormInstance) {
     try {
       const data = cardForm.getCardFormData();
-      if (!buyerRef.current.name.trim() || !buyerRef.current.email.trim() || buyerRef.current.document.length !== 11) {
-        reportCardEvent("card_buyer_validation_failed");
-        setError("Preencha nome, e-mail e CPF antes de continuar.");
+      const buyerValidationError = validateBuyerData(buyerRef.current);
+      if (buyerValidationError) {
+        reportCardEvent("card_buyer_validation_failed", buyerValidationError);
+        setError(buyerValidationError);
         return;
       }
       if (!data.token || !data.paymentMethodId) {
@@ -286,8 +295,9 @@ export function CheckoutFlow({
 
   async function submitPix(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!buyer.name.trim() || !buyer.email.trim() || buyer.document.length !== 11) {
-      setError("Preencha nome, e-mail e CPF antes de gerar o PIX.");
+    const buyerValidationError = validateBuyerData(buyerRef.current);
+    if (buyerValidationError) {
+      setError(buyerValidationError);
       return;
     }
     await sendPayment({ paymentMethod: "pix" });
