@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatCents, formatDate } from "@/lib/operational";
+import type { PaymentStatus } from "@/lib/payments";
 import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 
 type Order = {
@@ -112,7 +114,7 @@ export function PaymentsView({
       />
 
       <section className="panel operational-panel">
-        <div className="filter-row">
+        <div className="filter-row payment-filters">
           <label>
             Período
             <select
@@ -137,17 +139,13 @@ export function PaymentsView({
             Status
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="">Todos</option>
-              {[
-                "pending",
-                "processing",
-                "approved",
-                "rejected",
-                "cancelled",
-                "refunded",
-                "charged_back",
-              ].map((item) => (
-                <option key={item}>{item}</option>
-              ))}
+              <option value="pending">Pendente</option>
+              <option value="processing">Em processamento</option>
+              <option value="approved">Aprovado</option>
+              <option value="rejected">Recusado</option>
+              <option value="cancelled">Cancelado</option>
+              <option value="refunded">Estornado</option>
+              <option value="charged_back">Contestado</option>
             </select>
           </label>
 
@@ -208,42 +206,61 @@ export function PaymentsView({
         </div>
 
         {list.length ? (
-          list.map((payment) => {
-            const order = orderMap.get(payment.order_id);
-            const customer = order?.customers;
-            const plan = planOf(payment, order);
+          <div className="payment-report-table-wrap">
+            <table className="payment-report-table">
+              <thead>
+                <tr>
+                  <th>Comprador</th>
+                  <th>Plano / produto</th>
+                  <th>Método</th>
+                  <th>Status</th>
+                  <th>Valor</th>
+                  <th>Data</th>
+                  <th aria-label="Abrir detalhes" />
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((payment) => {
+                  const order = orderMap.get(payment.order_id);
+                  const customer = order?.customers;
+                  const plan = planOf(payment, order);
+                  const paymentMethod = methodOf(payment);
 
-            return (
-              <button
-                type="button"
-                className="record-row record-button"
-                key={payment.id}
-                onClick={() => setSelected(payment.id)}
-              >
-                <span>
-                  <strong>{customer?.name || "Comprador"}</strong>
-                  <br />
-                  <small>{customer?.email || "E-mail não informado"}</small>
-                </span>
-
-                <span>
-                  <strong>{plan}</strong>
-                  <br />
-                  <small>{order?.products?.name ?? "Produto"}</small>
-                </span>
-
-                <span>
-                  <strong>{formatCents(payment.gross_amount_cents)}</strong>
-                  <br />
-                  <small>{payment.status}</small>
-                </span>
-
-                <span>{formatDate(saleDateOf(payment, order))} →</span>
-              </button>
-            );
-          })
+                  return (
+                    <tr
+                      key={payment.id}
+                      className="payment-report-clickable"
+                      onClick={() => setSelected(payment.id)}
+                    >
+                      <td>
+                        <strong>{customer?.name || "Comprador"}</strong>
+                        <span>{customer?.email || "E-mail não informado"}</span>
+                      </td>
+                      <td>
+                        <strong>{plan}</strong>
+                        <span>{order?.products?.name ?? "Produto"}</span>
+                      </td>
+                      <td>
+                        <span className={"payment-method-pill " + (paymentMethod === "PIX" ? "is-pix" : paymentMethod === "Cartão" ? "is-card" : "")}>
+                          {paymentMethod}
+                        </span>
+                      </td>
+                      <td>
+                        <StatusBadge status={payment.status as PaymentStatus} />
+                      </td>
+                      <td className="payment-value">{formatCents(payment.gross_amount_cents)}</td>
+                      <td className="payment-date">{formatDate(saleDateOf(payment, order))}</td>
+                      <td className="payment-open-cell">
+                        <span aria-hidden="true">→</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <p>Nenhum pagamento encontrado.</p>
+          <div className="premium-report-empty">Nenhum pagamento encontrado.</div>
         )}
       </section>
 

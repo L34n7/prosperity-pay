@@ -2,6 +2,8 @@ import Link from "next/link";
 import { PaymentStatusChart } from "@/components/dashboard/payment-status-chart";
 import { PaymentVolumeChart } from "@/components/dashboard/payment-volume-chart";
 import { PageHeader } from "@/components/ui/page-header";
+import { StatusBadge } from "@/components/ui/status-badge";
+import type { PaymentStatus } from "@/lib/payments";
 import { getFinanceView } from "@/lib/finance-view";
 import { formatCents, formatDate } from "@/lib/operational";
 import { createClient } from "@/lib/supabase/server";
@@ -123,42 +125,69 @@ export default async function Page() {
         <PaymentStatusChart payments={data.payments} />
       </div>
 
-      <section className="panel operational-panel">
-        <h2>Pagamentos recentes</h2>
-        {data.payments.length ? (
-          data.payments.slice(0, 5).map((payment) => {
-            const order = orderMap.get(payment.order_id);
-            const plan =
-              metadataText(payment.raw_provider_data, "plan_label") ??
-              order?.offers?.name ??
-              "Plano não identificado";
-            const customer = order?.customers;
+      <section className="panel payment-report-panel">
+        <div className="premium-report-head">
+          <div>
+            <p className="eyebrow">Movimentações</p>
+            <h2>Pagamentos recentes</h2>
+            <span>Últimas transações registradas nos seus produtos.</span>
+          </div>
+          <Link href="/pagamentos" className="text-link">
+            Ver todos →
+          </Link>
+        </div>
 
-            return (
-              <div className="record-row" key={payment.id}>
-                <span>
-                  <strong>{customer?.name || "Comprador"}</strong>
-                  <br />
-                  <small>{customer?.email || "E-mail não informado"}</small>
-                </span>
-                <span>
-                  <strong>{plan}</strong>
-                  <br />
-                  <small>{order?.products?.name ?? "Produto"}</small>
-                </span>
-                <strong>{formatCents(payment.gross_amount_cents)}</strong>
-                <span>
-                  {formatDate(
-                    payment.paid_at ?? order?.paid_at ?? payment.created_at,
-                  )}
-                </span>
-              </div>
-            );
-          })
+        {data.payments.length ? (
+          <div className="payment-report-table-wrap">
+            <table className="payment-report-table payment-report-table-dashboard">
+              <thead>
+                <tr>
+                  <th>Comprador</th>
+                  <th>Plano / produto</th>
+                  <th>Status</th>
+                  <th>Valor</th>
+                  <th>Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.payments.slice(0, 5).map((payment) => {
+                  const order = orderMap.get(payment.order_id);
+                  const plan =
+                    metadataText(payment.raw_provider_data, "plan_label") ??
+                    order?.offers?.name ??
+                    "Plano não identificado";
+                  const customer = order?.customers;
+
+                  return (
+                    <tr key={payment.id}>
+                      <td>
+                        <strong>{customer?.name || "Comprador"}</strong>
+                        <span>{customer?.email || "E-mail não informado"}</span>
+                      </td>
+                      <td>
+                        <strong>{plan}</strong>
+                        <span>{order?.products?.name ?? "Produto"}</span>
+                      </td>
+                      <td>
+                        <StatusBadge status={payment.status as PaymentStatus} />
+                      </td>
+                      <td className="payment-value">
+                        {formatCents(payment.gross_amount_cents)}
+                      </td>
+                      <td className="payment-date">
+                        {formatDate(
+                          payment.paid_at ?? order?.paid_at ?? payment.created_at,
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <p>Nenhum pagamento registrado.</p>
+          <div className="premium-report-empty">Nenhum pagamento registrado.</div>
         )}
-        <Link href="/pagamentos">Ver pagamentos →</Link>
       </section>
     </>
   );
