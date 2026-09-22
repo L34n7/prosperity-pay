@@ -18,6 +18,7 @@ type ProductPayment = {
   order_id: string;
   offer_id: string;
   offer_name: string;
+  plan_name: string;
   customer_name: string | null;
   customer_email: string;
   customer_phone: string | null;
@@ -147,9 +148,9 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
 
       {loading ? <div className={styles.empty}>Carregando pagamentos...</div> : filtered.length ? <div className={styles.tableWrap}>
         <table className={styles.table}>
-          <thead><tr><th>Oferta</th><th>Cliente</th><th>Valor</th><th>Forma</th><th>Gerado em</th><th>Pago em</th><th>Status</th><th/></tr></thead>
+          <thead><tr><th>Plano</th><th>Cliente</th><th>Valor</th><th>Forma</th><th>Gerado em</th><th>Pago em</th><th>Status</th><th/></tr></thead>
           <tbody>{filtered.map(payment => <tr key={payment.id}>
-            <td><strong>{payment.offer_name}</strong><small>Pedido {payment.order_id.slice(0, 8)}</small></td>
+            <td><strong>{payment.plan_name}</strong><small>{payment.offer_name} · Pedido {payment.order_id.slice(0, 8)}</small></td>
             <td><strong>{payment.customer_name || "Cliente"}</strong><small>{payment.customer_email}</small></td>
             <td className={styles.amount}>{money(payment.amount_cents)}</td>
             <td><span className={styles.methods}>{methodLabel(payment.actual_method)}</span></td>
@@ -164,7 +165,7 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
 
     {selected && <div className={styles.overlay} onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}>
       <section className={styles.modal} role="dialog" aria-modal="true" aria-label="Detalhes do pagamento">
-        <header className={styles.modalHeader}><div><small>Pagamento</small><h3>{selected.offer_name}</h3><p>{selected.customer_email}</p></div><button type="button" className={styles.close} onClick={() => setSelected(null)} aria-label="Fechar"><X size={18}/></button></header>
+        <header className={styles.modalHeader}><div><small>Pagamento</small><h3>{selected.plan_name}</h3><p>{selected.customer_email}</p></div><button type="button" className={styles.close} onClick={() => setSelected(null)} aria-label="Fechar"><X size={18}/></button></header>
         <div className={styles.modalBody}>
           <div className={styles.summaryGrid}>
             <div><small>Valor</small><strong>{money(selected.amount_cents)}</strong></div>
@@ -180,6 +181,7 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
           </dl></section>
 
           <section className={styles.detailSection}><h4>Cobrança</h4><dl>
+            <div><dt>Plano</dt><dd>{selected.plan_name}</dd></div>
             <div><dt>Oferta</dt><dd>{selected.offer_name}</dd></div>
             <div><dt>Meios permitidos</dt><dd>{allowedMethods(selected)}</dd></div>
             <div><dt>Método principal</dt><dd>{selected.allowed_methods.primary === "pix" ? "PIX" : "Cartão"}</dd></div>

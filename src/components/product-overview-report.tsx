@@ -65,6 +65,16 @@ type Report = {
     other_sales: number;
     other_sales_cents: number;
   };
+  sales: Array<{
+    id: string;
+    customer_name: string;
+    customer_email: string;
+    plan_name: string;
+    offer_name: string;
+    amount_cents: number;
+    paid_at: string | null;
+    affiliate_sale: boolean;
+  }>;
   offers: Array<{
     id: string;
     name: string;
@@ -123,6 +133,15 @@ function number(value: number) {
 
 function percent(value: number, total: number) {
   return total > 0 ? Math.round((value / total) * 100) : 0;
+}
+
+function saleDate(value: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function productPrice(product: Product) {
@@ -229,6 +248,25 @@ export function ProductOverviewReport({ product, offers }: { product: Product; o
             </div>
           </article>
         </div>
+
+        <ReportTable
+          eyebrow="Vendas"
+          title="Vendas concluídas"
+          description="Comprador, e-mail, plano aplicado, valor e data de cada venda confirmada."
+          columns={["Comprador", "E-mail", "Plano", "Valor", "Data", "Origem"]}
+          empty="Nenhuma venda concluída."
+          rows={report.sales.map(sale => ({
+            key: sale.id,
+            cells: [
+              <div className={styles.primaryCell} key="buyer"><strong>{sale.customer_name}</strong><small>{sale.offer_name}</small></div>,
+              sale.customer_email,
+              <strong key="plan">{sale.plan_name}</strong>,
+              <strong key="amount">{formatCents(sale.amount_cents)}</strong>,
+              saleDate(sale.paid_at),
+              sale.affiliate_sale ? "Afiliado" : "Direta",
+            ],
+          }))}
+        />
 
         <ReportTable
           eyebrow="Ofertas"

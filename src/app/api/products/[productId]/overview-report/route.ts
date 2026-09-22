@@ -47,6 +47,12 @@ function addSale(stats: MutableStats, amountCents: number, method: PaymentMethod
   }
 }
 
+function metadataText(value: unknown, key: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
+}
+
 export async function GET(_: Request, context: Context) {
   try {
     const { productId } = await context.params;
@@ -59,7 +65,7 @@ export async function GET(_: Request, context: Context) {
     await expireStalePayments(admin, { productId });
     const [offersResult, ordersResult, programResult, participantsResult] = await Promise.all([
       admin.from("offers").select("id,name,status,price_cents,billing_type").eq("product_id", productId).order("created_at", { ascending: true }),
-      admin.from("orders").select("id,offer_id,gross_amount_cents,paid_at").eq("product_id", productId).eq("status", "paid").order("paid_at", { ascending: false }),
+      admin.from("orders").select("id,offer_id,customer_id,gross_amount_cents,paid_at").eq("product_id", productId).eq("status", "paid").order("paid_at", { ascending: false }),
       admin.from("affiliate_programs").select("id,active,mode").eq("product_id", productId).maybeSingle(),
       admin.from("product_participants").select("id,user_id,offer_id,participation_bps,active,invitation_id").eq("product_id", productId).eq("active", true),
     ]);
@@ -71,6 +77,7 @@ export async function GET(_: Request, context: Context) {
     const orders = ordersResult.data ?? [];
     const participants = participantsResult.data ?? [];
     const orderIds = orders.map(order => order.id);
+    const customerIds = Array.from(new Set(orders.map(order => order.customer_id).filter(Boolean)));
 
     const membersResult = programResult.data
       ? await admin.from("affiliate_memberships").select("id,user_id,code,status").eq("program_id", programResult.data.id)
@@ -94,15 +101,27 @@ export async function GET(_: Request, context: Context) {
     if (invitationResult.error) throw invitationResult.error;
     const invitationEmails = new Map((invitationResult.data ?? []).map(invitation => [invitation.id, invitation.invited_email]));
 
-    const paymentsResult = orderIds.length
-      ? await admin.from("payments").select("order_id,raw_provider_data,created_at").eq("status", "approved").in("order_id", orderIds).order("created_at", { ascending: false })
-      : { data: [], error: null };
-    if (paymentsResult.error) throw paymentsResult.error;
+    const [paymentsResult, customersResult] = await Promise.all([
+      orderIds.length
+        ? admin.from("payments").select("order_id,raw_provider_data,created_at").eq("status", "approved").in("order_id", orderIds).order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+      customerIds.length
+        ? admin.from("customers").select("id,name,email").in("id", customerIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (paymentsResult.error || customersResult.error) {
+      throw paymentsResult.error ?? customersResult.error;
+    }
 
     const paymentByOrder = new Map<string, PaymentMethod>();
+    const paymentRawByOrder = new Map<string, unknown>();
     for (const payment of paymentsResult.data ?? []) {
-      if (!paymentByOrder.has(payment.order_id)) paymentByOrder.set(payment.order_id, mercadoPagoPaymentMetadata(payment.raw_provider_data).method);
+      if (!paymentByOrder.has(payment.order_id)) {
+        paymentByOrder.set(payment.order_id, mercadoPagoPaymentMetadata(payment.raw_provider_data).method);
+        paymentRawByOrder.set(payment.order_id, payment.raw_provider_data);
+      }
     }
+    const customers = new Map((customersResult.data ?? []).map(customer => [customer.id, customer]));
 
     const attributionsResult = orderIds.length
       ? await admin.from("affiliate_attributions").select("order_id,affiliate_membership_id").in("order_id", orderIds)
@@ -130,6 +149,7 @@ export async function GET(_: Request, context: Context) {
     if (allocationsResult.error) throw allocationsResult.error;
 
     const ordersById = new Map(orders.map(order => [order.id, order]));
+    const offersById = new Map(offers.map(offer => [offer.id, offer]));
     const offerStats = new Map(offers.map(offer => [offer.id, { ...emptyStats(), affiliate_sales_count: 0, direct_sales_count: 0 }]));
     const overall = emptyStats();
 
@@ -219,6 +239,21 @@ export async function GET(_: Request, context: Context) {
         other_sales: overall.other_count,
         other_sales_cents: overall.other_sales_cents,
       },
+      sales: orders.map(order => {
+        const customer = customers.get(order.customer_id);
+        const offer = offersById.get(order.offer_id);
+        const raw = paymentRawByOrder.get(order.id);
+        return {
+          id: order.id,
+          customer_name: customer?.name || "Comprador",
+          customer_email: customer?.email || "E-mail não informado",
+          plan_name: metadataText(raw, "plan_label") ?? offer?.name ?? "Plano não identificado",
+          offer_name: offer?.name ?? "Oferta",
+          amount_cents: Number(order.gross_amount_cents ?? 0),
+          paid_at: order.paid_at,
+          affiliate_sale: attributionByOrder.has(order.id),
+        };
+      }),
       offers: offers.map(offer => ({
         id: offer.id,
         name: offer.name,
