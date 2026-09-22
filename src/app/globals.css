@@ -688,3 +688,17 @@ a {
 .skeleton-title {width:min(420px,80%);height:34px;border-radius:8px;margin-bottom:28px;}
 .skeleton-card {height:120px;}.skeleton-content {height:240px;margin-top:18px;}
 @keyframes skeleton-pulse { to {background-position-x:-220%;} }
+
+.confirm-dialog{width:min(100% - 32px,640px);padding:30px;border-color:rgba(92,133,111,.26);background:radial-gradient(circle at 90% 0%,rgba(34,230,161,.055),transparent 15rem),linear-gradient(145deg,#101d16,#09110d);box-shadow:0 34px 110px rgba(0,0,0,.72),inset 0 1px 0 rgba(255,255,255,.035)}
+.confirm-dialog .product-dialog-heading{margin-bottom:20px}
+.confirm-dialog .product-dialog-heading h2{margin-bottom:9px;font-size:1.32rem;font-weight:680;letter-spacing:-.025em}
+.confirm-dialog .product-dialog-heading p{max-width:530px;color:#9eb0a7;font-size:.86rem;line-height:1.55}
+.confirm-dialog .delete-impact{gap:15px;margin:0 0 24px;padding:18px 19px;border-color:rgba(239,100,100,.18);border-radius:14px;background:linear-gradient(145deg,rgba(51,22,24,.4),rgba(18,14,14,.48));box-shadow:inset 0 1px 0 rgba(255,255,255,.018)}
+.confirm-dialog .delete-impact>strong{font-size:.86rem;font-weight:720;letter-spacing:-.01em}
+.confirm-dialog .delete-impact ul{gap:9px;padding-left:22px;color:#bdc9c3;font-size:.82rem;line-height:1.55}
+.confirm-dialog .delete-impact p{padding-top:13px;color:#93a49b;font-size:.8rem;line-height:1.6}
+.confirm-dialog .delete-confirm-check{gap:10px;padding:12px;border:1px solid rgba(239,100,100,.12);border-radius:10px;background:rgba(255,255,255,.018);color:#e4d3d3;font-size:.8rem;line-height:1.5}
+.confirm-dialog .delete-confirm-check input{width:17px;height:17px;margin-top:2px}
+.confirm-dialog .product-dialog-actions{gap:9px}
+.confirm-dialog .product-dialog-actions button{min-height:42px;padding-inline:16px;font-size:.77rem}
+@media(max-width:620px){.confirm-dialog{padding:22px}.confirm-dialog .product-dialog-actions{display:grid;grid-template-columns:1fr}.confirm-dialog .product-dialog-actions button{width:100%}}

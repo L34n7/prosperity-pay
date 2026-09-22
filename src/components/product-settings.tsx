@@ -80,7 +80,7 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
       <div><small>Produto</small><h2>Configurações</h2><p>Organize informações comerciais, cobrança e dados de atendimento.</p></div>
     </section>
 
-    <form className={styles.form} onSubmit={submit}>
+    <form id="product-settings-form" className={styles.form} onSubmit={submit}>
       <section className={styles.card}>
         <div className={styles.cardHeader}><div><span><Package size={16}/></span><div><h3>Informações principais</h3><p>Dados que identificam o produto dentro da plataforma.</p></div></div></div>
         <div className={styles.stack}>
@@ -138,7 +138,6 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
         </div>
       </section>
 
-      <div className={styles.actions}><button className={styles.save} disabled={busy}><Save size={15}/>{busy ? "Salvando..." : "Salvar configurações"}</button></div>
     </form>
 
     <section className={styles.card}>
@@ -151,6 +150,8 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
         </div>
       </div>
     </section>
+
+    <div className={`${styles.actions} ${styles.actionsAfterImage}`}><button type="submit" form="product-settings-form" className={styles.save} disabled={busy}><Save size={15}/>{busy ? "Salvando..." : "Salvar configurações"}</button></div>
 
     <section className={`${styles.card} ${styles.dangerCard}`}>
       <div className={styles.cardHeader}><div><span className={styles.dangerIcon}><AlertTriangle size={16}/></span><div><h3>Excluir produto</h3><p>Remova definitivamente este produto e as configurações vinculadas a ele.</p></div></div></div>

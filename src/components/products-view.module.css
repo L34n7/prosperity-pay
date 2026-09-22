@@ -1,5 +1,7 @@
 .catalogSection {
   position: relative;
+  width: 100%;
+  max-width: none;
   overflow: hidden;
   padding: 1px 0 8px;
 }
@@ -66,9 +68,11 @@
 .productGrid {
   display: grid;
   width: 100%;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: none;
+  grid-template-columns: repeat(3, calc((100% - 24px) / 3));
   align-items: stretch;
-  gap: 16px;
+  justify-content: stretch;
+  gap: 12px;
 }
 
 .productCard {
@@ -433,14 +437,6 @@
 
 .productCard:hover .cardFooter strong {
   color: var(--primary);
-}
-
-@media (min-width: 761px) and (max-width: 1099px) {
-  .productGrid {
-    width: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-  }
 }
 
 @media (max-width: 760px) {

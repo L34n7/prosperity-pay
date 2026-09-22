@@ -10,3 +10,15 @@
 .deleteProduct{display:inline-flex;min-height:38px;flex:0 0 auto;align-items:center;justify-content:center;gap:6px;padding:0 13px;border:1px solid rgba(239,100,100,.28);border-radius:9px;background:rgba(239,100,100,.08);color:#f3aaaa;cursor:pointer;font-size:.63rem;font-weight:720}
 .deleteProduct:hover{background:rgba(239,100,100,.13)}.deleteProduct:disabled{cursor:not-allowed;opacity:.5}
 @media(max-width:620px){.dangerZone{align-items:stretch;flex-direction:column}.deleteProduct{width:100%}}
+
+.actionsAfterImage{margin-top:0;padding:2px 0 4px}
+.actionsAfterImage .save{min-height:42px;padding:0 16px;font-size:.72rem;letter-spacing:.005em}
+.dangerCard{position:relative;overflow:hidden;padding:18px;border-color:rgba(239,100,100,.2);background:linear-gradient(145deg,rgba(45,18,21,.56),rgba(12,12,11,.86));box-shadow:inset 0 1px 0 rgba(255,255,255,.02)}
+.dangerCard::after{position:absolute;right:-80px;bottom:-100px;width:220px;height:220px;content:"";border-radius:50%;background:rgba(239,100,100,.045);filter:blur(50px);pointer-events:none}
+.dangerCard .cardHeader{position:relative;z-index:1;margin-bottom:14px}
+.dangerCard .cardHeader h3{font-size:.9rem;font-weight:720;letter-spacing:-.01em}
+.dangerCard .cardHeader p{margin-top:3px;font-size:.67rem;line-height:1.45}
+.dangerZone{position:relative;z-index:1;padding:14px 15px;border-color:rgba(239,100,100,.17);border-radius:12px;background:rgba(10,8,8,.42)}
+.dangerZone strong{font-size:.75rem;font-weight:720;letter-spacing:-.005em}
+.dangerZone small{margin-top:5px;font-size:.64rem;line-height:1.55}
+.deleteProduct{min-height:41px;padding:0 14px;font-size:.68rem;letter-spacing:.005em}
