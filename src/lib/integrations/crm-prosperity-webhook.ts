@@ -114,7 +114,8 @@ async function getOrCreateDelivery(input: {
     .from("integration_webhook_deliveries")
     .select("id,event_id,status,attempts")
     .eq("integration", "crm_prosperity")
-    .eq("payment_id", paymentId)
+    .eq("subject_type", "payment")
+    .eq("subject_id", paymentId)
     .eq("event_type", eventType)
     .single();
   if (existing.error || !existing.data) throw existing.error ?? new Error("Entrega de webhook não encontrada.");

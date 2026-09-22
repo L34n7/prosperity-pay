@@ -78,6 +78,13 @@ async function getIntegrationRuntime(admin: AdminClient, integrationKey: string)
   return { configured: false, active: false };
 }
 
+function paymentIdForSubject(subjectType: string, subjectId: string) {
+  if (subjectType !== "payment") return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(subjectId)
+    ? subjectId
+    : null;
+}
+
 function sign(rawBody: string, timestamp: string, secret: string) {
   return `sha256=${createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex")}`;
 }
@@ -93,7 +100,7 @@ async function getOrCreateDelivery(input: {
   const inserted = await deliveryTable(input.admin)
     .insert({
       integration: input.integrationKey,
-      payment_id: null,
+      payment_id: paymentIdForSubject(input.subjectType, input.subjectId),
       subject_type: input.subjectType,
       subject_id: input.subjectId,
       event_type: input.eventType,
