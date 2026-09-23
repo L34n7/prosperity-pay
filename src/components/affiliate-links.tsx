@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { checkoutPath } from "@/lib/domain/offer-reference";
+import { checkoutUrl } from "@/lib/domain/offer-reference";
 
 type Membership={id:string;code:string;status:string;affiliate_programs:{product_id:string;mode:string;active:boolean;products:{name:string;affiliate_funnel_base_url:string|null;offers:{name:string;checkout_slug:string;status:string}[]}|null}|null};
 
@@ -33,7 +33,7 @@ export function AffiliateLinks({memberships}:{memberships:Membership[]}){
       </div>}
       {m.status==="active"&&product?.offers?.filter(o=>o.status==="active").map(o=><div className="record-row" key={o.checkout_slug}>
         <span style={{display:"grid",gap:2}}><strong>{o.name}</strong><small>Checkout direto</small></span>
-        <button className="secondary-button" onClick={()=>navigator.clipboard.writeText(`${location.origin}${checkoutPath(o.checkout_slug)}?ref=${encodeURIComponent(m.code)}`)}>Copiar checkout</button>
+        <button className="secondary-button" onClick={()=>navigator.clipboard.writeText(checkoutUrl(o.checkout_slug, m.code))}>Copiar checkout</button>
       </div>)}
     </div>
   })}</div>;

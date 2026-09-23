@@ -17,7 +17,7 @@ import {
   UsersRound,
   WalletCards,
 } from "lucide-react";
-import { checkoutPath, checkoutReference } from "@/lib/domain/offer-reference";
+import { checkoutPath, checkoutReference, checkoutUrl } from "@/lib/domain/offer-reference";
 import { formatCents } from "@/lib/operational";
 import styles from "./product-offers-list.module.css";
 
@@ -89,7 +89,7 @@ export function ProductOffersList({ paymentType, offers, onNew, onEdit, onDelete
       {offers.map(offer => {
         const reference = checkoutReference(offer.checkout_slug);
         const path = checkoutPath(offer.checkout_slug);
-        const checkoutUrl = `https://prosperity-pay.vercel.app${path}`;
+        const paymentUrl = checkoutUrl(offer.checkout_slug);
         const active = offer.status === "active";
         const referenceKey = `${offer.id}:reference`;
         const linkKey = `${offer.id}:link`;
@@ -126,9 +126,9 @@ export function ProductOffersList({ paymentType, offers, onNew, onEdit, onDelete
                 <small>Link de pagamento</small>
                 <div>
                   <Link2 size={15}/>
-                  <code>{checkoutUrl}</code>
-                  <button aria-label="Copiar link de pagamento" onClick={() => void copy(linkKey, checkoutUrl)}>{copied === linkKey ? <Check size={15}/> : <Copy size={15}/>}</button>
-                  <Link aria-label="Abrir checkout" href={path} target="_blank"><ExternalLink size={15}/></Link>
+                  <code>{paymentUrl}</code>
+                  <button aria-label="Copiar link de pagamento" onClick={() => void copy(linkKey, paymentUrl)}>{copied === linkKey ? <Check size={15}/> : <Copy size={15}/>}</button>
+                  <Link aria-label="Abrir checkout" href={paymentUrl} target="_blank"><ExternalLink size={15}/></Link>
                 </div>
               </div>
               <div className={styles.referenceField}>
