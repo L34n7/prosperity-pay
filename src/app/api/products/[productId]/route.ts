@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
-import { isProductCategory, isProductKind, isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
+import { isProductCategory, isProductKind, isProductPaymentType, isRecurrenceFrequency, recurrenceToBilling, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import type { Database } from "@/lib/supabase/database.types";
 import { PRODUCT_IMAGE_BUCKET } from "@/lib/product-images";
 import { hasActivePlatformMercadoPagoConnection } from "@/lib/payments/platform-connection";
@@ -9,6 +9,7 @@ import { hasActivePlatformMercadoPagoConnection } from "@/lib/payments/platform-
 type Context = { params: Promise<{ productId: string }> };
 type ProductUpdate = Database["public"]["Tables"]["products"]["Update"] & {
   payment_type?: "one_time" | "recurring";
+  billing_model?: "prepaid" | "postpaid";
   product_type?: "digital" | "physical";
   category?: string | null;
   support_display_name?: string | null;
@@ -68,13 +69,7 @@ export async function GET(_: Request, context: Context) {
     const { supabase } = await requireUser();
     const { data, error } = await supabase.from("products").select("*").eq("id", productId).single();
     if (error) throw error;
-    return NextResponse.json({
-      product: {
-        ...data,
-        payment_type: "one_time",
-        main_offer_price_cents: data.main_offer_price_cents ?? data.recurring_price_cents,
-      },
-    });
+    return NextResponse.json({ product: data });
   } catch (error) { return jsonError(error); }
 }
 
@@ -89,8 +84,14 @@ export async function PATCH(request: Request, context: Context) {
     if (currentResult.error || !currentResult.data) throw currentResult.error ?? new Error("Produto não encontrado.");
     const current = currentResult.data as ProductRow;
 
-    if (body.paymentType === "recurring") return NextResponse.json({ error: "Pagamento recorrente está temporariamente indisponível. Use pagamento único." }, { status: 400 });
-    const paymentType = "one_time" as "one_time" | "recurring";
+    const requestedPaymentType = body.paymentType === undefined ? current.payment_type : body.paymentType;
+    if (!isProductPaymentType(requestedPaymentType)) return NextResponse.json({ error: "Tipo de pagamento inválido." }, { status: 400 });
+    if (requestedPaymentType !== current.payment_type) {
+      const { count, error: historyError } = await supabase.from("orders").select("id", { count: "exact", head: true }).eq("product_id", productId);
+      if (historyError) throw historyError;
+      if ((count ?? 0) > 0) return NextResponse.json({ error: "O tipo de pagamento não pode ser alterado após existir histórico financeiro." }, { status: 409 });
+    }
+    const paymentType = requestedPaymentType;
     const productType = body.productType === undefined ? current.product_type : body.productType;
     if (!isProductKind(productType)) return NextResponse.json({ error: "Tipo de produto inválido." }, { status: 400 });
 
@@ -105,6 +106,7 @@ export async function PATCH(request: Request, context: Context) {
 
     try {
       update.payment_type = paymentType;
+      update.billing_model = "prepaid";
       update.product_type = productType;
       update.category = body.category === undefined ? current.category : nullableText(body.category, 120, "category");
       if (update.category && !isProductCategory(update.category)) throw new Error("INVALID:category");
@@ -169,7 +171,9 @@ export async function PATCH(request: Request, context: Context) {
     else if (current.payment_type !== "recurring" || current.first_charge_cents !== update.first_charge_cents || !current.different_first_charge) {
       offerSync.first_charge_cents = update.first_charge_cents;
     }
-    const syncResult = await supabase.from("offers").update(offerSync).eq("product_id", productId);
+    let syncQuery = supabase.from("offers").update(offerSync).eq("product_id", productId);
+    if (paymentType === "recurring") syncQuery = syncQuery.eq("billing_type", "recurring");
+    const syncResult = await syncQuery;
     if (syncResult.error) throw syncResult.error;
 
     return NextResponse.json({ product: data });

@@ -1,6 +1,7 @@
 import { HttpError } from "@/lib/api/http";
 import { FinancialDistributionService, type FeeRule } from "@/lib/financial/financial-distribution-service";
 import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
+import { dispatchSubscriptionIntegrationEventSafe } from "@/lib/integrations/subscription-events";
 import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { digits, sha256 } from "@/lib/security/hash";
@@ -62,6 +63,7 @@ type Product = {
   prosperity_fee_type: FeeType;
   prosperity_fee_bps: number;
   prosperity_fee_fixed_cents: number;
+  billing_model: "prepaid" | "postpaid";
 };
 
 type MpPayment = {
@@ -281,6 +283,7 @@ async function createInternalOrder(admin: AdminClient, input: TransparentCheckou
     currency: offer.currency,
     idempotency_key: input.idempotencyKey,
     status: "draft",
+    billing_reason: offer.billing_type === "recurring" ? "subscription_initial" : "purchase",
   }).select("id").single();
   if (orderError || !order) throw orderError ?? new Error("Falha ao criar pedido.");
 
@@ -331,13 +334,51 @@ async function createInternalOrder(admin: AdminClient, input: TransparentCheckou
       customer_id: customer.id,
       offer_id: offer.id,
       provider_id: connection.provider_id,
+      product_id: product.id,
       status: "pending",
       amount_cents: offer.price_cents,
+      base_amount_cents: offer.price_cents,
+      current_amount_cents: offer.price_cents,
+      billing_model: product.billing_model ?? "prepaid",
       currency: offer.currency,
       cycle_number: 0,
+      affiliate_membership_id: affiliate?.membershipId ?? null,
+      affiliate_link_id: affiliate?.linkId ?? null,
     }).select("id").single();
     if (error || !subscription) throw error ?? new Error("Falha ao registrar assinatura.");
     subscriptionId = subscription.id;
+
+    const { data: baseItem, error: itemError } = await admin.from("subscription_items").insert({
+      subscription_id: subscription.id,
+      item_type: "base",
+      offer_id: offer.id,
+      code: offer.checkout_slug,
+      description: offer.name,
+      unit_amount_cents: offer.price_cents,
+      quantity: 1,
+      status: "pending",
+    }).select("id").single();
+    if (itemError || !baseItem) throw itemError ?? new Error("Falha ao registrar item base da assinatura.");
+
+    const { error: orderLinkError } = await admin.from("orders").update({
+      subscription_id: subscription.id,
+    }).eq("id", order.id);
+    if (orderLinkError) throw orderLinkError;
+
+    const { error: orderItemError } = await admin.from("order_items").insert({
+      order_id: order.id,
+      subscription_id: subscription.id,
+      subscription_item_id: baseItem.id,
+      line_type: "base",
+      item_code: offer.checkout_slug,
+      description: offer.name,
+      unit_amount_cents: amountCents,
+      quantity: 1,
+      total_amount_cents: amountCents,
+      commissionable_amount_cents: amountCents,
+      metadata: { billingReason: "subscription_initial", contractedUnitAmountCents: Number(offer.price_cents) },
+    });
+    if (orderItemError) throw orderItemError;
   }
 
   const { error: checkoutError } = await admin.from("payment_provider_checkouts").insert({
@@ -385,6 +426,12 @@ export async function syncTransparentOrder(input: {
     .single();
   if (currentError || !currentPayment) throw currentError ?? new Error("Pagamento interno não encontrado.");
 
+  const { data: billingOrder, error: billingOrderError } = await admin.from("orders")
+    .select("subscription_id,subscription_change_id,billing_reason,offer_id")
+    .eq("id", internalOrderId)
+    .single();
+  if (billingOrderError || !billingOrder) throw billingOrderError ?? new Error("Pedido interno não encontrado.");
+
   const becameApproved = status === "approved" && currentPayment.status !== "approved";
   const paidAt = status === "approved" ? mpOrder.last_updated_date ?? new Date().toISOString() : undefined;
   const { error: paymentError } = await admin.from("payments").update({
@@ -419,24 +466,46 @@ export async function syncTransparentOrder(input: {
       if (error) throw error;
     }
 
-    const { data: subscription } = await admin.from("subscriptions")
-      .select("id,offer_id,cycle_number")
-      .eq("order_id", internalOrderId)
-      .maybeSingle();
-    if (subscription) {
+    if (becameApproved && billingOrder.subscription_id) {
       const { data: storedOffer } = await admin.from("offers")
         .select("billing_interval,billing_interval_count")
-        .eq("id", subscription.offer_id).single();
+        .eq("id", billingOrder.offer_id)
+        .single();
       const start = new Date(paidAt ?? Date.now());
-      const profileId = transaction.automatic_payments?.payment_profile_id;
-      const { error } = await admin.from("subscriptions").update({
-        status: "active",
-        cycle_number: Math.max(1, Number(subscription.cycle_number)),
-        current_period_start: start.toISOString(),
-        current_period_end: periodEnd(start, (storedOffer ?? { billing_interval: "month", billing_interval_count: 1 }) as Pick<Offer, "billing_interval" | "billing_interval_count">).toISOString(),
-        payment_profile_id: profileId || undefined,
-      }).eq("id", subscription.id);
-      if (error) throw error;
+      const end = periodEnd(
+        start,
+        (storedOffer ?? { billing_interval: "month", billing_interval_count: 1 }) as Pick<Offer, "billing_interval" | "billing_interval_count">,
+      );
+
+      if (billingOrder.billing_reason === "subscription_initial") {
+        const { error } = await admin.rpc("activate_prepaid_subscription", {
+          target_subscription_id: billingOrder.subscription_id,
+          target_payment_id: currentPayment.id,
+          target_period_start: start.toISOString(),
+          target_period_end: end.toISOString(),
+        });
+        if (error) throw error;
+      } else if (billingOrder.billing_reason === "subscription_renewal") {
+        const { error } = await admin.rpc("apply_prepaid_subscription_renewal", {
+          target_subscription_id: billingOrder.subscription_id,
+          target_payment_id: currentPayment.id,
+          target_period_start: start.toISOString(),
+          target_period_end: end.toISOString(),
+        });
+        if (error) throw error;
+      } else if (billingOrder.billing_reason === "subscription_change" && billingOrder.subscription_change_id) {
+        const { error } = await admin.rpc("apply_paid_subscription_change", {
+          target_change_id: billingOrder.subscription_change_id,
+          target_payment_id: currentPayment.id,
+        });
+        if (error) throw error;
+      }
+
+      const { error: consumeError } = await admin.from("subscription_checkout_sessions")
+        .update({ consumed_at: new Date().toISOString() })
+        .eq("order_id", internalOrderId)
+        .is("consumed_at", null);
+      if (consumeError) throw consumeError;
     }
   } else if (status === "cancelled") {
     await admin.from("orders").update({ status: "cancelled", cancelled_at: new Date().toISOString() }).eq("id", internalOrderId);
@@ -449,6 +518,9 @@ export async function syncTransparentOrder(input: {
   await Promise.all([
     dispatchPaymentIntegrationEventsSafe(admin, currentPayment.id),
     dispatchPaymentEmailNotificationsSafe(admin, currentPayment.id),
+    becameApproved && billingOrder.subscription_id
+      ? dispatchSubscriptionIntegrationEventSafe(admin, internalOrderId)
+      : Promise.resolve({ sent: 0 }),
   ]);
 
   return transparentResult(internalOrderId, status, mpOrder);
@@ -627,26 +699,17 @@ export async function createTransparentCheckout(input: TransparentCheckoutInput)
     .eq("status", "active")
     .single();
   if (offerError || !rawOffer || !rawOffer.products || Array.isArray(rawOffer.products)) throw new HttpError(404, "Oferta ativa não encontrada.");
-  const storedOffer = rawOffer as unknown as Offer & { products: Product };
-  const offer: Offer & { products: Product } = storedOffer.billing_type === "recurring"
-    ? {
-        ...storedOffer,
-        billing_type: "one_time",
-        billing_interval: null,
-        billing_interval_count: null,
-        first_charge_cents: null,
-      }
-    : storedOffer;
+  const offer = rawOffer as unknown as Offer & { products: Product };
   const product = offer.products;
   if (product.status !== "active") throw new HttpError(409, "Produto indisponível para venda.");
   if (input.paymentMethod === "card" && !offer.payment_card_enabled) throw new HttpError(409, "Pagamento por cartão não está habilitado nesta oferta.");
   if (input.paymentMethod === "pix" && !offer.payment_pix_enabled) throw new HttpError(409, "Pagamento por PIX não está habilitado nesta oferta.");
   if (input.paymentMethod === "card" && (!input.card?.token || !input.card.paymentMethodId)) throw new HttpError(400, "Dados tokenizados do cartão ausentes.");
-  if (input.paymentMethod === "card" && offer.billing_type === "recurring" && !input.deviceId) {
-    throw new HttpError(400, "Device ID obrigatório para validar cartão recorrente.");
+  if (input.paymentMethod === "card" && !input.deviceId) {
+    throw new HttpError(400, "Device ID obrigatório para validar o cartão.");
   }
   if (input.paymentMethod === "card" && offer.billing_type === "recurring" && Number(input.card?.installments ?? 1) !== 1) {
-    throw new HttpError(400, "Assinaturas recorrentes devem ser cobradas em 1x por ciclo.");
+    throw new HttpError(400, "Assinaturas pré-pagas devem ser cobradas em 1x por ciclo.");
   }
   if (input.paymentMethod === "card" && Number(input.card?.installments ?? 1) > Number(offer.max_installments)) {
     throw new HttpError(400, "Quantidade de parcelas acima do limite da oferta.");
@@ -654,10 +717,6 @@ export async function createTransparentCheckout(input: TransparentCheckoutInput)
 
   const internal = await createInternalOrder(admin, input, offer, product);
   const token = await getProviderAccessToken(internal.connection.id);
-
-  if (offer.billing_type === "recurring" && input.paymentMethod === "card") {
-    return createRecurringCardFirstPayment({ admin, token, internal, checkoutInput: input, offer, product });
-  }
 
   const payer: Record<string, unknown> = {
     email: internal.customer.email,

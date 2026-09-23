@@ -34,10 +34,10 @@ async function ensureCanActivate(
   productId: string,
   affiliateEnabled: boolean,
   cardEnabled: boolean,
+  billingType: "one_time" | "recurring",
 ) {
   if (product.status !== "active") return "Ative o produto antes da oferta.";
-  if (product.payment_type === "recurring" && !cardEnabled) return "Assinaturas automáticas precisam ter Cartão habilitado.";
-  if (product.payment_type === "recurring" && product.settlement_model === "connected_account") {
+  if (billingType === "recurring" && product.settlement_model === "connected_account") {
     if (affiliateEnabled) return "Assinaturas com recebimento direto no Mercado Pago não suportam comissão automática de afiliado. Use o Saldo Prosperity para dividir recorrências.";
     const { count, error } = await supabase.from("product_participants").select("id", { count: "exact", head: true })
       .eq("product_id", productId).eq("active", true).is("offer_id", null);
@@ -75,7 +75,14 @@ export async function POST(request: Request, context: Context) {
     if (productResult.error || !productResult.data) throw productResult.error ?? new Error("Produto não encontrado.");
     const product = productResult.data as ProductRow;
     const name = requiredString(body, "name", 180);
-    const defaultPrice = product.payment_type === "recurring" ? product.recurring_price_cents : product.main_offer_price_cents;
+    const requestedBillingType = body.billingType;
+    if (requestedBillingType !== undefined && requestedBillingType !== "one_time" && requestedBillingType !== "recurring") {
+      return NextResponse.json({ error: "Tipo da oferta inválido." }, { status: 400 });
+    }
+    const billingType: "one_time" | "recurring" = product.payment_type === "recurring"
+      ? (requestedBillingType === "one_time" ? "one_time" : "recurring")
+      : "one_time";
+    const defaultPrice = billingType === "recurring" ? product.recurring_price_cents : product.main_offer_price_cents;
     const priceCents = body.priceCents === undefined ? positiveInteger(defaultPrice) : positiveInteger(body.priceCents);
     if (!priceCents) return NextResponse.json({ error: "Preço inválido." }, { status: 400 });
 
@@ -88,12 +95,12 @@ export async function POST(request: Request, context: Context) {
     const allowedMax = calculateMaxInstallments(priceCents);
     const requestedInstallments = body.maxInstallments === undefined ? allowedMax : positiveInteger(body.maxInstallments);
     if (!requestedInstallments || requestedInstallments > allowedMax) return NextResponse.json({ error: `Escolha entre 1x e ${allowedMax}x.` }, { status: 400 });
-    const maxInstallments = product.payment_type === "recurring" ? 1 : cardEnabled ? requestedInstallments : 1;
+    const maxInstallments = billingType === "recurring" ? 1 : cardEnabled ? requestedInstallments : 1;
 
     let billingInterval: string | null = null;
     let billingIntervalCount: number | null = null;
     let firstChargeCents: number | null = null;
-    if (product.payment_type === "recurring") {
+    if (billingType === "recurring") {
       if (!isRecurrenceFrequency(product.recurrence_frequency)) return NextResponse.json({ error: "Configure a frequência de recorrência do produto." }, { status: 409 });
       const billing = recurrenceToBilling(product.recurrence_frequency);
       billingInterval = billing.interval;
@@ -109,7 +116,7 @@ export async function POST(request: Request, context: Context) {
     if (!Number.isInteger(affiliateCommissionBps) || affiliateCommissionBps < 0 || affiliateCommissionBps > 10_000) return NextResponse.json({ error: "Comissão de afiliado inválida." }, { status: 400 });
     const active = body.active === true;
     if (active) {
-      const activationError = await ensureCanActivate(product, supabase, productId, affiliateEnabled, cardEnabled);
+      const activationError = await ensureCanActivate(product, supabase, productId, affiliateEnabled, cardEnabled, billingType);
       if (activationError) return NextResponse.json({ error: activationError }, { status: 409 });
     }
 
@@ -118,7 +125,7 @@ export async function POST(request: Request, context: Context) {
       name,
       checkout_slug: createCheckoutReference(),
       price_cents: priceCents,
-      billing_type: product.payment_type,
+      billing_type: billingType,
       billing_interval: billingInterval,
       billing_interval_count: billingIntervalCount,
       max_installments: maxInstallments,

@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Trash2, X } from "lucide-react";
+import { ProductAddonsManagement } from "@/components/product-addons-management";
 import { ProductAffiliateManagement } from "@/components/product-affiliate-management";
 import { ProductOfferDialog } from "@/components/product-offer-dialog";
 import { ProductOffersList } from "@/components/product-offers-list";
@@ -10,6 +11,7 @@ import { ProductOverviewReport } from "@/components/product-overview-report";
 import { ProductCoproducerManagement } from "@/components/product-partner-management";
 import { ProductPaymentsManagement } from "@/components/product-payments-management";
 import { ProductSettings } from "@/components/product-settings";
+import { ProductSubscriptionsManagement } from "@/components/product-subscriptions-management";
 import { PageHeader } from "@/components/ui/page-header";
 import type { ProductPaymentType, RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { requestJson } from "@/lib/operational";
@@ -27,6 +29,7 @@ type Product = {
   settlement_model: string;
   updated_at: string;
   payment_type: ProductPaymentType;
+  billing_model: "prepaid" | "postpaid";
   product_type: "digital" | "physical";
   category: string | null;
   support_display_name: string | null;
@@ -55,8 +58,6 @@ type Offer = {
   first_charge_cents: number | null;
 };
 
-const tabs = ["Visão geral", "Ofertas", "Afiliados", "Co-Produtores", "Pagamentos", "Configurações"];
-
 export function ProductDetail({ id }: { id: string }) {
   const router = useRouter();
   const [product, setProduct] = useState<Product | null>(null);
@@ -68,6 +69,9 @@ export function ProductDetail({ id }: { id: string }) {
   const [editingOffer, setEditingOffer] = useState<Offer | null | undefined>(undefined);
   const [deletingOffer, setDeletingOffer] = useState<Offer | null>(null);
   const [deletingProduct, setDeletingProduct] = useState(false);
+  const tabs = product?.payment_type === "recurring"
+    ? ["Visão geral", "Ofertas", "Assinaturas", "Adicionais", "Afiliados", "Co-Produtores", "Pagamentos", "Configurações"]
+    : ["Visão geral", "Ofertas", "Afiliados", "Co-Produtores", "Pagamentos", "Configurações"];
 
   const load = useCallback(async () => {
     try {
@@ -163,6 +167,8 @@ export function ProductDetail({ id }: { id: string }) {
       {tab === "Visão geral" && <ProductOverview product={product} offers={offers}/>} 
       {tab === "Configurações" && <ProductSettings key={product.updated_at} product={product} busy={busy} onSave={body => mutate(`/api/products/${id}`, "PATCH", body)} onChangeImage={changeImage} onRemoveImage={removeImage} onDelete={()=>setDeletingProduct(true)}/>} 
       {tab === "Ofertas" && <ProductOffersList paymentType={product.payment_type} offers={offers} onNew={() => setEditingOffer(null)} onEdit={setEditingOffer} onDelete={setDeletingOffer}/>} 
+      {tab === "Assinaturas" && product.payment_type === "recurring" && <ProductSubscriptionsManagement productId={id}/>} 
+      {tab === "Adicionais" && product.payment_type === "recurring" && <ProductAddonsManagement productId={id}/>} 
       {tab === "Afiliados" && <ProductAffiliateManagement id={id}/>} 
       {tab === "Co-Produtores" && <ProductCoproducerManagement id={id} offers={offers.map(offer => ({ id: offer.id, name: offer.name }))}/>} 
       {tab === "Pagamentos" && <ProductPaymentsManagement id={id}/>} 

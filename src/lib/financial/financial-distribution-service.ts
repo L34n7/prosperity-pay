@@ -13,6 +13,7 @@ export type DistributionInput = {
   producerId: string;
   prosperityFee: FeeRule;
   affiliate?: { userId: string; rule: FeeRule };
+  affiliateBaseAmountCents?: number;
   coproducers: ParticipantShare[];
 };
 
@@ -50,7 +51,14 @@ export class FinancialDistributionService {
       ? input.affiliate
       : undefined;
     const prosperityFeeCents = fee(input.grossAmountCents, input.prosperityFee);
-    const affiliateCents = eligibleAffiliate ? fee(input.grossAmountCents, eligibleAffiliate.rule) : 0;
+    const affiliateBaseAmountCents = input.affiliateBaseAmountCents ?? input.grossAmountCents;
+    assertCents(affiliateBaseAmountCents, "Base de comissão do afiliado");
+    if (affiliateBaseAmountCents > input.grossAmountCents) {
+      throw new Error("A base de comissão do afiliado não pode ultrapassar o valor bruto.");
+    }
+    const affiliateCents = eligibleAffiliate && affiliateBaseAmountCents > 0
+      ? fee(affiliateBaseAmountCents, eligibleAffiliate.rule)
+      : 0;
     const coproducerAmounts = input.coproducers.map((participant) => {
       if (participant.userId === input.producerId) throw new Error("Produtor nao pode ser coprodutor do proprio produto.");
       const amountCents = fee(input.grossAmountCents, {
@@ -89,7 +97,7 @@ export class FinancialDistributionService {
     });
     if (eligibleAffiliate && affiliateCents > 0) allocations.push({
       type: "affiliate", destination: "internal_balance", beneficiaryUserId: eligibleAffiliate.userId,
-      amountCents: affiliateCents, ruleSnapshot: { ...eligibleAffiliate.rule },
+      amountCents: affiliateCents, ruleSnapshot: { ...eligibleAffiliate.rule, commissionBaseCents: affiliateBaseAmountCents },
     });
     allocations.push(...coproducerAmounts.filter((item) => item.amountCents > 0).map((item) => ({
       type: "coproducer" as const, destination: "internal_balance" as const,

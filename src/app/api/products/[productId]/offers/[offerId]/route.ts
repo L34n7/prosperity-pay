@@ -39,10 +39,10 @@ async function activationError(
   offerId: string,
   affiliateEnabled: boolean,
   cardEnabled: boolean,
+  billingType: "one_time" | "recurring",
 ) {
   if (product.status !== "active") return "Ative o produto antes da oferta.";
-  if (product.payment_type === "recurring" && !cardEnabled) return "Assinaturas automáticas precisam ter Cartão habilitado.";
-  if (product.payment_type === "recurring" && product.settlement_model === "connected_account") {
+  if (billingType === "recurring" && product.settlement_model === "connected_account") {
     if (affiliateEnabled) return "Assinaturas com recebimento direto no Mercado Pago não suportam comissão automática de afiliado. Use o Saldo Prosperity para dividir recorrências.";
     const { count, error } = await supabase.from("product_participants").select("id", { count: "exact", head: true })
       .eq("product_id", productId).eq("active", true).or(`offer_id.is.null,offer_id.eq.${offerId}`);
@@ -75,6 +75,25 @@ export async function PATCH(request: Request, context: Context) {
     const offer = offerResult.data as OfferRow;
     const product = productResult.data as ProductRow;
 
+    const requestedBillingType = body.billingType === undefined ? offer.billing_type : body.billingType;
+    if (requestedBillingType !== "one_time" && requestedBillingType !== "recurring") {
+      return NextResponse.json({ error: "Tipo da oferta inválido." }, { status: 400 });
+    }
+    const billingType: "one_time" | "recurring" = product.payment_type === "recurring"
+      ? requestedBillingType
+      : "one_time";
+    if (billingType !== offer.billing_type) {
+      const [{ count: orderCount, error: orderHistoryError }, { count: subscriptionCount, error: subscriptionHistoryError }] = await Promise.all([
+        supabase.from("orders").select("id", { count: "exact", head: true }).eq("offer_id", offerId),
+        supabase.from("subscriptions").select("id", { count: "exact", head: true }).eq("offer_id", offerId),
+      ]);
+      if (orderHistoryError) throw orderHistoryError;
+      if (subscriptionHistoryError) throw subscriptionHistoryError;
+      if ((orderCount ?? 0) > 0 || (subscriptionCount ?? 0) > 0) {
+        return NextResponse.json({ error: "O tipo desta oferta não pode ser alterado porque já existe histórico financeiro." }, { status: 409 });
+      }
+    }
+
     const update: OfferUpdate = {};
     if (typeof body.name === "string") {
       const name = body.name.trim();
@@ -100,9 +119,9 @@ export async function PATCH(request: Request, context: Context) {
     const allowedMax = calculateMaxInstallments(priceCents);
     const requestedInstallments = body.maxInstallments === undefined ? Math.min(offer.max_installments, allowedMax) : positiveInteger(body.maxInstallments);
     if (!requestedInstallments || requestedInstallments > allowedMax) return NextResponse.json({ error: `Escolha entre 1x e ${allowedMax}x.` }, { status: 400 });
-    update.max_installments = product.payment_type === "recurring" ? 1 : cardEnabled ? requestedInstallments : 1;
+    update.max_installments = billingType === "recurring" ? 1 : cardEnabled ? requestedInstallments : 1;
 
-    if (product.payment_type === "recurring") {
+    if (billingType === "recurring") {
       if (!isRecurrenceFrequency(product.recurrence_frequency)) return NextResponse.json({ error: "Configure a frequência de recorrência do produto." }, { status: 409 });
       const billing = recurrenceToBilling(product.recurrence_frequency);
       update.billing_type = "recurring";
@@ -133,7 +152,7 @@ export async function PATCH(request: Request, context: Context) {
     if (body.active !== undefined) {
       const active = body.active === true;
       if (active) {
-        const problem = await activationError(product, supabase, productId, offerId, affiliateEnabled, cardEnabled);
+        const problem = await activationError(product, supabase, productId, offerId, affiliateEnabled, cardEnabled, billingType);
         if (problem) return NextResponse.json({ error: problem }, { status: 409 });
       }
       update.status = active ? "active" : "draft";

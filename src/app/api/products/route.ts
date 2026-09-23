@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError, optionalString, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
-import { isProductCategory, isProductKind, isRecurrenceFrequency, type RecurrenceFrequency } from "@/lib/domain/product-rules";
+import { isProductCategory, isProductKind, isProductPaymentType, isRecurrenceFrequency, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { toSlug } from "@/lib/domain/slug";
 import type { Database } from "@/lib/supabase/database.types";
 
 type ProductInsert = Database["public"]["Tables"]["products"]["Insert"] & {
   payment_type: "one_time" | "recurring";
+  billing_model: "prepaid" | "postpaid";
   product_type: "digital" | "physical";
   category: string | null;
   support_display_name: string | null;
@@ -125,7 +126,6 @@ export async function GET() {
     return NextResponse.json({
       products: products.map((product) => ({
         ...product,
-        payment_type: "one_time",
         stats: stats.get(product.id) ?? emptyStats(),
       })),
     });
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
     }
     const requestedPaymentType = body.paymentType;
     const productType = body.productType;
-    if (requestedPaymentType !== "one_time") return NextResponse.json({ error: "Pagamento recorrente está temporariamente indisponível. Use pagamento único." }, { status: 400 });
+    if (!isProductPaymentType(requestedPaymentType)) return NextResponse.json({ error: "Tipo de pagamento inválido." }, { status: 400 });
     if (!isProductKind(productType)) return NextResponse.json({ error: "Tipo de produto inválido." }, { status: 400 });
 
     let category: string | null, supportDisplayName: string | null, supportEmail: string | null, supportWhatsapp: string | null;
@@ -204,6 +204,7 @@ export async function POST(request: Request) {
       first_charge_cents: firstChargeCents,
       recurring_price_cents: recurringPriceCents,
       main_offer_price_cents: mainOfferPriceCents,
+      billing_model: "prepaid",
     };
     const { data, error } = await supabase.from("products").insert(insert).select().single();
     if (error) throw error;

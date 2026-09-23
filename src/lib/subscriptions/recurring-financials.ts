@@ -43,14 +43,16 @@ function affiliateApplies(offer: RecurringOffer, cycleNumber: number) {
 export async function createRecurringSnapshot(input: {
   admin: AdminClient;
   orderId: string;
-  originOrderId: string;
+  originOrderId: string | null;
+  affiliateMembershipId?: string | null;
   grossAmountCents: number;
   currency: string;
   cycleNumber: number;
+  affiliateBaseAmountCents?: number;
   product: RecurringProduct;
   offer: RecurringOffer;
 }) {
-  const { admin, orderId, originOrderId, grossAmountCents, currency, cycleNumber, product, offer } = input;
+  const { admin, orderId, originOrderId, affiliateMembershipId, grossAmountCents, currency, cycleNumber, affiliateBaseAmountCents, product, offer } = input;
   const { data: existing } = await admin.from("financial_snapshots").select("id").eq("order_id", orderId).maybeSingle();
   if (existing) return existing.id;
 
@@ -70,14 +72,35 @@ export async function createRecurringSnapshot(input: {
     if (participantsError) throw participantsError;
     coproducers = (participants ?? []).map((item) => ({ userId: item.user_id, basisPoints: item.participation_bps }));
 
-    if (affiliateApplies(offer, cycleNumber)) {
-      const { data: attribution, error: attributionError } = await admin.from("affiliate_attributions")
-        .select("affiliate_memberships!inner(user_id,affiliate_commission_bps_override)")
-        .eq("order_id", originOrderId)
-        .maybeSingle();
-      if (attributionError) throw attributionError;
-      const membership = attribution?.affiliate_memberships;
-      const membershipRow = Array.isArray(membership) ? membership[0] : membership;
+    if ((affiliateBaseAmountCents ?? grossAmountCents) > 0 && affiliateApplies(offer, cycleNumber)) {
+      let membershipRow: { user_id: string; affiliate_commission_bps_override: number | null } | null = null;
+
+      if (affiliateMembershipId) {
+        const { data, error } = await admin.from("affiliate_memberships")
+          .select("user_id,affiliate_commission_bps_override,affiliate_programs!inner(active,product_id)")
+          .eq("id", affiliateMembershipId)
+          .eq("status", "active")
+          .maybeSingle();
+        if (error) throw error;
+        const program = data?.affiliate_programs;
+        const programRow = Array.isArray(program) ? program[0] : program;
+        if (data?.user_id && programRow?.active && programRow.product_id === product.id) {
+          membershipRow = {
+            user_id: data.user_id,
+            affiliate_commission_bps_override: data.affiliate_commission_bps_override,
+          };
+        }
+      } else if (originOrderId) {
+        const { data: attribution, error: attributionError } = await admin.from("affiliate_attributions")
+          .select("affiliate_memberships!inner(user_id,affiliate_commission_bps_override)")
+          .eq("order_id", originOrderId)
+          .maybeSingle();
+        if (attributionError) throw attributionError;
+        const membership = attribution?.affiliate_memberships;
+        const raw = Array.isArray(membership) ? membership[0] : membership;
+        if (raw?.user_id) membershipRow = raw;
+      }
+
       if (membershipRow?.user_id) {
         const overrideBasisPoints = membershipRow.affiliate_commission_bps_override;
         affiliate = {
@@ -107,6 +130,7 @@ export async function createRecurringSnapshot(input: {
           Number(offer.prosperity_fee_fixed_cents ?? product.prosperity_fee_fixed_cents),
         ),
     affiliate,
+    affiliateBaseAmountCents,
     coproducers,
   });
 
@@ -125,6 +149,7 @@ export async function createRecurringSnapshot(input: {
       calculationVersion: 1,
       recurring: true,
       cycleNumber,
+      affiliateBaseAmountCents: affiliateBaseAmountCents ?? grossAmountCents,
       gatewayFeePendingReconciliation: true,
       affiliateSuppressedByCoproduction: result.affiliateSuppressedByCoproduction,
       connectedRecurringDirectSettlement: connectedRecurring,

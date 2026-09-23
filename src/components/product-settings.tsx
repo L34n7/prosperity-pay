@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { FormEvent, useState } from "react";
 import { AlertTriangle, ExternalLink, ImageIcon, LifeBuoy, Link2, Package, ReceiptText, Save, Trash2, Upload } from "lucide-react";
-import { PRODUCT_CATEGORIES, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
+import { PRODUCT_CATEGORIES, RECURRENCE_OPTIONS, type ProductPaymentType, type RecurrenceFrequency } from "@/lib/domain/product-rules";
 import { productImageUrl } from "@/lib/product-images";
 import styles from "./product-settings.module.css";
 
@@ -17,6 +17,7 @@ type Product = {
   image_path: string | null;
   status: string;
   payment_type: ProductPaymentType;
+  billing_model: "prepaid" | "postpaid";
   product_type: "digital" | "physical";
   category: string | null;
   support_display_name: string | null;
@@ -58,17 +59,18 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
       postPurchaseRedirectUrl: data.get("postPurchaseRedirectUrl"),
       affiliateFunnelBaseUrl: data.get("affiliateFunnelBaseUrl"),
       status: active ? "active" : "inactive",
-      paymentType: "one_time",
+      paymentType: product.payment_type,
+      billingModel: product.billing_model,
       productType: data.get("productType"),
       category: data.get("category"),
       supportDisplayName: data.get("supportDisplayName"),
       supportEmail: data.get("supportEmail"),
       supportWhatsapp: data.get("supportWhatsapp"),
-      recurrenceFrequency: null,
-      differentFirstCharge: false,
-      firstChargeCents: null,
-      recurringPriceCents: null,
-      mainOfferPriceCents: cents(data.get("mainOfferPrice")),
+      recurrenceFrequency: product.payment_type === "recurring" ? data.get("recurrenceFrequency") : null,
+      differentFirstCharge: product.different_first_charge,
+      firstChargeCents: product.different_first_charge ? product.first_charge_cents : null,
+      recurringPriceCents: product.payment_type === "recurring" ? cents(data.get("recurringPrice")) : null,
+      mainOfferPriceCents: product.payment_type === "one_time" ? cents(data.get("mainOfferPrice")) : null,
     });
   }
 
@@ -103,10 +105,14 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
       <section className={styles.card}>
         <div className={styles.cardHeader}><div><span><ReceiptText size={16}/></span><div><h3>Cobrança</h3><p>Defina o modelo principal usado pelas ofertas deste produto.</p></div></div></div>
         <div className={styles.gridTwo}>
-          <label className={styles.field}><span>Tipo de pagamento</span><select value="one_time" disabled><option value="one_time">Pagamento único</option></select></label>
-          <label className={styles.field}><span>Preço padrão do produto</span><div className={styles.money}><small>R$</small><input name="mainOfferPrice" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.main_offer_price_cents ?? product.recurring_price_cents)} required/></div></label>
+          <label className={styles.field}><span>Tipo de pagamento</span><select value={product.payment_type} disabled><option value="one_time">Pagamento único</option><option value="recurring">Assinatura pré-paga</option></select></label>
+          {product.payment_type === "recurring"
+            ? <label className={styles.field}><span>Mensalidade padrão</span><div className={styles.money}><small>R$</small><input name="recurringPrice" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.recurring_price_cents)} required/></div></label>
+            : <label className={styles.field}><span>Preço padrão do produto</span><div className={styles.money}><small>R$</small><input name="mainOfferPrice" type="number" min="0.01" step="0.01" defaultValue={moneyInput(product.main_offer_price_cents)} required/></div></label>}
+          {product.payment_type === "recurring" && <label className={styles.field}><span>Ciclo da assinatura</span><select name="recurrenceFrequency" defaultValue={product.recurrence_frequency ?? "monthly"}>{RECURRENCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
+          {product.payment_type === "recurring" && <label className={styles.field}><span>Modelo de cobrança</span><select value="prepaid" disabled><option value="prepaid">Pré-pago</option></select></label>}
         </div>
-        <p className={styles.hint}>O valor efetivamente cobrado no checkout é o preço configurado em cada oferta. O CRM controla vencimento e renovação da assinatura.</p>
+        <p className={styles.hint}>{product.payment_type === "recurring" ? "A assinatura é pré-paga: pagamento aprovado libera o ciclo; upgrades e novos adicionais cobram somente o proporcional restante. O modelo pós-pago ficará disponível futuramente." : "O valor efetivamente cobrado no checkout é o preço configurado em cada oferta."}</p>
       </section>
 
       <section className={styles.card}>

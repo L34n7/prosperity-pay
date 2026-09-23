@@ -77,6 +77,7 @@ export function ProductsView() {
   const [busy, setBusy] = useState(false);
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [paymentType, setPaymentType] = useState<ProductPaymentType>("one_time");
   const dialog = useRef<HTMLDialogElement>(null);
   const previewUrl = useRef<string | null>(null);
 
@@ -101,6 +102,7 @@ export function ProductsView() {
 
   function resetDialogState() {
     selectImage(null);
+    setPaymentType("one_time");
     setDialogError("");
   }
 
@@ -125,17 +127,17 @@ export function ProductsView() {
         name: data.get("name"),
         description: data.get("description"),
         settlementModel: "prosperity_balance",
-        paymentType: "one_time",
+        paymentType,
         productType: data.get("productType"),
         category: data.get("category"),
         supportDisplayName: data.get("supportDisplayName"),
         supportEmail: data.get("supportEmail"),
         supportWhatsapp: data.get("supportWhatsapp"),
-        recurrenceFrequency: null,
+        recurrenceFrequency: paymentType === "recurring" ? data.get("recurrenceFrequency") : null,
         differentFirstCharge: false,
         firstChargeCents: null,
-        recurringPriceCents: null,
-        mainOfferPriceCents: toCents(data.get("mainOfferPrice")),
+        recurringPriceCents: paymentType === "recurring" ? toCents(data.get("price")) : null,
+        mainOfferPriceCents: paymentType === "one_time" ? toCents(data.get("price")) : null,
       };
       const result = await requestJson<{ product: { id: string } }>("/api/products", {
         method: "POST",
@@ -213,7 +215,7 @@ export function ProductsView() {
                     {productStatusLabel(product.status)}
                   </span>
                   <span className={styles.paymentBadge}>
-                    {product.payment_type === "recurring" ? "Recorrente" : "Pagamento único"}
+                    {product.payment_type === "recurring" ? "Assinatura pré-paga" : "Pagamento único"}
                   </span>
                 </div>
               </div>
@@ -296,9 +298,10 @@ export function ProductsView() {
             <div className={styles.createBlockTitle}><span><ReceiptText size={17}/></span><div><h3>Comercial e cobrança</h3><p>Defina o tipo do produto, categoria e preço padrão.</p></div></div>
             <div className={styles.createGrid}>
               <label className={styles.createField}><span>Tipo de produto</span><select name="productType" defaultValue="digital"><option value="digital">Digital</option><option value="physical">Físico</option></select></label>
-              <label className={styles.createField}><span>Tipo de pagamento</span><select name="paymentType" value="one_time" disabled><option value="one_time">Pagamento único</option></select></label>
+              <label className={styles.createField}><span>Tipo de pagamento</span><select name="paymentType" value={paymentType} onChange={event => setPaymentType(event.target.value as ProductPaymentType)}><option value="one_time">Pagamento único</option><option value="recurring">Assinatura pré-paga</option></select></label>
               <label className={styles.createField}><span>Categoria</span><select name="category" defaultValue=""><option value="">Selecione</option>{PRODUCT_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
-              <label className={styles.createField}><span>Preço padrão</span><div className={styles.priceField}><small>R$</small><input name="mainOfferPrice" type="number" min="0.01" step="0.01" required/></div></label>
+              <label className={styles.createField}><span>{paymentType === "recurring" ? "Mensalidade padrão" : "Preço padrão"}</span><div className={styles.priceField}><small>R$</small><input name="price" type="number" min="0.01" step="0.01" required/></div></label>
+              {paymentType === "recurring" && <label className={styles.createField}><span>Ciclo da assinatura</span><select name="recurrenceFrequency" defaultValue="monthly"><option value="weekly">Semanal</option><option value="monthly">Mensal</option><option value="quarterly">Trimestral</option><option value="semiannual">Semestral</option><option value="annual">Anual</option></select><small>Modelo pré-pago: cada ciclo é liberado somente após pagamento aprovado.</small></label>}
             </div>
           </section>
 

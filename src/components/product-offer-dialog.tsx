@@ -69,11 +69,14 @@ export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Pr
   const affiliateOptionsRef = useRef<HTMLDivElement>(null);
   const defaultPrice = offer?.price_cents ?? productPrice(product) ?? 0;
   const [price, setPrice] = useState(moneyInput(defaultPrice));
+  const [offerBillingType, setOfferBillingType] = useState<"one_time" | "recurring">(
+    product.payment_type === "recurring" ? (offer?.billing_type === "one_time" ? "one_time" : "recurring") : "one_time",
+  );
   const [active, setActive] = useState(offer?.status === "active");
   const [cardEnabled, setCardEnabled] = useState(offer?.payment_card_enabled ?? true);
   const [pixEnabled, setPixEnabled] = useState(offer?.payment_pix_enabled ?? true);
   const [primary, setPrimary] = useState<"card" | "pix">(offer?.primary_payment_method ?? "card");
-  const connectedRecurring = product.payment_type === "recurring" && product.settlement_model === "connected_account";
+  const connectedRecurring = offerBillingType === "recurring" && product.settlement_model === "connected_account";
   const [affiliateEnabled, setAffiliateEnabled] = useState(connectedRecurring ? false : offer?.affiliate_enabled ?? false);
   const allowedInstallments = getInstallmentOptions(Math.round(Number(price || 0) * 100));
   const allowedMaximum = allowedInstallments[allowedInstallments.length - 1] ?? 1;
@@ -116,8 +119,9 @@ export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Pr
       paymentCardEnabled: cardEnabled,
       paymentPixEnabled: pixEnabled,
       primaryPaymentMethod: primary,
-      maxInstallments: product.payment_type === "recurring" ? 1 : cardEnabled ? maxInstallments : 1,
-      firstChargeCents: product.payment_type === "recurring" && product.different_first_charge ? cents(data.get("firstCharge")) : null,
+      billingType: offerBillingType,
+      maxInstallments: offerBillingType === "recurring" ? 1 : cardEnabled ? maxInstallments : 1,
+      firstChargeCents: offerBillingType === "recurring" && product.different_first_charge ? cents(data.get("firstCharge")) : null,
       active,
       affiliateEnabled: connectedRecurring ? false : affiliateEnabled,
       affiliateCommissionBps: !connectedRecurring && affiliateEnabled
@@ -150,14 +154,26 @@ export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Pr
           <div className={styles.gridTwo}>
             <label className={styles.field}><span>Nome</span><input name="name" defaultValue={offer?.name ?? "Oferta principal"} required minLength={2}/></label>
             <label className={styles.field}>
-              <span>{product.payment_type === "recurring" ? "Valor da recorrência" : "Preço"}</span>
+              <span>{offerBillingType === "recurring" ? "Valor do ciclo" : "Preço"}</span>
               <div className={styles.moneyInput}><small>R$</small><input name="price" type="number" min="0.01" step="0.01" value={price} onChange={event => changePrice(event.target.value)} required/></div>
             </label>
+            {product.payment_type === "recurring" && <label className={styles.field}>
+              <span>Tipo da oferta</span>
+              <select value={offerBillingType} onChange={event => {
+                const next = event.target.value as "one_time" | "recurring";
+                setOfferBillingType(next);
+                if (next === "recurring") setMaxInstallments(1);
+              }}>
+                <option value="recurring">Assinatura pré-paga</option>
+                <option value="one_time">Venda avulsa</option>
+              </select>
+              <small>Use venda avulsa para pacotes pontuais; add-ons recorrentes devem usar o catálogo de adicionais.</small>
+            </label>}
           </div>
         </section>
 
         <section className={styles.block}>
-          <div className={styles.blockTitle}><h3>Pagamento</h3><small>{product.payment_type === "recurring" ? "Assinatura recorrente" : "Pagamento único"}</small></div>
+          <div className={styles.blockTitle}><h3>Pagamento</h3><small>{offerBillingType === "recurring" ? "Assinatura pré-paga" : "Pagamento único"}</small></div>
           <div className={styles.paymentRow}>
             <button type="button" className={`${styles.paymentOption} ${cardEnabled ? styles.paymentOn : ""}`} onClick={() => changeCard(!cardEnabled)}><CreditCard size={17}/><span>Cartão</span><small>{cardEnabled ? "Ativo" : "Inativo"}</small></button>
             <button type="button" className={`${styles.paymentOption} ${pixEnabled ? styles.paymentOn : ""}`} onClick={() => changePix(!pixEnabled)}><QrCode size={17}/><span>PIX</span><small>{pixEnabled ? "Ativo" : "Inativo"}</small></button>
@@ -171,14 +187,14 @@ export function ProductOfferDialog({ product, offer, busy, onClose, onSave }: Pr
                 {pixEnabled && <option value="pix">PIX</option>}
               </select>
             </label>
-            {product.payment_type === "one_time" ? <label className={styles.field}>
+            {offerBillingType === "one_time" ? <label className={styles.field}>
               <span>Máximo de parcelas</span>
               <select value={maxInstallments} disabled={!cardEnabled} onChange={event => setMaxInstallments(Number(event.target.value))}>{allowedInstallments.map(value => <option value={value} key={value}>{value}x</option>)}</select>
               <small>Parcela mínima de R$ 50, limitada a 12x.</small>
             </label> : product.different_first_charge ? <label className={styles.field}>
               <span>Primeira cobrança</span>
               <div className={styles.moneyInput}><small>R$</small><input name="firstCharge" type="number" min="0.01" step="0.01" defaultValue={moneyInput(offer?.first_charge_cents ?? product.first_charge_cents)} required/></div>
-            </label> : <div className={styles.simpleInfo}><span>Recorrência</span><strong>Sem parcelamento</strong></div>}
+            </label> : <div className={styles.simpleInfo}><span>Ciclo pré-pago</span><strong>Pagamento em 1x por ciclo</strong></div>}
           </div>
         </section>
 

@@ -14,10 +14,18 @@ type ExtendTable<Table extends TableDefinition, AddedRow extends object> = {
   Relationships: Table["Relationships"];
 };
 
+type LooseTable<Row extends object> = {
+  Row: Row;
+  Insert: Partial<Row>;
+  Update: Partial<Row>;
+  Relationships: [];
+};
+
 type RecurrenceFrequency = "weekly" | "monthly" | "quarterly" | "semiannual" | "annual";
 
 type ProductCommercialColumns = {
   payment_type: "one_time" | "recurring";
+  billing_model: "prepaid" | "postpaid";
   product_type: "digital" | "physical";
   category: string | null;
   support_display_name: string | null;
@@ -45,6 +53,8 @@ type AffiliateProgramSettingsColumns = {
   attribution_model: "last_click" | "first_click";
   customer_data_access: boolean;
   marketplace_enabled: boolean;
+  commission_addons: boolean;
+  commission_prorated_changes: boolean;
   support_email: string | null;
   landing_page_url: string | null;
   marketplace_description: string | null;
@@ -53,6 +63,117 @@ type AffiliateProgramSettingsColumns = {
 
 type SubscriptionTransparentColumns = {
   payment_profile_id: string | null;
+  product_id: string;
+  billing_model: "prepaid" | "postpaid";
+  base_amount_cents: number;
+  current_amount_cents: number;
+  next_due_at: string | null;
+  affiliate_membership_id: string | null;
+  affiliate_link_id: string | null;
+  metadata: Json;
+  external_reference: string | null;
+};
+
+type OrderBillingColumns = {
+  subscription_id: string | null;
+  subscription_change_id: string | null;
+  billing_reason: "purchase" | "subscription_initial" | "subscription_renewal" | "subscription_change";
+};
+
+type ProductAddonRow = {
+  id: string;
+  product_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  unit_amount_cents: number;
+  currency: string;
+  active: boolean;
+  max_quantity: number | null;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+type SubscriptionItemRow = {
+  id: string;
+  subscription_id: string;
+  item_type: "base" | "addon";
+  offer_id: string | null;
+  addon_id: string | null;
+  code: string;
+  description: string;
+  unit_amount_cents: number;
+  quantity: number;
+  status: "pending" | "active" | "ended";
+  activated_at: string | null;
+  ended_at: string | null;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+type SubscriptionChangeRow = {
+  id: string;
+  subscription_id: string;
+  change_type: "upgrade" | "downgrade" | "add_item" | "remove_item" | "increase_quantity" | "decrease_quantity";
+  status: "quoted" | "awaiting_payment" | "payment_approved" | "scheduled" | "applying" | "applied" | "expired" | "cancelled" | "failed";
+  from_offer_id: string | null;
+  to_offer_id: string | null;
+  addon_id: string | null;
+  quantity_delta: number | null;
+  quantity_before: number | null;
+  quantity_after: number | null;
+  base_amount_before_cents: number | null;
+  base_amount_after_cents: number | null;
+  current_amount_cents: number;
+  quoted_target_amount_cents: number;
+  applied_target_amount_cents: number | null;
+  proration_amount_cents: number;
+  commissionable_amount_cents: number;
+  effective_mode: "immediately_after_payment" | "next_period_after_payment";
+  effective_at: string | null;
+  quote_expires_at: string | null;
+  payment_order_id: string | null;
+  paid_at: string | null;
+  applied_at: string | null;
+  cancelled_at: string | null;
+  failure_reason: string | null;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
+};
+
+type OrderItemRow = {
+  id: string;
+  order_id: string;
+  subscription_id: string | null;
+  subscription_item_id: string | null;
+  line_type: "base" | "addon" | "proration";
+  item_code: string;
+  description: string;
+  unit_amount_cents: number;
+  quantity: number;
+  total_amount_cents: number;
+  commissionable_amount_cents: number;
+  metadata: Json;
+  created_at: string;
+};
+
+type SubscriptionCheckoutSessionRow = {
+  id: string;
+  token_hash: string;
+  subscription_id: string;
+  subscription_change_id: string | null;
+  session_type: "subscription_change" | "subscription_renewal";
+  amount_cents: number;
+  currency: string;
+  order_id: string | null;
+  expires_at: string;
+  consumed_at: string | null;
+  metadata: Json;
+  created_at: string;
+  updated_at: string;
 };
 
 type IntegrationWebhookRouteRow = {
@@ -252,7 +373,7 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
   public: Omit<PublicSchema, "Tables" | "Functions"> & {
     Tables: Omit<
       GeneratedTables,
-      "products" | "offers" | "subscriptions" | "affiliate_programs"
+      "products" | "offers" | "subscriptions" | "affiliate_programs" | "orders"
     > & {
       products: ExtendTable<GeneratedTables["products"], ProductCommercialColumns>;
       offers: ExtendTable<GeneratedTables["offers"], OfferCommercialColumns>;
@@ -264,6 +385,12 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
         GeneratedTables["subscriptions"],
         SubscriptionTransparentColumns
       >;
+      orders: ExtendTable<GeneratedTables["orders"], OrderBillingColumns>;
+      product_addons: LooseTable<ProductAddonRow>;
+      subscription_items: LooseTable<SubscriptionItemRow>;
+      subscription_changes: LooseTable<SubscriptionChangeRow>;
+      order_items: LooseTable<OrderItemRow>;
+      subscription_checkout_sessions: LooseTable<SubscriptionCheckoutSessionRow>;
       integration_webhook_routes: IntegrationWebhookRouteTable;
       integration_webhook_deliveries: IntegrationWebhookDeliveryTable;
       payment_email_deliveries: PaymentEmailDeliveryTable;
@@ -293,6 +420,52 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       release_first_access_password: {
         Args: { p_token_hash: string };
         Returns: undefined;
+      };
+      activate_prepaid_subscription: {
+        Args: {
+          target_subscription_id: string;
+          target_payment_id: string;
+          target_period_start: string;
+          target_period_end: string;
+        };
+        Returns: Json;
+      };
+      apply_paid_subscription_change: {
+        Args: { target_change_id: string; target_payment_id: string };
+        Returns: number;
+      };
+      apply_prepaid_subscription_renewal: {
+        Args: {
+          target_subscription_id: string;
+          target_payment_id: string;
+          target_period_start: string;
+          target_period_end: string;
+        };
+        Returns: Json;
+      };
+      claim_subscription_checkout_session: {
+        Args: { target_session_id: string; target_order_id: string };
+        Returns: string | null;
+      };
+      import_prepaid_subscription: {
+        Args: {
+          target_product_id: string;
+          target_customer_id: string;
+          target_offer_id: string;
+          target_provider_id: string;
+          target_external_reference: string;
+          target_status: Database["public"]["Enums"]["subscription_status"];
+          target_amount_cents: number;
+          target_currency: string;
+          target_period_start: string;
+          target_period_end: string;
+          target_affiliate_membership_id: string | null;
+          target_affiliate_link_id: string | null;
+          target_item_code: string;
+          target_item_description: string;
+          target_metadata: Json;
+        };
+        Returns: { subscription_id: string; imported: boolean }[];
       };
     };
   };

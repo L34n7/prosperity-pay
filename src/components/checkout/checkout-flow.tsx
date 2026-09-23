@@ -87,6 +87,10 @@ export function CheckoutFlow({
   successText,
   successUrl,
   successLabel,
+  checkoutEndpoint = "/api/checkout/transparent",
+  sessionToken,
+  initialBuyer,
+  prepaidSubscription = false,
 }: {
   offer: Offer;
   affiliate?: string;
@@ -95,6 +99,10 @@ export function CheckoutFlow({
   successText?: string;
   successUrl?: string;
   successLabel?: string;
+  checkoutEndpoint?: string;
+  sessionToken?: string;
+  initialBuyer?: { name?: string | null; email?: string | null };
+  prepaidSubscription?: boolean;
 }) {
   const recurring = offer.billingType === "recurring";
   const initialPrice = recurring && offer.firstChargeCents ? offer.firstChargeCents : offer.priceCents;
@@ -107,7 +115,11 @@ export function CheckoutFlow({
   const [error, setError] = useState("");
   const [result, setResult] = useState<CheckoutResult | null>(null);
   const [copied, setCopied] = useState(false);
-  const [buyer, setBuyer] = useState({ name: "", email: "", document: "" });
+  const [buyer, setBuyer] = useState(() => ({
+    name: initialBuyer?.name ?? "",
+    email: initialBuyer?.email ?? "",
+    document: "",
+  }));
   const [affiliateRef, setAffiliateRef] = useState(affiliate);
   const buyerRef = useRef(buyer);
   const cardFormRef = useRef<CardFormInstance | null>(null);
@@ -207,15 +219,14 @@ export function CheckoutFlow({
     const idempotencyKey = keyRef.current ?? newAttempt();
     const cardAttempt = payload.paymentMethod === "card";
     try {
-      const response = await fetch("/api/checkout/transparent", {
+      const response = await fetch(checkoutEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
         body: JSON.stringify({
-          offerSlug: offer.slug,
+          ...(sessionToken ? { sessionToken } : { offerSlug: offer.slug, refCode: affiliateRef }),
           customerName: buyerRef.current.name,
           customerEmail: buyerRef.current.email,
           customerDocument: buyerRef.current.document,
-          refCode: affiliateRef,
           ...payload,
         }),
       });
@@ -282,7 +293,7 @@ export function CheckoutFlow({
           token: data.token,
           paymentMethodId: data.paymentMethodId,
           issuerId: data.issuerId,
-          installments: recurring ? 1 : Number(data.installments || 1),
+          installments: recurring || prepaidSubscription ? 1 : Number(data.installments || 1),
         },
       });
     } catch (cause) {
@@ -395,7 +406,7 @@ export function CheckoutFlow({
         <p className={styles.eyebrow}>Pagamento confirmado</p>
         <h1>Compra aprovada.</h1>
         <p>{successText?.trim() || <>Recebemos o pagamento de <strong>{formatCents(initialPrice)}</strong> para <strong>{offer.name}</strong>.</>}</p>
-        {recurring && method === "card" && <div className={styles.successNote}>Seu cartão foi autorizado para as próximas cobranças recorrentes deste plano.</div>}
+        {(recurring || prepaidSubscription) && <div className={styles.successNote}>Este pagamento libera o período ou a alteração contratada. As próximas renovações continuam no modelo pré-pago.</div>}
         {successUrl && <div className={styles.successNote}>Você será direcionado automaticamente em alguns segundos.</div>}
         <a className={styles.primaryLink} href={successUrl ?? "/login"}>{successLabel ?? (successUrl ? "Continuar" : "Ir para minha conta")}</a>
       </section>

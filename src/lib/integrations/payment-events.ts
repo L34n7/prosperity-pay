@@ -51,7 +51,7 @@ async function hydratePayment(admin: AdminClient, paymentId: string) {
 
   const { data: order, error: orderError } = await admin
     .from("orders")
-    .select("id,offer_id,customer_id,product_id")
+    .select("id,offer_id,customer_id,product_id,billing_reason,subscription_id,subscription_change_id")
     .eq("id", payment.order_id)
     .single();
 
@@ -206,6 +206,9 @@ export async function dispatchPaymentIntegrationEvents(
       } : {}),
       order: {
         id: hydrated.order.id,
+        billing_reason: hydrated.order.billing_reason,
+        subscription_id: hydrated.order.subscription_id,
+        subscription_change_id: hydrated.order.subscription_change_id,
       },
       offer: {
         id: hydrated.offer.id,

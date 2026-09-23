@@ -10,7 +10,7 @@ export async function GET(_:Request,{params}:{params:Promise<{productId:string}>
     if(!owns)return NextResponse.json({error:"Produto não encontrado."},{status:404});
     const admin=createAdminClient();
     const [programResult,productResult,offersResult]=await Promise.all([
-      admin.from("affiliate_programs").select("id,mode,active,cookie_days,terms,attribution_model,customer_data_access,marketplace_enabled,support_email,landing_page_url,marketplace_description,marketplace_tags").eq("product_id",productId).maybeSingle(),
+      admin.from("affiliate_programs").select("id,mode,active,cookie_days,terms,attribution_model,customer_data_access,marketplace_enabled,commission_addons,commission_prorated_changes,support_email,landing_page_url,marketplace_description,marketplace_tags").eq("product_id",productId).maybeSingle(),
       admin.from("products").select("settlement_model,payment_type,prosperity_fee_type,prosperity_fee_bps,prosperity_fee_fixed_cents").eq("id",productId).single(),
       admin.from("offers").select("id,name,price_cents,status,affiliate_enabled,affiliate_commission_bps,prosperity_fee_type,prosperity_fee_bps,prosperity_fee_fixed_cents").eq("product_id",productId).order("created_at")
     ]);
