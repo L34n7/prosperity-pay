@@ -471,7 +471,30 @@ export async function syncTransparentOrder(input: {
         .select("billing_interval,billing_interval_count")
         .eq("id", billingOrder.offer_id)
         .single();
-      const start = new Date(paidAt ?? Date.now());
+      let start = new Date(paidAt ?? Date.now());
+
+      if (billingOrder.billing_reason === "subscription_renewal") {
+        const { data: currentSubscription, error: currentSubscriptionError } = await admin
+          .from("subscriptions")
+          .select("current_period_end")
+          .eq("id", billingOrder.subscription_id)
+          .single();
+
+        if (currentSubscriptionError || !currentSubscription) {
+          throw currentSubscriptionError ?? new Error("Assinatura da renovação não encontrada.");
+        }
+
+        const currentPeriodEndMs = currentSubscription.current_period_end
+          ? new Date(currentSubscription.current_period_end).getTime()
+          : Number.NaN;
+
+        // Pagamento antecipado compra o próximo ciclo completo. O período pago
+        // começa no vencimento atual; pagar antes não encurta a mensalidade.
+        if (Number.isFinite(currentPeriodEndMs) && currentPeriodEndMs > start.getTime()) {
+          start = new Date(currentPeriodEndMs);
+        }
+      }
+
       const end = periodEnd(
         start,
         (storedOffer ?? { billing_interval: "month", billing_interval_count: 1 }) as Pick<Offer, "billing_interval" | "billing_interval_count">,
