@@ -376,8 +376,39 @@ type ProjectedAddon = {
 
 async function createRenewal(admin: AdminClient, subscription: LoadedSubscription) {
   if (!subscription.current_period_end) throw new HttpError(409, "Assinatura sem vencimento definido.");
-  if (Date.now() < new Date(subscription.current_period_end).getTime()) {
-    throw new HttpError(409, "A renovação será liberada no vencimento do período atual.");
+
+  const now = Date.now();
+  const periodStartMs = subscription.current_period_start
+    ? new Date(subscription.current_period_start).getTime()
+    : Number.NaN;
+  const periodEndMs = new Date(subscription.current_period_end).getTime();
+
+  if (!Number.isFinite(periodEndMs)) {
+    throw new HttpError(409, "Vencimento da assinatura inválido.");
+  }
+
+  // Quando o início do ciclo já está no futuro, a próxima mensalidade foi
+  // quitada antecipadamente. Limitamos o adiantamento a um único ciclo.
+  if (Number.isFinite(periodStartMs) && periodStartMs > now + 60_000) {
+    throw new HttpError(409, "A próxima mensalidade já está paga antecipadamente.");
+  }
+
+  const payingAhead = now < periodEndMs;
+
+  const { data: renewalInProgress, error: renewalInProgressError } = await admin
+    .from("subscription_checkout_sessions")
+    .select("id,order_id")
+    .eq("subscription_id", subscription.id)
+    .eq("session_type", "subscription_renewal")
+    .is("consumed_at", null)
+    .not("order_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (renewalInProgressError) throw renewalInProgressError;
+  if (renewalInProgress?.order_id) {
+    throw new HttpError(409, "Já existe um pagamento de renovação aguardando conclusão.");
   }
 
   const items = await activeItems(admin, subscription.id);
@@ -406,6 +437,16 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
     .eq("effective_mode", "next_period_after_payment")
     .order("created_at");
   if (scheduledError) throw scheduledError;
+
+  // Reduções/downgrades agendados precisam entrar em vigor somente na virada
+  // real do ciclo. Para não remover recursos antes da data combinada, o
+  // pagamento antecipado fica indisponível enquanto houver mudança agendada.
+  if (payingAhead && (scheduled?.length ?? 0) > 0) {
+    throw new HttpError(
+      409,
+      "Há uma alteração agendada para a próxima renovação. O pagamento antecipado ficará disponível quando esse ciclo iniciar.",
+    );
+  }
 
   for (const change of scheduled ?? []) {
     const metadata = (change.metadata ?? {}) as Record<string, Json | undefined>;
