@@ -754,6 +754,25 @@
   animation: pulse 1.25s ease-in-out infinite;
 }
 
+.pixAlternativeActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.pixAlternativeActions .retry,
+.pixAlternativeActions .submit {
+  width: 100%;
+}
+
+.pixAlternativeActions small {
+  grid-column: 1 / -1;
+  color: #7f9489;
+  font-size: .66rem;
+  line-height: 1.5;
+}
+
 @keyframes pulse {
   50% { opacity: .4; transform: scale(.82); }
 }
@@ -876,4 +895,14 @@
 
 @keyframes checkoutDot {
   50% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (max-width: 520px) {
+  .pixAlternativeActions {
+    grid-template-columns: 1fr;
+  }
+
+  .pixAlternativeActions small {
+    grid-column: auto;
+  }
 }
