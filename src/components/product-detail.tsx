@@ -41,6 +41,7 @@ type Product = {
   first_charge_cents: number | null;
   recurring_price_cents: number | null;
   main_offer_price_cents: number | null;
+  automatic_due_billing_enabled: boolean;
 };
 
 type Offer = {
