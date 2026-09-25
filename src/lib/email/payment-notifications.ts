@@ -176,7 +176,7 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
 
   const [productResult, offerResult, customerResult, snapshotResult] =
     await Promise.all([
-      admin.from("products").select("id,name,partner_payment_emails_enabled").eq("id", order.product_id).single(),
+      (admin.from("products") as any).select("id,name,partner_payment_emails_enabled").eq("id", order.product_id).single(),
       admin.from("offers").select("id,name").eq("id", order.offer_id).single(),
       admin.from("customers").select("id,name,email").eq("id", order.customer_id).single(),
       admin.from("financial_snapshots").select("id").eq("order_id", order.id).maybeSingle(),
