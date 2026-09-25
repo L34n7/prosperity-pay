@@ -67,10 +67,10 @@
 
 .productImage {
   display: block;
-  width: 100%;
-  height: clamp(310px, 36vh, 390px);
+  width: min(90%, 600px);
+  height: clamp(270px, 31vh, 330px);
   max-height: none;
-  margin-bottom: 18px;
+  margin: 0 auto 16px;
   object-fit: contain;
   object-position: center;
   border: 1px solid rgba(92, 133, 111, .18);
@@ -98,7 +98,7 @@
 .productContent h1 {
   max-width: 620px;
   margin: 14px 0 10px;
-  font-size: clamp(2.4rem, 3.8vw, 4.25rem);
+  font-size: clamp(2.15rem, 3.25vw, 3.65rem);
   font-weight: 690;
   letter-spacing: -.065em;
   line-height: .98;
@@ -762,8 +762,8 @@
   .header { position: relative; min-height: 66px; background: rgba(5, 9, 7, .72); border-bottom: 1px solid rgba(92, 133, 111, .16); backdrop-filter: blur(18px); }
   .layout { min-height: auto; grid-template-columns: 1fr; }
   .productPane { min-height: auto; padding: 38px 28px; border-right: 0; border-bottom: 1px solid rgba(92,133,111,.14); }
-  .productContent h1 { font-size: clamp(2.5rem, 10vw, 4rem); }
-  .productImage { height: clamp(240px, 45vw, 340px); }
+  .productContent h1 { font-size: clamp(2.2rem, 9vw, 3.45rem); }
+  .productImage { width: min(92%, 560px); height: clamp(220px, 40vw, 300px); }
   .checkoutPane { padding: 30px 18px 48px; }
 }
 
@@ -789,9 +789,9 @@
 @media (min-width: 981px) and (max-height: 820px) {
   .header { min-height: 56px; }
   .productPane { padding-top: 78px; padding-bottom: 6px; }
-  .productImage { height: clamp(230px, 30vh, 270px); margin-bottom: 12px; }
+  .productImage { width: min(88%, 560px); height: clamp(210px, 27vh, 245px); margin: 0 auto 12px; }
   .productBadge { padding: 5px 9px; }
-  .productContent h1 { margin-top: 10px; font-size: clamp(2.1rem, 3.25vw, 3.35rem); }
+  .productContent h1 { margin-top: 10px; font-size: clamp(1.95rem, 2.85vw, 2.95rem); }
   .priceBlock { margin: 14px 0; padding: 10px 0; }
   .priceBlock strong { font-size: clamp(1.72rem, 2.7vw, 2.35rem); }
   .securityNote { padding: 9px 11px; }
