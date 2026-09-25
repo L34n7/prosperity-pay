@@ -171,12 +171,14 @@ export async function getSubscriptionCheckoutSessionView(sessionToken: string) {
     .single();
   if (subscriptionError || !subscription) throw new HttpError(404, "Assinatura não encontrada.");
 
-  const [productResult, customerResult] = await Promise.all([
+  const [productResult, customerResult, offerResult] = await Promise.all([
     admin.from("products").select("name,image_path").eq("id", subscription.product_id).single(),
     admin.from("customers").select("name,email").eq("id", subscription.customer_id).single(),
+    admin.from("offers").select("id,name,checkout_slug").eq("id", session.metadata.targetOfferId).single(),
   ]);
   if (productResult.error || !productResult.data) throw new HttpError(404, "Produto não encontrado.");
   if (customerResult.error || !customerResult.data) throw new HttpError(404, "Cliente não encontrado.");
+  if (offerResult.error || !offerResult.data) throw new HttpError(404, "Oferta da cobrança não encontrada.");
 
   return {
     amountCents: Number(session.amount_cents),
@@ -185,6 +187,7 @@ export async function getSubscriptionCheckoutSessionView(sessionToken: string) {
     sessionType: session.session_type,
     product: productResult.data,
     customer: customerResult.data,
+    offer: offerResult.data,
     lines: session.metadata.lines,
   };
 }
