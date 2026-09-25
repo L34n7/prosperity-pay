@@ -49,7 +49,16 @@ export async function getFinanceView() {
     new Set(safeOrders.map((order) => order.customer_id).filter(Boolean)),
   );
 
-  const [paymentsResult, customersResult] = await Promise.all([
+  const { data: producerAccounts, error: producerAccountsError } = await admin
+    .from("ledger_accounts")
+    .select("id")
+    .eq("user_id", user.id);
+
+  if (producerAccountsError) throw producerAccountsError;
+
+  const producerAccountIds = (producerAccounts ?? []).map((account) => account.id);
+
+  const [paymentsResult, customersResult, producerLedgerResult] = await Promise.all([
     orderIds.length
       ? supabase
           .from("payments")
@@ -62,10 +71,37 @@ export async function getFinanceView() {
     customerIds.length
       ? admin.from("customers").select("id,name,email").in("id", customerIds)
       : Promise.resolve({ data: [], error: null }),
+    orderIds.length && producerAccountIds.length
+      ? admin
+          .from("ledger_entries")
+          .select("order_id,entry_type,amount_cents")
+          .in("order_id", orderIds)
+          .in("account_id", producerAccountIds)
+          .eq("status", "posted")
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (paymentsResult.error || customersResult.error) {
-    throw paymentsResult.error || customersResult.error;
+  if (paymentsResult.error || customersResult.error || producerLedgerResult.error) {
+    throw paymentsResult.error || customersResult.error || producerLedgerResult.error;
+  }
+
+  const producerRevenueEntryTypes = new Set([
+    "sale_credit",
+    "gateway_fee",
+    "refund",
+    "chargeback",
+    "adjustment",
+  ]);
+  const producerNetByOrder = new Map<string, number>();
+  const ordersWithSaleCredit = new Set<string>();
+
+  for (const entry of producerLedgerResult.data ?? []) {
+    if (!entry.order_id || !producerRevenueEntryTypes.has(entry.entry_type)) continue;
+    if (entry.entry_type === "sale_credit") ordersWithSaleCredit.add(entry.order_id);
+    producerNetByOrder.set(
+      entry.order_id,
+      (producerNetByOrder.get(entry.order_id) ?? 0) + Number(entry.amount_cents ?? 0),
+    );
   }
 
   const customerMap = new Map(
@@ -82,6 +118,9 @@ export async function getFinanceView() {
     orders: safeOrders.map((order) => ({
       ...order,
       customers: customerMap.get(order.customer_id) ?? null,
+      producer_net_cents: ordersWithSaleCredit.has(order.id)
+        ? producerNetByOrder.get(order.id) ?? 0
+        : null,
     })),
     commissions: commissions ?? [],
     balance: balance ?? {
