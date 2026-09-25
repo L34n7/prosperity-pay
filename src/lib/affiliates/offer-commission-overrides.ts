@@ -102,5 +102,5 @@ export async function resolveOfferCommissionOverride(input: {
     .maybeSingle();
   if (error) throw error;
   if (data) return Number(data.commission_bps);
-  return legacyMembershipOverride ?? undefined;
+  return legacyMembershipOverride ?? null;
 }
