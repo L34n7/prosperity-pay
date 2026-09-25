@@ -43,8 +43,15 @@ export default async function Page() {
 
   const ownRevenue = data.orders
     .filter((order) => approved.some((payment) => payment.order_id === order.id))
-    .reduce(
-      (sum, order) =>
+    .reduce((sum, order) => {
+      if (
+        order.settlement_model === "prosperity_balance" &&
+        order.producer_net_cents !== null
+      ) {
+        return sum + Number(order.producer_net_cents);
+      }
+
+      return (
         sum +
         Number(order.financial_snapshots?.producer_amount_cents ?? 0) -
         (order.settlement_model === "prosperity_balance"
@@ -52,9 +59,9 @@ export default async function Page() {
               approved.find((payment) => payment.order_id === order.id)
                 ?.provider_fee_amount_cents ?? 0,
             )
-          : 0),
-      0,
-    );
+          : 0)
+      );
+    }, 0);
 
   const affiliate = data.commissions
     .filter((commission) => commission.commission_type === "affiliate")
