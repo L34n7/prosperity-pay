@@ -244,6 +244,12 @@ export function CheckoutFlow({
         throw new Error(body.error || "Não foi possível processar o pagamento.");
       }
       setResult(body);
+      if (
+        payload.paymentMethod === "pix" &&
+        body.status !== "approved"
+      ) {
+        newAttempt();
+      }
       if (body.status === "rejected" || body.status === "cancelled") {
         throw new Error("Pagamento não aprovado. Confira os dados ou tente outro cartão.");
       }
@@ -433,6 +439,41 @@ export function CheckoutFlow({
           {result.qrCodeBase64 && <div className={styles.qrBox}><Image src={`data:image/jpeg;base64,${result.qrCodeBase64}`} alt="QR Code PIX" width={230} height={230} unoptimized/></div>}
           <div className={styles.copyBox}><span>{result.qrCode}</span><button type="button" onClick={copyPix}>{copied ? <Check size={17}/> : <Copy size={17}/>} {copied ? "Copiado" : "Copiar"}</button></div>
           <div className={styles.waiting}><span></span>Aguardando confirmação do Mercado Pago...</div>
+          {prepaidSubscription && (
+            <div className={styles.pixAlternativeActions}>
+              <button
+                type="button"
+                className={styles.retry}
+                onClick={() => {
+                  newAttempt();
+                  setCopied(false);
+                  setError("");
+                  setResult(null);
+                  setMethod("pix");
+                }}
+              >
+                Gerar outro PIX
+              </button>
+              {offer.paymentCardEnabled && (
+                <button
+                  type="button"
+                  className={styles.submit}
+                  onClick={() => {
+                    newAttempt();
+                    setCopied(false);
+                    setError("");
+                    setResult(null);
+                    setMethod("card");
+                  }}
+                >
+                  Pagar com cartão
+                </button>
+              )}
+              <small>
+                O PIX exibido acima continua válido até o vencimento informado pelo banco.
+              </small>
+            </div>
+          )}
         </section>
       </div>
     </main>;
