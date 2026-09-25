@@ -562,7 +562,7 @@ export async function sendSubscriptionBillingEmail(params: {
 
                   <div style="padding:15px 17px;border-radius:13px;background:#f8faf9;border:1px solid #e2eae6;">
                     <p style="margin:0;color:#72827b;font-size:12px;line-height:1.6;">
-                      Se você optar por cartão, a Prosperity Pay cancela o PIX pendente antes de processar a nova forma de pagamento. O ciclo só é renovado após a confirmação do pagamento.
+                      Você pode manter este PIX em aberto e, se preferir, abrir o checkout para pagar com cartão ou gerar um novo PIX. O ciclo só é renovado após a confirmação de um dos pagamentos.
                     </p>
                   </div>
 
