@@ -20,6 +20,8 @@ type ProductInsert = Database["public"]["Tables"]["products"]["Insert"] & {
   first_charge_cents: number | null;
   recurring_price_cents: number | null;
   main_offer_price_cents: number | null;
+  automatic_due_billing_enabled: boolean;
+  partner_payment_emails_enabled: boolean;
 };
 
 type ProductStats = {
@@ -204,6 +206,10 @@ export async function POST(request: Request) {
       first_charge_cents: firstChargeCents,
       recurring_price_cents: recurringPriceCents,
       main_offer_price_cents: mainOfferPriceCents,
+      automatic_due_billing_enabled:
+        paymentType === "recurring" &&
+        body.automaticDueBillingEnabled === true,
+      partner_payment_emails_enabled: true,
       billing_model: "prepaid",
     };
     const { data, error } = await supabase.from("products").insert(insert).select().single();
