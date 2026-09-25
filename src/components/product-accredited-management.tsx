@@ -1,7 +1,11 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Link2, MailPlus, ShieldCheck, SlidersHorizontal, Sparkles, UserRoundCheck, UsersRound } from "lucide-react";
+import { Check, Copy, Link2, MailPlus, Settings2, ShieldCheck, SlidersHorizontal, Sparkles, UserRoundCheck, UsersRound } from "lucide-react";
+import {
+  ProductAccreditedSettingsDialog,
+  type AccreditedProgramSettings,
+} from "@/components/product-accredited-settings-dialog";
 import type {
   AffiliateOfferSettings,
   AffiliateProductSettings,
@@ -57,6 +61,8 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
   const [offers, setOffers] = useState<AffiliateOfferSettings[]>([]);
   const [addons, setAddons] = useState<PartnerAddonSettings[]>([]);
   const [selectedMember, setSelectedMember] = useState<PartnerMember | null>(null);
+  const [accreditedSettings, setAccreditedSettings] = useState<AccreditedProgramSettings | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [evolveOpen, setEvolveOpen] = useState(false);
   const [error, setError] = useState("");
@@ -67,13 +73,18 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
 
   const load = useCallback(async () => {
     try {
-      const data = await requestJson<{
-        program: AffiliateProgramSettings | null;
-        memberships: PartnerMember[];
-        offers: AffiliateOfferSettings[];
-        addons: PartnerAddonSettings[];
-        product: AffiliateProductSettings;
-      }>(`/api/products/${id}/affiliates`);
+      const [data, settingsData] = await Promise.all([
+        requestJson<{
+          program: AffiliateProgramSettings | null;
+          memberships: PartnerMember[];
+          offers: AffiliateOfferSettings[];
+          addons: PartnerAddonSettings[];
+          product: AffiliateProductSettings;
+        }>(`/api/products/${id}/affiliates`),
+        requestJson<{ settings: AccreditedProgramSettings }>(
+          `/api/products/${id}/accredited-settings`,
+        ),
+      ]);
 
       const all = data.memberships ?? [];
       const accredited = all.filter((member) => member.partner_type === "accredited");
@@ -86,6 +97,7 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
       setEligibleAffiliates(affiliates);
       setOffers(data.offers ?? []);
       setAddons(data.addons ?? []);
+      setAccreditedSettings(settingsData.settings);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao carregar credenciados.");
@@ -207,7 +219,21 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
 
   const activeCount = members.filter((item) => item.status === "active").length;
   const pendingCount = members.filter((item) => item.status === "pending").length;
-  const canInvite = program?.active === true && program.mode === "invite";
+  const accreditedActive = accreditedSettings?.active !== false;
+  const canInvite =
+    accreditedActive &&
+    accreditedSettings?.allow_direct_invites !== false &&
+    program?.active === true &&
+    program.mode === "invite";
+  const canEvolve =
+    accreditedActive &&
+    accreditedSettings?.allow_affiliate_evolution !== false &&
+    eligibleAffiliates.length > 0;
+  const statusLabel = !accreditedActive
+    ? "Credenciados pausados"
+    : program?.active
+      ? "Credenciados ativos"
+      : "Afiliação pausada";
 
   return (
     <div className={styles.shell}>
@@ -222,26 +248,31 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
         </div>
         <div className={styles.heroActions}>
           <div className={styles.heroButtonGroup}>
-            <button type="button" className={styles.primary} onClick={() => setInviteOpen(true)} disabled={!canInvite}>
+            <button type="button" className={styles.primary} onClick={() => setSettingsOpen(true)} disabled={!accreditedSettings}>
+              <Settings2 size={15} />Configurar credenciados
+            </button>
+            <button type="button" className={styles.secondary} onClick={() => setInviteOpen(true)} disabled={!canInvite}>
               <UserRoundCheck size={15} />Convidar credenciado
             </button>
-            <button type="button" className={styles.secondary} onClick={() => setEvolveOpen(true)} disabled={!eligibleAffiliates.length}>
+            <button type="button" className={styles.secondary} onClick={() => setEvolveOpen(true)} disabled={!canEvolve}>
               <Sparkles size={15} />Evoluir afiliado
             </button>
           </div>
           <div className={styles.statusBox}>
             <span>
-              <strong>{program?.active ? "Programa ativo" : "Programa pausado"}</strong>
+              <strong>{statusLabel}</strong>
               <small>{activeCount} ativos · {pendingCount} pendentes</small>
             </span>
-            <i className={`${styles.statusDot} ${program?.active ? styles.statusDotOn : ""}`} />
+            <i className={`${styles.statusDot} ${accreditedActive && program?.active ? styles.statusDotOn : ""}`} />
           </div>
         </div>
       </section>
 
-      {!canInvite && (
+      {(!canInvite || !accreditedActive) && (
         <p className={styles.notice}>
-          Para convidar um novo credenciado por e-mail, mantenha o programa ativo no modo Somente convite. Você ainda pode evoluir um afiliado ativo.
+          {!accreditedActive
+            ? "A categoria Credenciado está pausada. Abra Configurar credenciados para reativar convites e evoluções."
+            : "Para convite direto, mantenha a afiliação ativa no modo Somente convite e libere convites nas Configurações de Credenciados."}
         </p>
       )}
 
@@ -289,7 +320,7 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
                     </button>
                   )}
                   {(member.status === "blocked" || member.status === "rejected" || member.status === "cancelled") && (
-                    <button type="button" className={styles.secondary} disabled={busy} onClick={() => void setMemberStatus(member.id, "active")}>
+                    <button type="button" className={`${styles.secondary} ${styles.positive}`} disabled={busy} onClick={() => void setMemberStatus(member.id, "active")}>
                       <Check size={14} />Ativar
                     </button>
                   )}
@@ -306,6 +337,23 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
           <div className={styles.empty}>Nenhum credenciado vinculado a este produto ainda.</div>
         )}
       </section>
+
+      {settingsOpen && accreditedSettings && (
+        <ProductAccreditedSettingsDialog
+          productId={id}
+          settings={accreditedSettings}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={(nextSettings) => {
+            setAccreditedSettings(nextSettings);
+            setSettingsOpen(false);
+            setMessage(
+              nextSettings.active
+                ? "Configurações de credenciados salvas."
+                : "Configurações salvas. A categoria Credenciado permanece pausada.",
+            );
+          }}
+        />
+      )}
 
       {inviteOpen && (
         <AccreditedInviteDialog

@@ -285,7 +285,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
                     <SlidersHorizontal size={14} />Config. individuais
                   </button>
                   {member.status === "pending" && program?.mode === "approval" && (
-                    <button type="button" className={styles.secondary} disabled={busy} onClick={() => void setMemberStatus(member.id, "active")}>
+                    <button type="button" className={`${styles.secondary} ${styles.positive}`} disabled={busy} onClick={() => void setMemberStatus(member.id, "active")}>
                       <Check size={14} />Aprovar
                     </button>
                   )}
@@ -295,7 +295,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
                     </button>
                   )}
                   {(member.status === "blocked" || member.status === "rejected" || member.status === "cancelled") && (
-                    <button type="button" className={styles.secondary} disabled={busy} onClick={() => void setMemberStatus(member.id, "active")}>
+                    <button type="button" className={`${styles.secondary} ${styles.positive}`} disabled={busy} onClick={() => void setMemberStatus(member.id, "active")}>
                       <Check size={14} />Ativar
                     </button>
                   )}
