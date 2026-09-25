@@ -1,17 +1,16 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Link2, MailPlus, Settings2, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
-import {
-  ProductAffiliateSettingsDialog,
-  type AffiliateOfferSettings,
-  type AffiliateProductSettings,
-  type AffiliateProgramSettings,
+import { Check, Copy, Link2, MailPlus, ShieldCheck, Sparkles, UserRoundCheck, UsersRound } from "lucide-react";
+import type {
+  AffiliateOfferSettings,
+  AffiliateProductSettings,
+  AffiliateProgramSettings,
 } from "@/components/product-affiliate-settings-dialog";
 import { requestJson } from "@/lib/operational";
 import styles from "./product-partner-management.module.css";
 
-type AffiliateMember = {
+type PartnerMember = {
   id: string;
   code: string;
   status: string;
@@ -40,37 +39,40 @@ async function copy(text: string) {
   await navigator.clipboard.writeText(text);
 }
 
-export function ProductAffiliateManagement({ id }: { id: string }) {
+export function ProductAccreditedManagement({ id }: { id: string }) {
   const [program, setProgram] = useState<AffiliateProgramSettings | null>(null);
-  const [offers, setOffers] = useState<AffiliateOfferSettings[]>([]);
-  const [product, setProduct] = useState<AffiliateProductSettings | null>(null);
-  const [members, setMembers] = useState<AffiliateMember[]>([]);
+  const [members, setMembers] = useState<PartnerMember[]>([]);
+  const [eligibleAffiliates, setEligibleAffiliates] = useState<PartnerMember[]>([]);
   const [commissionDrafts, setCommissionDrafts] = useState<Record<string, string>>({});
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [evolveOpen, setEvolveOpen] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
-  const [programUrl, setProgramUrl] = useState("");
   const [copied, setCopied] = useState("");
 
   const load = useCallback(async () => {
     try {
       const data = await requestJson<{
         program: AffiliateProgramSettings | null;
-        memberships: AffiliateMember[];
+        memberships: PartnerMember[];
         offers: AffiliateOfferSettings[];
         product: AffiliateProductSettings;
       }>(`/api/products/${id}/affiliates`);
-      const nextMembers = (data.memberships ?? []).filter((member) => member.partner_type === "affiliate");
+
+      const all = data.memberships ?? [];
+      const accredited = all.filter((member) => member.partner_type === "accredited");
+      const affiliates = all.filter(
+        (member) => member.partner_type === "affiliate" && member.status === "active",
+      );
+
       setProgram(data.program);
-      setMembers(nextMembers);
-      setOffers(data.offers ?? []);
-      setProduct(data.product ?? null);
+      setMembers(accredited);
+      setEligibleAffiliates(affiliates);
       setCommissionDrafts(
         Object.fromEntries(
-          nextMembers.map((member) => [
+          accredited.map((member) => [
             member.id,
             member.affiliate_commission_bps_override == null
               ? ""
@@ -80,21 +82,13 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
       );
       setError("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao carregar afiliados.");
+      setError(cause instanceof Error ? cause.message : "Falha ao carregar credenciados.");
     }
   }, [id]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    setProgramUrl(
-      program?.id && program.mode !== "invite"
-        ? `${window.location.origin}/afiliados/participar/${program.id}`
-        : "",
-    );
-  }, [program?.id, program?.mode]);
 
   async function invite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,15 +102,34 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
         `/api/products/${id}/affiliates/invite`,
         {
           method: "POST",
-          body: JSON.stringify({ email, partnerType: "affiliate" }),
+          body: JSON.stringify({ email, partnerType: "accredited" }),
         },
       );
       setInviteUrl(`${location.origin}${result.invitationPath}`);
-      setMessage("Convite enviado por e-mail ao afiliado.");
+      setMessage("Convite de credenciado enviado por e-mail.");
       form.reset();
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao criar convite.");
+      setError(cause instanceof Error ? cause.message : "Falha ao convidar credenciado.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function evolveAffiliate(memberId: string) {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await requestJson(`/api/products/${id}/affiliates/${memberId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ partnerType: "accredited" }),
+      });
+      setMessage("Afiliado evoluído para Credenciado sem perder histórico, link ou comissões.");
+      setEvolveOpen(false);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao evoluir afiliado.");
     } finally {
       setBusy(false);
     }
@@ -132,7 +145,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
       });
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao atualizar afiliado.");
+      setError(cause instanceof Error ? cause.message : "Falha ao atualizar credenciado.");
     } finally {
       setBusy(false);
     }
@@ -145,6 +158,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
       setError("Informe uma comissão entre 0% e 100%, ou deixe em branco para usar a comissão padrão.");
       return;
     }
+
     const commissionBpsOverride = percentage === null ? null : Math.round(percentage * 100);
     setBusy(true);
     setError("");
@@ -156,18 +170,18 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
       });
       setMessage(
         commissionBpsOverride == null
-          ? "Comissão personalizada removida. O afiliado voltou a usar a comissão padrão."
-          : "Comissão personalizada do afiliado salva.",
+          ? "Comissão personalizada removida. O credenciado voltou a usar a comissão padrão."
+          : "Comissão personalizada do credenciado salva.",
       );
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao salvar comissão do afiliado.");
+      setError(cause instanceof Error ? cause.message : "Falha ao salvar comissão do credenciado.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function copyInvite(member: AffiliateMember) {
+  async function copyInvite(member: PartnerMember) {
     const url = `${location.origin}/convites/afiliacao?code=${encodeURIComponent(member.code)}`;
     await copy(url);
     setCopied(member.id);
@@ -176,29 +190,27 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
 
   const activeCount = members.filter((item) => item.status === "active").length;
   const pendingCount = members.filter((item) => item.status === "pending").length;
-  const persistedInvite = program?.active === true && program.mode === "invite";
+  const canInvite = program?.active === true && program.mode === "invite";
 
   return (
     <div className={styles.shell}>
       <section className={styles.hero}>
         <div className={styles.heroTitle}>
-          <div className={styles.heroIcon}><UsersRound size={19} /></div>
+          <div className={styles.heroIcon}><UserRoundCheck size={19} /></div>
           <div>
             <small>Parcerias</small>
-            <h2>Programa de afiliados</h2>
-            <p>Gerencie afiliados, links de indicação e comissões deste produto.</p>
+            <h2>Credenciados</h2>
+            <p>Credenciados usam a mesma estrutura de links e comissões dos afiliados, com uma carteira de clientes mais destacada.</p>
           </div>
         </div>
         <div className={styles.heroActions}>
           <div className={styles.heroButtonGroup}>
-            <button type="button" className={styles.primary} onClick={() => setSettingsOpen(true)}>
-              <Settings2 size={15} />{program ? "Configurar afiliação" : "Configurar e habilitar"}
+            <button type="button" className={styles.primary} onClick={() => setInviteOpen(true)} disabled={!canInvite}>
+              <UserRoundCheck size={15} />Convidar credenciado
             </button>
-            {program?.mode === "invite" && (
-              <button type="button" className={styles.secondary} onClick={() => setInviteOpen(true)}>
-                <UserPlus size={15} />Convidar afiliado
-              </button>
-            )}
+            <button type="button" className={styles.secondary} onClick={() => setEvolveOpen(true)} disabled={!eligibleAffiliates.length}>
+              <Sparkles size={15} />Evoluir afiliado
+            </button>
           </div>
           <div className={styles.statusBox}>
             <span>
@@ -210,34 +222,20 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
         </div>
       </section>
 
+      {!canInvite && (
+        <p className={styles.notice}>
+          Para convidar um novo credenciado por e-mail, mantenha o programa ativo no modo Somente convite. Você ainda pode evoluir um afiliado ativo.
+        </p>
+      )}
+
       {error && <p className={styles.error} role="alert">{error}</p>}
       {message && <p className={styles.success} role="status">{message}</p>}
-
-      {program?.active && program.mode !== "invite" && programUrl && (
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <span><Link2 size={16} /></span>
-              <div><h3>Link para novos afiliados</h3><p>Compartilhe este endereço para inscrição no programa.</p></div>
-            </div>
-          </div>
-          <div className={styles.linkBox}>
-            <Link2 size={15} /><code>{programUrl}</code>
-            <button type="button" className={styles.secondary} onClick={() => void copy(programUrl)}>
-              <Copy size={14} />Copiar
-            </button>
-          </div>
-          {program.mode === "approval" && (
-            <p className={styles.notice}>As solicitações recebidas por este link ficarão pendentes até sua aprovação.</p>
-          )}
-        </section>
-      )}
 
       <section className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
             <span><ShieldCheck size={16} /></span>
-            <div><h3>Afiliados do produto</h3><p>Acompanhe solicitações, aprovações, comissão individual e bloqueios.</p></div>
+            <div><h3>Credenciados do produto</h3><p>Gerencie comissão individual, convites, status e bloqueios.</p></div>
           </div>
         </div>
 
@@ -246,7 +244,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
             {members.map((member) => (
               <div className={styles.row} key={member.id}>
                 <div className={styles.identity}>
-                  <strong>{member.profiles?.full_name || "Afiliado"}</strong>
+                  <strong>{member.profiles?.full_name || "Credenciado"}</strong>
                   <small>{member.profiles?.email || "E-mail não disponível"}</small>
                 </div>
                 <code className={styles.code}>{member.code}</code>
@@ -261,7 +259,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
                         step="0.01"
                         inputMode="decimal"
                         placeholder="Padrão"
-                        aria-label={"Comissão individual de " + (member.profiles?.email || "afiliado")}
+                        aria-label={"Comissão individual de " + (member.profiles?.email || "credenciado")}
                         value={commissionDrafts[member.id] ?? ""}
                         onChange={(event) =>
                           setCommissionDrafts((current) => ({ ...current, [member.id]: event.target.value }))
@@ -283,12 +281,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
                 </div>
                 <StatusBadge status={member.status} />
                 <div className={styles.rowActions}>
-                  {member.status === "pending" && program?.mode === "approval" && (
-                    <button type="button" className={styles.secondary} disabled={busy} onClick={() => void setMemberStatus(member.id, "active")}>
-                      <Check size={14} />Aprovar
-                    </button>
-                  )}
-                  {member.status === "pending" && program?.mode === "invite" && (
+                  {member.status === "pending" && (
                     <button type="button" className={styles.secondary} onClick={() => void copyInvite(member)}>
                       {copied === member.id ? <Check size={14} /> : <Copy size={14} />}Convite
                     </button>
@@ -308,30 +301,14 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
             ))}
           </div>
         ) : (
-          <div className={styles.empty}>Nenhum afiliado vinculado a este produto ainda.</div>
+          <div className={styles.empty}>Nenhum credenciado vinculado a este produto ainda.</div>
         )}
       </section>
 
-      {settingsOpen && (
-        <ProductAffiliateSettingsDialog
-          productId={id}
-          program={program}
-          offers={offers}
-          product={product}
-          onClose={() => setSettingsOpen(false)}
-          onSaved={(nextProgram, nextOffers) => {
-            setProgram(nextProgram);
-            setOffers(nextOffers);
-            setSettingsOpen(false);
-            setMessage(nextProgram.active ? "Programa de afiliados configurado e ativo." : "Configurações salvas. O programa permanece pausado.");
-          }}
-        />
-      )}
-
       {inviteOpen && (
-        <AffiliateInviteDialog
+        <AccreditedInviteDialog
           busy={busy}
-          enabled={persistedInvite}
+          enabled={canInvite}
           inviteUrl={inviteUrl}
           error={error}
           message={message}
@@ -339,11 +316,20 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
           onClose={() => setInviteOpen(false)}
         />
       )}
+
+      {evolveOpen && (
+        <EvolveAffiliateDialog
+          busy={busy}
+          affiliates={eligibleAffiliates}
+          onEvolve={evolveAffiliate}
+          onClose={() => setEvolveOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
-function AffiliateInviteDialog({
+function AccreditedInviteDialog({
   busy,
   enabled,
   inviteUrl,
@@ -370,21 +356,20 @@ function AffiliateInviteDialog({
       <header className={styles.inviteModalHeader}>
         <div>
           <span><MailPlus size={17} /></span>
-          <div><h3>Convidar afiliado</h3><p>Informe o e-mail da conta Prosperity Pay que receberá o convite.</p></div>
+          <div><h3>Convidar credenciado</h3><p>Envie um convite direto para uma conta Prosperity Pay.</p></div>
         </div>
         <button type="button" className={styles.secondary} disabled={busy} onClick={() => ref.current?.close()}>Fechar</button>
       </header>
       <div className={styles.inviteModalBody}>
         <form className={styles.inviteGrid} onSubmit={(event) => void onInvite(event)}>
           <label className={styles.field}>
-            E-mail do afiliado
-            <input name="email" type="email" placeholder="afiliado@exemplo.com" required autoFocus />
+            E-mail do credenciado
+            <input name="email" type="email" placeholder="credenciado@exemplo.com" required autoFocus />
           </label>
           <button className={styles.primary} disabled={busy || !enabled}>
-            <UserPlus size={15} />{busy ? "Enviando..." : "Enviar convite"}
+            <UserRoundCheck size={15} />{busy ? "Enviando..." : "Enviar convite"}
           </button>
         </form>
-        {!enabled && <p className={styles.notice}>Ative o programa e selecione o modo Somente convite nas configurações para enviar convites.</p>}
         {error && <p className={styles.error} role="alert">{error}</p>}
         {message && <p className={styles.success} role="status">{message}</p>}
         {inviteUrl && (
@@ -394,6 +379,57 @@ function AffiliateInviteDialog({
               <Copy size={14} />Copiar
             </button>
           </div>
+        )}
+      </div>
+    </dialog>
+  );
+}
+
+function EvolveAffiliateDialog({
+  busy,
+  affiliates,
+  onEvolve,
+  onClose,
+}: {
+  busy: boolean;
+  affiliates: PartnerMember[];
+  onEvolve: (memberId: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
+
+  return (
+    <dialog ref={ref} className={styles.inviteDialog} onClose={onClose} onCancel={(event) => { if (busy) event.preventDefault(); }}>
+      <header className={styles.inviteModalHeader}>
+        <div>
+          <span><Sparkles size={17} /></span>
+          <div>
+            <h3>Evoluir afiliado</h3>
+            <p>Transforme um afiliado ativo em Credenciado sem perder link, clientes, histórico ou comissões.</p>
+          </div>
+        </div>
+        <button type="button" className={styles.secondary} disabled={busy} onClick={() => ref.current?.close()}>Fechar</button>
+      </header>
+      <div className={styles.inviteModalBody}>
+        {affiliates.length ? (
+          <div className={styles.evolveList}>
+            {affiliates.map((affiliate) => (
+              <div className={styles.evolveRow} key={affiliate.id}>
+                <div className={styles.identity}>
+                  <strong>{affiliate.profiles?.full_name || "Afiliado"}</strong>
+                  <small>{affiliate.profiles?.email || "E-mail não disponível"} · {affiliate.code}</small>
+                </div>
+                <button type="button" className={styles.primary} disabled={busy} onClick={() => void onEvolve(affiliate.id)}>
+                  <Sparkles size={14} />Evoluir para Credenciado
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={styles.empty}>Não há afiliados ativos disponíveis para evolução.</div>
         )}
       </div>
     </dialog>

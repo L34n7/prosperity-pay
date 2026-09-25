@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Trash2, X } from "lucide-react";
 import { ProductAddonsManagement } from "@/components/product-addons-management";
 import { ProductAffiliateManagement } from "@/components/product-affiliate-management";
+import { ProductAccreditedManagement } from "@/components/product-accredited-management";
 import { ProductOfferDialog } from "@/components/product-offer-dialog";
 import { ProductOffersList } from "@/components/product-offers-list";
 import { ProductOverviewReport } from "@/components/product-overview-report";
@@ -70,8 +71,8 @@ export function ProductDetail({ id }: { id: string }) {
   const [deletingOffer, setDeletingOffer] = useState<Offer | null>(null);
   const [deletingProduct, setDeletingProduct] = useState(false);
   const tabs = product?.payment_type === "recurring"
-    ? ["Visão geral", "Ofertas", "Assinaturas", "Adicionais", "Afiliados", "Co-Produtores", "Pagamentos", "Configurações"]
-    : ["Visão geral", "Ofertas", "Afiliados", "Co-Produtores", "Pagamentos", "Configurações"];
+    ? ["Visão geral", "Ofertas", "Assinaturas", "Adicionais", "Afiliados", "Credenciado", "Co-Produtores", "Pagamentos", "Configurações"]
+    : ["Visão geral", "Ofertas", "Afiliados", "Credenciado", "Co-Produtores", "Pagamentos", "Configurações"];
 
   const load = useCallback(async () => {
     try {
@@ -170,6 +171,7 @@ export function ProductDetail({ id }: { id: string }) {
       {tab === "Assinaturas" && product.payment_type === "recurring" && <ProductSubscriptionsManagement productId={id}/>} 
       {tab === "Adicionais" && product.payment_type === "recurring" && <ProductAddonsManagement productId={id}/>} 
       {tab === "Afiliados" && <ProductAffiliateManagement id={id}/>} 
+      {tab === "Credenciado" && <ProductAccreditedManagement id={id}/>} 
       {tab === "Co-Produtores" && <ProductCoproducerManagement id={id} offers={offers.map(offer => ({ id: offer.id, name: offer.name }))}/>} 
       {tab === "Pagamentos" && <ProductPaymentsManagement id={id}/>} 
     </section>}
