@@ -1,4 +1,5 @@
 import { HttpError } from "@/lib/api/http";
+import { resolveOfferCommissionOverride } from "@/lib/affiliates/offer-commission-overrides";
 import { env, requireEnv } from "@/lib/env";
 import { FinancialDistributionService, type FeeRule } from "@/lib/financial/financial-distribution-service";
 import { getPaymentProvider } from "@/lib/payments";
@@ -301,11 +302,17 @@ export async function createCheckout(input: CheckoutRequest) {
       .eq("ref_code", input.refCode).eq("active", true).maybeSingle();
     const membership = link?.affiliate_memberships;
     if (link && membership && !Array.isArray(membership) && membership.status === "active" && membership.affiliate_programs?.product_id === product.id && membership.affiliate_programs.active) {
+      const commissionBpsOverride = await resolveOfferCommissionOverride({
+        admin,
+        membershipId: link.membership_id,
+        offerId: offer.id,
+        legacyMembershipOverride: membership.affiliate_commission_bps_override,
+      });
       affiliate = {
         userId: membership.user_id,
         membershipId: link.membership_id,
         linkId: link.id,
-        rule: affiliateCommissionRule(offer, membership.affiliate_commission_bps_override),
+        rule: affiliateCommissionRule(offer, commissionBpsOverride),
       };
     }
   }

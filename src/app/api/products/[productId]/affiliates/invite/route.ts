@@ -6,6 +6,7 @@ import { env, requireEnv } from "@/lib/env";
 import { sendAffiliateInvitationEmail } from "@/lib/email/resend-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dispatchAffiliateMembershipWebhooksSafe } from "@/lib/integrations/affiliate-webhook";
+import { parseOfferCommissionOverrides, saveOfferCommissionOverrides } from "@/lib/affiliates/offer-commission-overrides";
 
 type Context = { params: Promise<{ productId: string }> };
 
@@ -25,6 +26,12 @@ export async function POST(request: Request, context: Context) {
     const email = requiredString(body, "email", 320).trim().toLowerCase();
     const partnerType =
       body.partnerType === "accredited" ? "accredited" : "affiliate";
+    let offerCommissionOverrides: ReturnType<typeof parseOfferCommissionOverrides> = [];
+    try {
+      offerCommissionOverrides = parseOfferCommissionOverrides(body.offerCommissionOverrides);
+    } catch (cause) {
+      return NextResponse.json({ error: cause instanceof Error ? cause.message : "Configuração individual inválida." }, { status: 400 });
+    }
     const admin = createAdminClient();
 
     const [{ data: program, error: programError }, { data: product, error: productError }] = await Promise.all([
@@ -102,6 +109,13 @@ export async function POST(request: Request, context: Context) {
       if (error) throw error;
       membership = data;
     }
+
+    await saveOfferCommissionOverrides({
+      admin,
+      productId,
+      membershipId: membership.id,
+      overrides: offerCommissionOverrides,
+    });
 
     const invitationPath = `/convites/afiliacao?code=${encodeURIComponent(membership.code)}`;
     const invitationUrl = new URL(

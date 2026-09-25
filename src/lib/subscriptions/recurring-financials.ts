@@ -1,4 +1,5 @@
 import { FinancialDistributionService, type FeeRule } from "@/lib/financial/financial-distribution-service";
+import { resolveOfferCommissionOverride } from "@/lib/affiliates/offer-commission-overrides";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -73,11 +74,11 @@ export async function createRecurringSnapshot(input: {
     coproducers = (participants ?? []).map((item) => ({ userId: item.user_id, basisPoints: item.participation_bps }));
 
     if ((affiliateBaseAmountCents ?? grossAmountCents) > 0 && affiliateApplies(offer, cycleNumber)) {
-      let membershipRow: { user_id: string; affiliate_commission_bps_override: number | null } | null = null;
+      let membershipRow: { id: string; user_id: string; affiliate_commission_bps_override: number | null } | null = null;
 
       if (affiliateMembershipId) {
         const { data, error } = await admin.from("affiliate_memberships")
-          .select("user_id,affiliate_commission_bps_override,affiliate_programs!inner(active,product_id)")
+          .select("id,user_id,affiliate_commission_bps_override,affiliate_programs!inner(active,product_id)")
           .eq("id", affiliateMembershipId)
           .eq("status", "active")
           .maybeSingle();
@@ -86,23 +87,35 @@ export async function createRecurringSnapshot(input: {
         const programRow = Array.isArray(program) ? program[0] : program;
         if (data?.user_id && programRow?.active && programRow.product_id === product.id) {
           membershipRow = {
+            id: data.id,
             user_id: data.user_id,
             affiliate_commission_bps_override: data.affiliate_commission_bps_override,
           };
         }
       } else if (originOrderId) {
         const { data: attribution, error: attributionError } = await admin.from("affiliate_attributions")
-          .select("affiliate_memberships!inner(user_id,affiliate_commission_bps_override)")
+          .select("affiliate_membership_id,affiliate_memberships!inner(user_id,affiliate_commission_bps_override)")
           .eq("order_id", originOrderId)
           .maybeSingle();
         if (attributionError) throw attributionError;
         const membership = attribution?.affiliate_memberships;
         const raw = Array.isArray(membership) ? membership[0] : membership;
-        if (raw?.user_id) membershipRow = raw;
+        if (raw?.user_id && attribution?.affiliate_membership_id) {
+          membershipRow = {
+            id: attribution.affiliate_membership_id,
+            user_id: raw.user_id,
+            affiliate_commission_bps_override: raw.affiliate_commission_bps_override,
+          };
+        }
       }
 
       if (membershipRow?.user_id) {
-        const overrideBasisPoints = membershipRow.affiliate_commission_bps_override;
+        const overrideBasisPoints = await resolveOfferCommissionOverride({
+          admin,
+          membershipId: membershipRow.id,
+          offerId: offer.id,
+          legacyMembershipOverride: membershipRow.affiliate_commission_bps_override,
+        });
         affiliate = {
           userId: membershipRow.user_id,
           rule: overrideBasisPoints === null || overrideBasisPoints === undefined

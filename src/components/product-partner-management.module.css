@@ -55,12 +55,20 @@
 .commissionInputWrap input:focus { border-color: rgba(34,230,161,.38); box-shadow: 0 0 0 3px rgba(34,230,161,.05); }
 .commissionInputWrap em { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); color: var(--text-subtle); font-size: .58rem; font-style: normal; pointer-events: none; }
 .commissionInputRow .secondary { min-height: 34px; padding: 0 9px; }
+.individualSummary { display: grid; min-width: 0; gap: 3px; }
+.individualSummary > span { color: var(--text-muted); font-size: .55rem; font-weight: 700; }
+.individualSummary > strong { overflow: hidden; color: var(--text-secondary); font-size: .66rem; text-overflow: ellipsis; white-space: nowrap; }
+.individualSummary > small { overflow: hidden; color: var(--text-subtle); font-size: .52rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.inviteForm { display: grid; gap: 16px; }
+.inviteForm .inviteGrid { grid-template-columns: minmax(0,1fr); max-width: none; }
+.inviteSubmit { display: flex; justify-content: flex-end; padding-top: 2px; }
+.inviteSubmit .primary { min-width: 170px; }
 .detail { color: var(--text-muted); font-size: .6rem; }
 .code { overflow: hidden; color: #9fdac3; font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: .57rem; text-overflow: ellipsis; white-space: nowrap; }
 .badge { display: inline-flex; width: fit-content; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid rgba(92,133,111,.15); border-radius: 999px; color: var(--text-muted); font-size: .54rem; font-weight: 720; }
 .badgeActive { border-color: rgba(34,230,161,.2); background: rgba(34,230,161,.05); color: #92eecb; }
 .badgePending { border-color: rgba(242,184,75,.2); background: rgba(242,184,75,.045); color: #e5c678; }
-.rowActions { display: flex; justify-content: flex-end; gap: 6px; }
+.rowActions { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 .empty { display: grid; min-height: 110px; place-items: center; padding: 18px; border: 1px dashed rgba(92,133,111,.14); border-radius: 11px; color: var(--text-subtle); font-size: .62rem; text-align: center; }
 .notice, .error, .success { margin: 0; padding: 9px 10px; border-radius: 9px; font-size: .6rem; line-height: 1.45; }
 .notice { border: 1px solid rgba(214,170,69,.14); background: rgba(214,170,69,.035); color: #d7bf7b; }
@@ -70,7 +78,7 @@
 .sectionTitle h3 { margin: 0; color: var(--text-secondary); font-size: .71rem; }
 .sectionTitle small { color: var(--text-subtle); font-size: .55rem; }
 @media (max-width: 900px) { .formGrid { grid-template-columns: 1fr 1fr; } .formGrid > button { width: 100%; } .row { grid-template-columns: minmax(0,1fr) minmax(230px,.9fr) auto auto; } .code { display: none; } }
-@media (max-width: 620px) { .hero { align-items: flex-start; } .hero p, .statusBox > span { display: none; } .modeSelector, .formGrid, .inviteGrid { grid-template-columns: 1fr; max-width:none; } .configFooter { align-items: stretch; flex-direction: column; } .configFooter button { width: 100%; } .row { grid-template-columns: 1fr; align-items: start; } .rowActions { justify-content: flex-start; } .linkBox { align-items: stretch; flex-direction: column; } .linkBox button { width: 100%; } }
+@media (max-width: 620px) { .hero { align-items: flex-start; } .hero p, .statusBox > span { display: none; } .modeSelector, .formGrid, .inviteGrid { grid-template-columns: 1fr; max-width:none; } .configFooter { align-items: stretch; flex-direction: column; } .configFooter button { width: 100%; } .row { grid-template-columns: 1fr; align-items: start; } .rowActions { justify-content: flex-start; } .inviteSubmit { justify-content: stretch; } .inviteSubmit .primary { width: 100%; } .linkBox { align-items: stretch; flex-direction: column; } .linkBox button { width: 100%; } }
 
 .heroActions{display:flex;align-items:center;gap:18px}.heroButtonGroup{display:flex;align-items:center;gap:8px}.statusDot{width:9px;height:9px;border-radius:50%;background:#657067;box-shadow:0 0 0 4px rgba(101,112,103,.08)}.statusDotOn{background:var(--primary);box-shadow:0 0 0 4px rgba(34,230,161,.08)}@media(max-width:620px){.heroActions{width:100%;align-items:stretch;flex-direction:column-reverse;gap:10px}.heroButtonGroup{display:grid;grid-template-columns:1fr 1fr}.heroActions .primary,.heroActions .secondary{width:100%}}
 
