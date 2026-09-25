@@ -1,4 +1,5 @@
 import { HttpError } from "@/lib/api/http";
+import { resolveOfferCommissionOverride } from "@/lib/affiliates/offer-commission-overrides";
 import { FinancialDistributionService, type FeeRule } from "@/lib/financial/financial-distribution-service";
 import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
 import { dispatchSubscriptionIntegrationEventSafe } from "@/lib/integrations/subscription-events";
@@ -210,7 +211,13 @@ async function resolveAffiliate(admin: AdminClient, refCode: string | undefined,
     .eq("ref_code", refCode).eq("active", true).maybeSingle();
   const membership = link?.affiliate_memberships;
   if (!link || !membership || Array.isArray(membership) || membership.status !== "active" || membership.affiliate_programs?.product_id !== product.id || !membership.affiliate_programs.active) return undefined;
-  return { linkId: link.id, membershipId: link.membership_id, userId: membership.user_id, commissionBpsOverride: membership.affiliate_commission_bps_override, cookieDays: Number(membership.affiliate_programs.cookie_days ?? 30) };
+  const commissionBpsOverride = await resolveOfferCommissionOverride({
+    admin,
+    membershipId: link.membership_id,
+    offerId: offer.id,
+    legacyMembershipOverride: membership.affiliate_commission_bps_override,
+  });
+  return { linkId: link.id, membershipId: link.membership_id, userId: membership.user_id, commissionBpsOverride, cookieDays: Number(membership.affiliate_programs.cookie_days ?? 30) };
 }
 
 async function createFinancialSnapshot(admin: AdminClient, orderId: string, offer: Offer, product: Product, affiliate?: { userId: string; commissionBpsOverride: number | null }) {

@@ -53,6 +53,15 @@ type AffiliateMembershipPartnerColumns = {
   partner_type: "affiliate" | "accredited";
 };
 
+type AffiliateOfferCommissionOverrideRow = {
+  id: string;
+  membership_id: string;
+  offer_id: string;
+  commission_bps: number;
+  created_at: string;
+  updated_at: string;
+};
+
 type AffiliateProgramSettingsColumns = {
   attribution_model: "last_click" | "first_click";
   customer_data_access: boolean;
@@ -403,6 +412,7 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       integration_webhook_deliveries: IntegrationWebhookDeliveryTable;
       payment_email_deliveries: PaymentEmailDeliveryTable;
       first_access_tokens: FirstAccessTokenTable;
+      affiliate_offer_commission_overrides: LooseTable<AffiliateOfferCommissionOverrideRow>;
     };
     Functions: GeneratedFunctions & {
       bootstrap_initial_platform_admin: {

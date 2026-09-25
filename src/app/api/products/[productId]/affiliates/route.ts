@@ -17,6 +17,23 @@ export async function GET(_:Request,{params}:{params:Promise<{productId:string}>
     if(programResult.error)throw programResult.error;if(productResult.error)throw productResult.error;if(offersResult.error)throw offersResult.error;
     const memberships=programResult.data?await admin.from("affiliate_memberships").select("id,code,status,partner_type,created_at,affiliate_commission_bps_override,profiles!affiliate_memberships_user_id_fkey(full_name,email)").eq("program_id",programResult.data.id).order("created_at",{ascending:false}):{data:[],error:null};
     if(memberships.error)throw memberships.error;
-    return NextResponse.json({program:programResult.data,product:productResult.data,offers:offersResult.data??[],memberships:memberships.data??[]});
+    const membershipRows=memberships.data??[];
+    const membershipIds=membershipRows.map((item)=>item.id);
+    const overrides=membershipIds.length
+      ? await admin.from("affiliate_offer_commission_overrides").select("membership_id,offer_id,commission_bps").in("membership_id",membershipIds)
+      : {data:[],error:null};
+    if(overrides.error)throw overrides.error;
+    const grouped=new Map<string,Array<{offer_id:string;commission_bps:number}>>();
+    for(const item of overrides.data??[]){
+      const current=grouped.get(item.membership_id)??[];
+      current.push({offer_id:item.offer_id,commission_bps:Number(item.commission_bps)});
+      grouped.set(item.membership_id,current);
+    }
+    return NextResponse.json({
+      program:programResult.data,
+      product:productResult.data,
+      offers:offersResult.data??[],
+      memberships:membershipRows.map((item)=>({...item,offer_commission_overrides:grouped.get(item.id)??[]})),
+    });
   }catch(error){return jsonError(error)}
 }

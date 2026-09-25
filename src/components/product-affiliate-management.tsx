@@ -1,13 +1,19 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Link2, MailPlus, Settings2, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
+import { Check, Copy, Link2, MailPlus, Settings2, ShieldCheck, SlidersHorizontal, UserPlus, UsersRound } from "lucide-react";
 import {
   ProductAffiliateSettingsDialog,
   type AffiliateOfferSettings,
   type AffiliateProductSettings,
   type AffiliateProgramSettings,
 } from "@/components/product-affiliate-settings-dialog";
+import {
+  PartnerIndividualCommissionDialog,
+  PartnerOfferCommissionFields,
+  readPartnerOfferCommissionOverrides,
+  type PartnerOfferCommissionOverride,
+} from "@/components/partner-offer-commission-fields";
 import { requestJson } from "@/lib/operational";
 import styles from "./product-partner-management.module.css";
 
@@ -18,6 +24,7 @@ type AffiliateMember = {
   partner_type: "affiliate" | "accredited";
   created_at?: string;
   affiliate_commission_bps_override: number | null;
+  offer_commission_overrides: PartnerOfferCommissionOverride[];
   profiles: { full_name: string; email: string } | null;
 };
 
@@ -45,7 +52,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
   const [offers, setOffers] = useState<AffiliateOfferSettings[]>([]);
   const [product, setProduct] = useState<AffiliateProductSettings | null>(null);
   const [members, setMembers] = useState<AffiliateMember[]>([]);
-  const [commissionDrafts, setCommissionDrafts] = useState<Record<string, string>>({});
+  const [selectedMember, setSelectedMember] = useState<AffiliateMember | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [error, setError] = useState("");
@@ -68,16 +75,6 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
       setMembers(nextMembers);
       setOffers(data.offers ?? []);
       setProduct(data.product ?? null);
-      setCommissionDrafts(
-        Object.fromEntries(
-          nextMembers.map((member) => [
-            member.id,
-            member.affiliate_commission_bps_override == null
-              ? ""
-              : String(member.affiliate_commission_bps_override / 100),
-          ]),
-        ),
-      );
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao carregar afiliados.");
@@ -99,16 +96,18 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
   async function invite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const email = new FormData(form).get("email");
     setBusy(true);
     setError("");
     setMessage("");
     try {
+      const formData = new FormData(form);
+      const email = formData.get("email");
+      const offerCommissionOverrides = readPartnerOfferCommissionOverrides(formData, offers);
       const result = await requestJson<{ invitationPath: string }>(
         `/api/products/${id}/affiliates/invite`,
         {
           method: "POST",
-          body: JSON.stringify({ email, partnerType: "affiliate" }),
+          body: JSON.stringify({ email, partnerType: "affiliate", offerCommissionOverrides }),
         },
       );
       setInviteUrl(`${location.origin}${result.invitationPath}`);
@@ -138,30 +137,24 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
     }
   }
 
-  async function saveMemberCommission(memberId: string) {
-    const raw = (commissionDrafts[memberId] ?? "").trim().replace(",", ".");
-    const percentage = raw === "" ? null : Number(raw);
-    if (percentage !== null && (!Number.isFinite(percentage) || percentage < 0 || percentage > 100)) {
-      setError("Informe uma comissão entre 0% e 100%, ou deixe em branco para usar a comissão padrão.");
-      return;
-    }
-    const commissionBpsOverride = percentage === null ? null : Math.round(percentage * 100);
+  async function saveIndividualSettings(
+    member: AffiliateMember,
+    offerCommissionOverrides: Array<{ offerId: string; commissionBps: number | null }>,
+  ) {
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      await requestJson(`/api/products/${id}/affiliates/${memberId}`, {
+      await requestJson(`/api/products/${id}/affiliates/${member.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ commissionBpsOverride }),
+        body: JSON.stringify({ offerCommissionOverrides }),
       });
-      setMessage(
-        commissionBpsOverride == null
-          ? "Comissão personalizada removida. O afiliado voltou a usar a comissão padrão."
-          : "Comissão personalizada do afiliado salva.",
-      );
+      setMessage(`Configurações individuais de ${member.profiles?.full_name || "afiliado"} salvas.`);
+      setSelectedMember(null);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao salvar comissão do afiliado.");
+      setError(cause instanceof Error ? cause.message : "Falha ao salvar configurações individuais.");
+      throw cause;
     } finally {
       setBusy(false);
     }
@@ -250,39 +243,24 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
                   <small>{member.profiles?.email || "E-mail não disponível"}</small>
                 </div>
                 <code className={styles.code}>{member.code}</code>
-                <div className={styles.commissionControl}>
-                  <span>Comissão individual</span>
-                  <div className={styles.commissionInputRow}>
-                    <label className={styles.commissionInputWrap}>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        inputMode="decimal"
-                        placeholder="Padrão"
-                        aria-label={"Comissão individual de " + (member.profiles?.email || "afiliado")}
-                        value={commissionDrafts[member.id] ?? ""}
-                        onChange={(event) =>
-                          setCommissionDrafts((current) => ({ ...current, [member.id]: event.target.value }))
-                        }
-                      />
-                      <em>%</em>
-                    </label>
-                    <button type="button" className={styles.secondary} disabled={busy} onClick={() => void saveMemberCommission(member.id)}>
-                      Salvar
-                    </button>
-                  </div>
+                <div className={styles.individualSummary}>
+                  <span>Configuração individual</span>
+                  <strong>
+                    {member.offer_commission_overrides.length
+                      ? `${member.offer_commission_overrides.length} oferta(s) personalizada(s)`
+                      : "Padrão das ofertas"}
+                  </strong>
                   <small>
-                    {member.affiliate_commission_bps_override == null
-                      ? "Usa a comissão padrão da oferta."
-                      : "Personalizada: " +
-                        (member.affiliate_commission_bps_override / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) +
-                        "% · sobrepõe a padrão."}
+                    {member.offer_commission_overrides.length
+                      ? "As demais ofertas continuam usando o percentual padrão."
+                      : "Nenhuma exceção de comissão configurada."}
                   </small>
                 </div>
                 <StatusBadge status={member.status} />
                 <div className={styles.rowActions}>
+                  <button type="button" className={styles.secondary} disabled={busy} onClick={() => setSelectedMember(member)}>
+                    <SlidersHorizontal size={14} />Config. individuais
+                  </button>
                   {member.status === "pending" && program?.mode === "approval" && (
                     <button type="button" className={styles.secondary} disabled={busy} onClick={() => void setMemberStatus(member.id, "active")}>
                       <Check size={14} />Aprovar
@@ -335,8 +313,21 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
           inviteUrl={inviteUrl}
           error={error}
           message={message}
+          offers={offers}
           onInvite={invite}
           onClose={() => setInviteOpen(false)}
+        />
+      )}
+
+      {selectedMember && (
+        <PartnerIndividualCommissionDialog
+          partnerName={selectedMember.profiles?.full_name || "Afiliado"}
+          partnerLabel="Afiliado"
+          offers={offers}
+          overrides={selectedMember.offer_commission_overrides}
+          busy={busy}
+          onClose={() => setSelectedMember(null)}
+          onSave={(overrides) => saveIndividualSettings(selectedMember, overrides)}
         />
       )}
     </div>
@@ -349,6 +340,7 @@ function AffiliateInviteDialog({
   inviteUrl,
   error,
   message,
+  offers,
   onInvite,
   onClose,
 }: {
@@ -357,6 +349,7 @@ function AffiliateInviteDialog({
   inviteUrl: string;
   error: string;
   message: string;
+  offers: AffiliateOfferSettings[];
   onInvite: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onClose: () => void;
 }) {
@@ -375,14 +368,19 @@ function AffiliateInviteDialog({
         <button type="button" className={styles.secondary} disabled={busy} onClick={() => ref.current?.close()}>Fechar</button>
       </header>
       <div className={styles.inviteModalBody}>
-        <form className={styles.inviteGrid} onSubmit={(event) => void onInvite(event)}>
-          <label className={styles.field}>
-            E-mail do afiliado
-            <input name="email" type="email" placeholder="afiliado@exemplo.com" required autoFocus />
-          </label>
-          <button className={styles.primary} disabled={busy || !enabled}>
-            <UserPlus size={15} />{busy ? "Enviando..." : "Enviar convite"}
-          </button>
+        <form className={styles.inviteForm} onSubmit={(event) => void onInvite(event)}>
+          <div className={styles.inviteGrid}>
+            <label className={styles.field}>
+              E-mail do afiliado
+              <input name="email" type="email" placeholder="afiliado@exemplo.com" required autoFocus />
+            </label>
+          </div>
+          <PartnerOfferCommissionFields offers={offers} />
+          <div className={styles.inviteSubmit}>
+            <button className={styles.primary} disabled={busy || !enabled}>
+              <UserPlus size={15} />{busy ? "Enviando..." : "Enviar convite"}
+            </button>
+          </div>
         </form>
         {!enabled && <p className={styles.notice}>Ative o programa e selecione o modo Somente convite nas configurações para enviar convites.</p>}
         {error && <p className={styles.error} role="alert">{error}</p>}
