@@ -411,6 +411,112 @@ function transparentResult(orderId: string, paymentStatus: string, mpOrder: Merc
   };
 }
 
+async function cancelOtherRenewalAttempts(input: {
+  admin: AdminClient;
+  subscriptionId: string;
+  winnerOrderId: string;
+  renewalDueAt: string;
+}) {
+  const { admin, subscriptionId, winnerOrderId, renewalDueAt } = input;
+
+  const { data: sessions, error: sessionsError } = await admin
+    .from("subscription_checkout_sessions")
+    .select("id,order_id,metadata")
+    .eq("subscription_id", subscriptionId)
+    .eq("session_type", "subscription_renewal")
+    .not("order_id", "is", null)
+    .is("consumed_at", null);
+
+  if (sessionsError) {
+    console.error("[renewal] Falha ao localizar tentativas paralelas.", sessionsError);
+    return;
+  }
+
+  const siblings = (sessions ?? []).filter((session) => {
+    if (!session.order_id || session.order_id === winnerOrderId) return false;
+    const metadata =
+      session.metadata &&
+      typeof session.metadata === "object" &&
+      !Array.isArray(session.metadata)
+        ? (session.metadata as Record<string, unknown>)
+        : {};
+    return metadata.renewalDueAt === renewalDueAt;
+  });
+
+  for (const sibling of siblings) {
+    try {
+      const [{ data: payment, error: paymentError }, { data: checkout, error: checkoutError }] =
+        await Promise.all([
+          admin
+            .from("payments")
+            .select("id,status")
+            .eq("order_id", sibling.order_id!)
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle(),
+          admin
+            .from("payment_provider_checkouts")
+            .select("connection_id,external_checkout_id")
+            .eq("order_id", sibling.order_id!)
+            .maybeSingle(),
+        ]);
+
+      if (paymentError) throw paymentError;
+      if (checkoutError) throw checkoutError;
+      if (!payment || !["pending", "processing"].includes(String(payment.status))) {
+        continue;
+      }
+
+      if (checkout?.connection_id && checkout.external_checkout_id) {
+        const token = await getProviderAccessToken(checkout.connection_id);
+        await mpRequest<MercadoPagoOrder>(
+          token,
+          `/v1/orders/${encodeURIComponent(checkout.external_checkout_id)}/cancel`,
+          { method: "POST" },
+          `settled-renewal-${sibling.order_id}`.slice(0, 64),
+        );
+      }
+
+      const now = new Date().toISOString();
+
+      await Promise.all([
+        admin
+          .from("payments")
+          .update({
+            status: "cancelled",
+            status_detail: "renewal_already_paid",
+            updated_at: now,
+          })
+          .eq("id", payment.id)
+          .in("status", ["pending", "processing"]),
+        admin
+          .from("orders")
+          .update({
+            status: "cancelled",
+            cancelled_at: now,
+            updated_at: now,
+          })
+          .eq("id", sibling.order_id!)
+          .neq("status", "paid"),
+        admin
+          .from("subscription_checkout_sessions")
+          .update({
+            consumed_at: now,
+            updated_at: now,
+          })
+          .eq("id", sibling.id)
+          .is("consumed_at", null),
+      ]);
+    } catch (error) {
+      console.error("[renewal] Falha ao cancelar tentativa paralela.", {
+        subscriptionId,
+        orderId: sibling.order_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+}
+
 export async function syncTransparentOrder(input: {
   admin: AdminClient;
   internalOrderId: string;
@@ -467,6 +573,7 @@ export async function syncTransparentOrder(input: {
 
   let subscriptionApplied = false;
   let shouldPostFinancials = becameApproved;
+  let settledRenewalDueAt: string | null = null;
 
   if (status === "approved") {
     const { error: orderError } = await admin.from("orders").update({ status: "paid", paid_at: paidAt }).eq("id", internalOrderId);
@@ -512,17 +619,46 @@ export async function syncTransparentOrder(input: {
             : null;
 
         if (renewalDueAt) {
-          const { data: claimed, error: claimError } = await (admin as any).rpc(
-            "claim_prepaid_subscription_renewal_payment",
-            {
-              target_subscription_id: billingOrder.subscription_id,
-              target_payment_id: currentPayment.id,
-              target_due_at: renewalDueAt,
-            },
-          );
+          const dueAtMs = new Date(renewalDueAt).getTime();
+          const currentPeriodEndMs = currentSubscription.current_period_end
+            ? new Date(currentSubscription.current_period_end).getTime()
+            : Number.NaN;
 
-          if (claimError) throw claimError;
-          renewalClaimed = claimed === true;
+          // Proteção imediata sem depender da migration: se a assinatura já
+          // avançou além da competência deste PIX, esta tentativa é duplicada.
+          if (
+            Number.isFinite(dueAtMs) &&
+            Number.isFinite(currentPeriodEndMs) &&
+            currentPeriodEndMs > dueAtMs + 60_000
+          ) {
+            renewalClaimed = false;
+          } else {
+            const { data: claimed, error: claimError } = await (admin as any).rpc(
+              "claim_prepaid_subscription_renewal_payment",
+              {
+                target_subscription_id: billingOrder.subscription_id,
+                target_payment_id: currentPayment.id,
+                target_due_at: renewalDueAt,
+              },
+            );
+
+            if (claimError) {
+              const message = String(claimError.message || "").toLowerCase();
+              const missingClaimFunction =
+                message.includes("claim_prepaid_subscription_renewal_payment") &&
+                (message.includes("not find") ||
+                  message.includes("does not exist") ||
+                  message.includes("schema cache"));
+
+              if (!missingClaimFunction) throw claimError;
+
+              console.warn(
+                "[renewal] Claim atômico ainda não disponível; usando proteção por período.",
+              );
+            } else {
+              renewalClaimed = claimed === true;
+            }
+          }
 
           if (!renewalClaimed) {
             shouldPostFinancials = false;
@@ -536,6 +672,8 @@ export async function syncTransparentOrder(input: {
               .eq("id", currentPayment.id);
 
             if (duplicateMarkError) throw duplicateMarkError;
+          } else {
+            settledRenewalDueAt = renewalDueAt;
           }
         }
 
@@ -599,6 +737,20 @@ export async function syncTransparentOrder(input: {
     if (shouldPostFinancials) {
       const { error } = await admin.rpc("post_payment_financials", { target_payment_id: currentPayment.id });
       if (error) throw error;
+    }
+
+    if (
+      subscriptionApplied &&
+      billingOrder.billing_reason === "subscription_renewal" &&
+      billingOrder.subscription_id &&
+      settledRenewalDueAt
+    ) {
+      await cancelOtherRenewalAttempts({
+        admin,
+        subscriptionId: billingOrder.subscription_id,
+        winnerOrderId: internalOrderId,
+        renewalDueAt: settledRenewalDueAt,
+      });
     }
   } else if (status === "cancelled") {
     await admin.from("orders").update({ status: "cancelled", cancelled_at: new Date().toISOString() }).eq("id", internalOrderId);
