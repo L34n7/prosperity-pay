@@ -56,14 +56,32 @@ export async function POST(request: Request) {
       throw new HttpError(409, "A importação de assinatura exige recebimento pelo Saldo Prosperity.");
     }
 
-    const { data: route, error: routeError } = await admin.from("integration_webhook_routes")
-      .select("id")
+    const { data: routes, error: routeError } = await admin.from("integration_webhook_routes")
+      .select("offer_reference")
       .eq("integration", integrationKey)
-      .eq("offer_reference", offerReference)
-      .eq("active", true)
-      .maybeSingle();
+      .eq("active", true);
     if (routeError) throw routeError;
-    if (!route) throw new HttpError(403, "Esta integração não pode importar a oferta informada.");
+
+    const references = (routes ?? [])
+      .map((route) => String(route.offer_reference || "").trim())
+      .filter(Boolean);
+
+    const { data: allowedOffer, error: allowedOfferError } = references.length > 0
+      ? await admin.from("offers")
+          .select("id")
+          .eq("product_id", offer.product_id)
+          .in("checkout_slug", references)
+          .limit(1)
+          .maybeSingle()
+      : { data: null, error: null };
+
+    if (allowedOfferError) throw allowedOfferError;
+    if (!allowedOffer) {
+      throw new HttpError(
+        403,
+        "Esta integração não pode importar ofertas deste produto."
+      );
+    }
 
     const { data: existing, error: existingError } = await admin.from("subscriptions")
       .select("id,status,current_amount_cents,current_period_start,current_period_end,next_due_at")
