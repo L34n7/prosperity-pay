@@ -23,12 +23,14 @@ type ProductUpdate = Database["public"]["Tables"]["products"]["Update"] & {
   first_charge_cents?: number | null;
   recurring_price_cents?: number | null;
   main_offer_price_cents?: number | null;
+  automatic_due_billing_enabled?: boolean;
+  partner_payment_emails_enabled?: boolean;
 };
 type OfferSync = Database["public"]["Tables"]["offers"]["Update"] & { first_charge_cents?: number | null };
 type ProductRow = Database["public"]["Tables"]["products"]["Row"] & Required<Pick<ProductUpdate,
   "payment_type" | "product_type" | "different_first_charge"
 >> & Pick<ProductUpdate,
-  "category" | "support_display_name" | "support_email" | "support_whatsapp" | "post_purchase_message" | "post_purchase_redirect_url" | "affiliate_funnel_base_url" | "recurrence_frequency" | "first_charge_cents" | "recurring_price_cents" | "main_offer_price_cents"
+  "category" | "support_display_name" | "support_email" | "support_whatsapp" | "post_purchase_message" | "post_purchase_redirect_url" | "affiliate_funnel_base_url" | "recurrence_frequency" | "first_charge_cents" | "recurring_price_cents" | "main_offer_price_cents" | "automatic_due_billing_enabled" | "partner_payment_emails_enabled"
 >;
 
 function nullableText(value: unknown, maxLength: number, field: string) {
@@ -113,6 +115,11 @@ export async function PATCH(request: Request, context: Context) {
       update.support_display_name = body.supportDisplayName === undefined ? current.support_display_name : nullableText(body.supportDisplayName, 180, "supportDisplayName");
       update.support_email = body.supportEmail === undefined ? current.support_email : nullableText(body.supportEmail, 320, "supportEmail");
       update.support_whatsapp = body.supportWhatsapp === undefined ? current.support_whatsapp : nullableText(body.supportWhatsapp, 32, "supportWhatsapp");
+      update.automatic_due_billing_enabled =
+        paymentType === "recurring" &&
+        (body.automaticDueBillingEnabled === undefined
+          ? current.automatic_due_billing_enabled
+          : body.automaticDueBillingEnabled === true);
       update.post_purchase_message = body.postPurchaseMessage === undefined ? current.post_purchase_message : nullableText(body.postPurchaseMessage, 4000, "postPurchaseMessage");
       update.post_purchase_redirect_url = body.postPurchaseRedirectUrl === undefined ? current.post_purchase_redirect_url : nullableHttpUrl(body.postPurchaseRedirectUrl, "postPurchaseRedirectUrl");
       update.affiliate_funnel_base_url = body.affiliateFunnelBaseUrl === undefined ? current.affiliate_funnel_base_url : nullableAffiliateFunnelBaseUrl(body.affiliateFunnelBaseUrl);
@@ -139,6 +146,7 @@ export async function PATCH(request: Request, context: Context) {
         update.main_offer_price_cents = body.mainOfferPriceCents === undefined
           ? positiveCents(current.main_offer_price_cents, "mainOfferPriceCents")
           : positiveCents(body.mainOfferPriceCents, "mainOfferPriceCents");
+        update.automatic_due_billing_enabled = false;
       }
     } catch (error) {
       const field = error instanceof Error ? error.message.replace("INVALID:", "") : "dados";
