@@ -15,7 +15,7 @@ export async function GET(_:Request,{params}:{params:Promise<{productId:string}>
       admin.from("offers").select("id,name,price_cents,status,affiliate_enabled,affiliate_commission_bps,prosperity_fee_type,prosperity_fee_bps,prosperity_fee_fixed_cents").eq("product_id",productId).order("created_at")
     ]);
     if(programResult.error)throw programResult.error;if(productResult.error)throw productResult.error;if(offersResult.error)throw offersResult.error;
-    const memberships=programResult.data?await admin.from("affiliate_memberships").select("id,code,status,created_at,affiliate_commission_bps_override,profiles!affiliate_memberships_user_id_fkey(full_name,email)").eq("program_id",programResult.data.id).order("created_at",{ascending:false}):{data:[],error:null};
+    const memberships=programResult.data?await admin.from("affiliate_memberships").select("id,code,status,partner_type,created_at,affiliate_commission_bps_override,profiles!affiliate_memberships_user_id_fkey(full_name,email)").eq("program_id",programResult.data.id).order("created_at",{ascending:false}):{data:[],error:null};
     if(memberships.error)throw memberships.error;
     return NextResponse.json({program:programResult.data,product:productResult.data,offers:offersResult.data??[],memberships:memberships.data??[]});
   }catch(error){return jsonError(error)}

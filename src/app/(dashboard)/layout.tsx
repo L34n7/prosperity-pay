@@ -10,9 +10,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   await ensureInitialPlatformAdmin(user.id);
 
-  const [{ data: profile }, { data: roles }] = await Promise.all([
+  const [{ data: profile }, { data: roles }, { data: accreditedMembership }] = await Promise.all([
     supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle(),
     supabase.from("user_roles").select("role").eq("user_id", user.id),
+    supabase
+      .from("affiliate_memberships")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("partner_type", "accredited")
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const platformAdmin = Boolean(roles?.some((item) => item.role === "admin"));
@@ -23,5 +31,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
     email: user.email ?? "",
     admin: financeAdmin,
     platformAdmin,
+    accreditedPartner: Boolean(accreditedMembership),
   }}>{children}</AppShell>;
 }

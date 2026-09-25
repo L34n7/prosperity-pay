@@ -13,6 +13,7 @@ import {
   Settings,
   UserRound,
   Users,
+  UserRoundCheck,
   Wallet,
   X,
 } from "lucide-react";
@@ -44,9 +45,10 @@ type SidebarProps = {
   onMobileClose: () => void;
   admin: boolean;
   platformAdmin: boolean;
+  accreditedPartner: boolean;
 };
 
-export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admin, platformAdmin }: SidebarProps) {
+export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admin, platformAdmin, accreditedPartner }: SidebarProps) {
   const pathname = usePathname();
 
   const renderItem = ({ label, href, icon: Icon }: SidebarItem) => {
@@ -80,6 +82,7 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admi
           <div className="nav-group">
             {!collapsed && <p>Visão financeira</p>}
             {primaryItems.map(renderItem)}
+            {accreditedPartner && renderItem({ label: "Credenciado", href: "/credenciados", icon: UserRoundCheck })}
           </div>
           <div className="nav-group nav-secondary">
             {!collapsed && <p>Conta</p>}

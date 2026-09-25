@@ -233,22 +233,26 @@ export async function sendAffiliateInvitationEmail(params: {
   name: string;
   productName: string;
   link: string;
+  partnerType?: "affiliate" | "accredited";
 }) {
   const productName = escapeHtml(params.productName);
+  const accredited = params.partnerType === "accredited";
+  const roleLabel = accredited ? "Credenciado" : "Afiliado";
+  const roleLabelLower = accredited ? "credenciado" : "afiliado";
 
   const html = prosperityPayTemplate({
     eyebrow: "Convite de parceria",
-    title: "Você recebeu um convite de afiliação",
+    title: `Você recebeu um convite para ser ${roleLabel}`,
     subtitle: "Uma nova oportunidade espera por você no Prosperity Pay",
     name: params.name,
     paragraphs: [
-      `Você foi convidado para participar como <strong>afiliado</strong> do produto <strong>${productName}</strong>.`,
-      "Ao aceitar o convite, sua afiliação será ativada e você poderá acessar seu código de indicação, links e acompanhar as comissões pelo Prosperity Pay.",
+      `Você foi convidado para participar como <strong>${roleLabelLower}</strong> do produto <strong>${productName}</strong>.`,
+      `Ao aceitar o convite, sua parceria será ativada e você poderá acessar seu código de indicação, links, clientes atribuídos e acompanhar as comissões pelo Prosperity Pay.`,
       "Clique no botão abaixo para abrir a página do convite e escolher se deseja aceitar ou recusar.",
     ],
     details: [
       { label: "Produto", value: params.productName },
-      { label: "Participação", value: "Afiliado" },
+      { label: "Participação", value: roleLabel },
     ],
     buttonLabel: "Ver e aceitar convite",
     link: params.link,
@@ -259,12 +263,12 @@ export async function sendAffiliateInvitationEmail(params: {
 
   await sendEmail({
     to: params.to,
-    subject: `Convite para ser afiliado de ${params.productName} • Prosperity Pay`,
+    subject: `Convite para ser ${roleLabelLower} de ${params.productName} • Prosperity Pay`,
     html,
     text: [
       `Olá, ${params.name}!`,
       "",
-      `Você foi convidado para participar como afiliado do produto ${params.productName} no Prosperity Pay.`,
+      `Você foi convidado para participar como ${roleLabelLower} do produto ${params.productName} no Prosperity Pay.`,
       "Abra o link abaixo para visualizar e responder ao convite:",
       params.link,
       "",

@@ -49,6 +49,10 @@ type OfferCommercialColumns = {
   affiliate_enabled: boolean;
 };
 
+type AffiliateMembershipPartnerColumns = {
+  partner_type: "affiliate" | "accredited";
+};
+
 type AffiliateProgramSettingsColumns = {
   attribution_model: "last_click" | "first_click";
   customer_data_access: boolean;
@@ -373,13 +377,17 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
   public: Omit<PublicSchema, "Tables" | "Functions"> & {
     Tables: Omit<
       GeneratedTables,
-      "products" | "offers" | "subscriptions" | "affiliate_programs" | "orders"
+      "products" | "offers" | "subscriptions" | "affiliate_programs" | "affiliate_memberships" | "orders"
     > & {
       products: ExtendTable<GeneratedTables["products"], ProductCommercialColumns>;
       offers: ExtendTable<GeneratedTables["offers"], OfferCommercialColumns>;
       affiliate_programs: ExtendTable<
         GeneratedTables["affiliate_programs"],
         AffiliateProgramSettingsColumns
+      >;
+      affiliate_memberships: ExtendTable<
+        GeneratedTables["affiliate_memberships"],
+        AffiliateMembershipPartnerColumns
       >;
       subscriptions: ExtendTable<
         GeneratedTables["subscriptions"],

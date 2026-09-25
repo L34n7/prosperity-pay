@@ -16,12 +16,20 @@ export async function PATCH(request: Request, context: Context) {
     const body = asObject(await request.json());
     const rawStatus = typeof body.status === "string" ? body.status : undefined;
     const hasCommissionOverride = Object.prototype.hasOwnProperty.call(body, "commissionBpsOverride");
+    const rawPartnerType = typeof body.partnerType === "string" ? body.partnerType : undefined;
+    const partnerType =
+      rawPartnerType === "affiliate" || rawPartnerType === "accredited"
+        ? rawPartnerType
+        : undefined;
+    if (rawPartnerType && !partnerType) {
+      return NextResponse.json({ error: "Tipo de parceiro inválido." }, { status: 400 });
+    }
     if (rawStatus && rawStatus !== "active" && rawStatus !== "rejected" && rawStatus !== "blocked") {
       return NextResponse.json({ error: "Status invalido." }, { status: 400 });
     }
     const status: "active" | "rejected" | "blocked" | undefined =
       rawStatus === "active" || rawStatus === "rejected" || rawStatus === "blocked" ? rawStatus : undefined;
-    if (!status && !hasCommissionOverride) {
+    if (!status && !hasCommissionOverride && !partnerType) {
       return NextResponse.json({ error: "Nenhuma alteração informada." }, { status: 400 });
     }
     let commissionBpsOverride: number | null | undefined;
@@ -51,6 +59,7 @@ export async function PATCH(request: Request, context: Context) {
       updates.approved_at = status === "active" ? new Date().toISOString() : null;
     }
     if (hasCommissionOverride) updates.affiliate_commission_bps_override = commissionBpsOverride ?? null;
+    if (partnerType) updates.partner_type = partnerType;
     const { data: membership, error } = await admin.from("affiliate_memberships").update(updates)
       .eq("id", membershipId).select().single();
     if (error || !membership) throw error ?? new Error("Falha ao atualizar afiliado.");

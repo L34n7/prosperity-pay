@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
-export type ShellProfile = { name: string; email: string; admin: boolean; platformAdmin: boolean };
+export type ShellProfile = { name: string; email: string; admin: boolean; platformAdmin: boolean; accreditedPartner: boolean };
 export function AppShell({ children, profile }: { children: React.ReactNode; profile: ShellProfile }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -18,6 +18,7 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
       <Sidebar
         admin={profile.admin}
         platformAdmin={profile.platformAdmin}
+        accreditedPartner={profile.accreditedPartner}
         collapsed={collapsed}
         mobileOpen={mobileOpen}
         onCollapse={toggleCollapsed}

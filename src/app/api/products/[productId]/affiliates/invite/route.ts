@@ -23,6 +23,8 @@ export async function POST(request: Request, context: Context) {
 
     const body = asObject(await request.json());
     const email = requiredString(body, "email", 320).trim().toLowerCase();
+    const partnerType =
+      body.partnerType === "accredited" ? "accredited" : "affiliate";
     const admin = createAdminClient();
 
     const [{ data: program, error: programError }, { data: product, error: productError }] = await Promise.all([
@@ -37,7 +39,7 @@ export async function POST(request: Request, context: Context) {
     ]);
     if (programError || productError) throw programError ?? productError;
     if (!program || !program.active || program.mode !== "invite") {
-      return NextResponse.json({ error: "Ative o programa no modo Convite antes de convidar afiliados." }, { status: 409 });
+      return NextResponse.json({ error: "Ative o programa no modo Convite antes de convidar parceiros." }, { status: 409 });
     }
 
     const { data: profile, error: profileError } = await admin.from("profiles")
@@ -46,29 +48,34 @@ export async function POST(request: Request, context: Context) {
       .maybeSingle();
     if (profileError) throw profileError;
     if (!profile) {
-      return NextResponse.json({ error: "Nenhuma conta Prosperity Pay foi encontrada com este e-mail. O afiliado precisa se cadastrar antes do convite." }, { status: 404 });
+      return NextResponse.json({ error: "Nenhuma conta Prosperity Pay foi encontrada com este e-mail. O parceiro precisa se cadastrar antes do convite." }, { status: 404 });
     }
     if (profile.id === user.id) {
-      return NextResponse.json({ error: "O produtor não pode se convidar como afiliado do próprio produto." }, { status: 409 });
+      return NextResponse.json({ error: "O produtor não pode se convidar como parceiro do próprio produto." }, { status: 409 });
     }
 
     const { data: existing, error: existingError } = await admin.from("affiliate_memberships")
-      .select("id, code, status")
+      .select("id, code, status, partner_type")
       .eq("program_id", program.id)
       .eq("user_id", profile.id)
       .maybeSingle();
     if (existingError) throw existingError;
 
     if (existing?.status === "active") {
-      return NextResponse.json({ error: "Este usuário já é afiliado ativo deste produto." }, { status: 409 });
+      return NextResponse.json({ error: "Este usuário já é parceiro ativo deste produto." }, { status: 409 });
     }
     if (existing?.status === "blocked") {
-      return NextResponse.json({ error: "Este afiliado está bloqueado. Desbloqueie-o antes de enviar um novo convite." }, { status: 409 });
+      return NextResponse.json({ error: "Este parceiro está bloqueado. Desbloqueie-o antes de enviar um novo convite." }, { status: 409 });
     }
 
-    let membership: { id: string; code: string; status: string };
+    let membership: { id: string; code: string; status: string; partner_type: string };
     if (existing?.status === "pending") {
-      membership = existing;
+      const { data, error } = await admin.from("affiliate_memberships").update({
+        partner_type: partnerType,
+        updated_at: new Date().toISOString(),
+      }).eq("id", existing.id).select("id, code, status, partner_type").single();
+      if (error) throw error;
+      membership = data;
     } else if (existing) {
       const code = createCode(email);
       const { data, error } = await admin.from("affiliate_memberships").update({
@@ -77,8 +84,9 @@ export async function POST(request: Request, context: Context) {
         invited_by: user.id,
         approved_by: null,
         approved_at: null,
+        partner_type: partnerType,
         updated_at: new Date().toISOString(),
-      }).eq("id", existing.id).select("id, code, status").single();
+      }).eq("id", existing.id).select("id, code, status, partner_type").single();
       if (error) throw error;
       membership = data;
     } else {
@@ -89,7 +97,8 @@ export async function POST(request: Request, context: Context) {
         code,
         status: "pending",
         invited_by: user.id,
-      }).select("id, code, status").single();
+        partner_type: partnerType,
+      }).select("id, code, status, partner_type").single();
       if (error) throw error;
       membership = data;
     }
@@ -105,6 +114,7 @@ export async function POST(request: Request, context: Context) {
       name: profile.full_name || profile.email.split("@")[0] || "parceiro",
       productName: product?.name || "Produto Prosperity Pay",
       link: invitationUrl,
+      partnerType,
     });
 
     await dispatchAffiliateMembershipWebhooksSafe(admin, membership.id);

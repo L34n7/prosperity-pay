@@ -6,7 +6,8 @@ import { ProductAffiliateSettingsDialog, type AffiliateOfferSettings, type Affil
 import { requestJson } from "@/lib/operational";
 import styles from "./product-partner-management.module.css";
 
-type AffiliateMember = { id:string; code:string; status:string; created_at?:string; affiliate_commission_bps_override:number|null; profiles:{full_name:string;email:string}|null };
+type PartnerType = "affiliate" | "accredited";
+type AffiliateMember = { id:string; code:string; status:string; partner_type:PartnerType; created_at?:string; affiliate_commission_bps_override:number|null; profiles:{full_name:string;email:string}|null };
 
 function StatusBadge({status}:{status:string}) {
   const label:Record<string,string>={active:"Ativo",pending:"Pendente",rejected:"Recusado",blocked:"Bloqueado",cancelled:"Cancelado"};
@@ -44,8 +45,9 @@ export function ProductAffiliateManagement({id}:{id:string}) {
   async function invite(event:FormEvent<HTMLFormElement>){
     event.preventDefault(); const form=event.currentTarget; const email=new FormData(form).get("email");
     setBusy(true);setError("");setMessage("");
+    const partnerType=(new FormData(form).get("partnerType")==="accredited"?"accredited":"affiliate") as PartnerType;
     try{
-      const result=await requestJson<{invitationPath:string}>(`/api/products/${id}/affiliates/invite`,{method:"POST",body:JSON.stringify({email})});
+      const result=await requestJson<{invitationPath:string}>(`/api/products/${id}/affiliates/invite`,{method:"POST",body:JSON.stringify({email,partnerType})});
       setInviteUrl(`${location.origin}${result.invitationPath}`); setMessage("Convite enviado por e-mail ao afiliado. O link também está disponível abaixo."); form.reset(); await load();
     }catch(cause){setError(cause instanceof Error?cause.message:"Falha ao criar convite.");}finally{setBusy(false);}
   }
@@ -54,6 +56,15 @@ export function ProductAffiliateManagement({id}:{id:string}) {
     setBusy(true);setError("");
     try{await requestJson(`/api/products/${id}/affiliates/${memberId}`,{method:"PATCH",body:JSON.stringify({status})});await load();}
     catch(cause){setError(cause instanceof Error?cause.message:"Falha ao atualizar afiliado.");}finally{setBusy(false);}
+  }
+
+  async function setMemberPartnerType(memberId:string,partnerType:PartnerType){
+    setBusy(true);setError("");setMessage("");
+    try{
+      await requestJson("/api/products/"+id+"/affiliates/"+memberId,{method:"PATCH",body:JSON.stringify({partnerType})});
+      setMessage(partnerType==="accredited"?"Parceiro atualizado para Credenciado.":"Parceiro atualizado para Afiliado.");
+      await load();
+    }catch(cause){setError(cause instanceof Error?cause.message:"Falha ao atualizar o tipo de parceiro.");}finally{setBusy(false);}
   }
 
   async function saveMemberCommission(memberId:string){
@@ -83,7 +94,7 @@ export function ProductAffiliateManagement({id}:{id:string}) {
 
   return <div className={styles.shell}>
     <section className={styles.hero}>
-      <div className={styles.heroTitle}><div className={styles.heroIcon}><UsersRound size={19}/></div><div><small>Parcerias</small><h2>Programa de afiliados</h2><p>Configure as regras comerciais antes de liberar afiliados para este produto.</p></div></div>
+      <div className={styles.heroTitle}><div className={styles.heroIcon}><UsersRound size={19}/></div><div><small>Parcerias</small><h2>Afiliados e Credenciados</h2><p>Use a mesma estrutura de links e comissões e classifique parceiros como Afiliado ou Credenciado.</p></div></div>
       <div className={styles.heroActions}>
         <div className={styles.heroButtonGroup}>
           <button type="button" className={styles.primary} onClick={()=>setSettingsOpen(true)}><Settings2 size={15}/>{program?"Configurar afiliação":"Configurar e habilitar"}</button>
@@ -103,9 +114,16 @@ export function ProductAffiliateManagement({id}:{id:string}) {
     </section>}
 
     <section className={styles.card}>
-      <div className={styles.cardHeader}><div><span><ShieldCheck size={16}/></span><div><h3>Afiliados do produto</h3><p>Acompanhe solicitações, aprovações e bloqueios.</p></div></div></div>
+      <div className={styles.cardHeader}><div><span><ShieldCheck size={16}/></span><div><h3>Parceiros do produto</h3><p>Acompanhe afiliados, credenciados, solicitações e bloqueios.</p></div></div></div>
       {members.length?<div className={styles.list}>{members.map(member=><div className={styles.row} key={member.id}>
-        <div className={styles.identity}><strong>{member.profiles?.full_name||"Afiliado"}</strong><small>{member.profiles?.email||"E-mail não disponível"}</small></div>
+        <div className={styles.identity}><strong>{member.profiles?.full_name||(member.partner_type==="accredited"?"Credenciado":"Afiliado")}</strong><small>{member.profiles?.email||"E-mail não disponível"}</small></div>
+        <label className={styles.partnerTypeControl}>
+          <span>Categoria</span>
+          <select value={member.partner_type} disabled={busy} onChange={event=>void setMemberPartnerType(member.id,event.target.value as PartnerType)}>
+            <option value="affiliate">Afiliado</option>
+            <option value="accredited">Credenciado</option>
+          </select>
+        </label>
         <code className={styles.code}>{member.code}</code>
         <div className={styles.commissionControl}>
           <span>Comissão individual</span>
@@ -125,7 +143,7 @@ export function ProductAffiliateManagement({id}:{id:string}) {
           {(member.status==="blocked"||member.status==="rejected"||member.status==="cancelled")&&<button type="button" className={styles.secondary} disabled={busy} onClick={()=>void setMemberStatus(member.id,"active")}><Check size={14}/>Ativar</button>}
           {member.status==="active"&&<button type="button" className={styles.danger} disabled={busy} onClick={()=>void setMemberStatus(member.id,"blocked")}>Bloquear</button>}
         </div>
-      </div>)}</div>:<div className={styles.empty}>Nenhum afiliado vinculado a este produto ainda.</div>}
+      </div>)}</div>:<div className={styles.empty}>Nenhum parceiro vinculado a este produto ainda.</div>}
     </section>
 
     {settingsOpen&&<ProductAffiliateSettingsDialog productId={id} program={program} offers={offers} product={product}
@@ -139,10 +157,11 @@ function AffiliateInviteDialog({busy,enabled,inviteUrl,error,message,onInvite,on
   const ref=useRef<HTMLDialogElement>(null);
   useEffect(()=>{ref.current?.showModal();},[]);
   return <dialog ref={ref} className={styles.inviteDialog} onClose={onClose} onCancel={event=>{if(busy)event.preventDefault();}}>
-    <header className={styles.inviteModalHeader}><div><span><MailPlus size={17}/></span><div><h3>Convidar afiliado</h3><p>Informe o e-mail da conta Prosperity Pay que receberá o convite.</p></div></div><button type="button" className={styles.secondary} disabled={busy} onClick={()=>ref.current?.close()}>Fechar</button></header>
+    <header className={styles.inviteModalHeader}><div><span><MailPlus size={17}/></span><div><h3>Convidar parceiro</h3><p>Informe o e-mail e escolha se o convite será como Afiliado ou Credenciado.</p></div></div><button type="button" className={styles.secondary} disabled={busy} onClick={()=>ref.current?.close()}>Fechar</button></header>
     <div className={styles.inviteModalBody}>
       <form className={styles.inviteGrid} onSubmit={event=>void onInvite(event)}>
-        <label className={styles.field}>E-mail do afiliado<input name="email" type="email" placeholder="afiliado@exemplo.com" required autoFocus/></label>
+        <label className={styles.field}>E-mail do parceiro<input name="email" type="email" placeholder="parceiro@exemplo.com" required autoFocus/></label>
+        <label className={styles.field}>Categoria<select name="partnerType" defaultValue="affiliate"><option value="affiliate">Afiliado</option><option value="accredited">Credenciado</option></select></label>
         <button className={styles.primary} disabled={busy||!enabled}><UserPlus size={15}/>{busy?"Enviando...":"Enviar convite"}</button>
       </form>
       {!enabled&&<p className={styles.notice}>Ative o programa e selecione o modo Somente convite nas configurações para enviar convites.</p>}

@@ -7,6 +7,7 @@ import { requestJson } from "@/lib/operational";
 
 export function AffiliateInvitationResponse({ code }: { code: string }) {
   const [status, setStatus] = useState<"idle" | "accepted" | "rejected">("idle");
+  const [partnerType, setPartnerType] = useState<"affiliate" | "accredited">("affiliate");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -14,10 +15,11 @@ export function AffiliateInvitationResponse({ code }: { code: string }) {
     setBusy(true);
     setMessage("");
     try {
-      await requestJson("/api/affiliate-invitations/respond", {
+      const result = await requestJson<{accepted:boolean;membership?:{partner_type?:"affiliate"|"accredited"}}>("/api/affiliate-invitations/respond", {
         method: "POST",
         body: JSON.stringify({ code, action }),
       });
+      if (result.membership?.partner_type) setPartnerType(result.membership.partner_type);
       setStatus(action === "accept" ? "accepted" : "rejected");
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "Falha ao responder ao convite.");
@@ -29,12 +31,12 @@ export function AffiliateInvitationResponse({ code }: { code: string }) {
   return <main className="auth-page">
     <section className="auth-card">
       <div style={{ display: "grid", placeItems: "center", marginBottom: 16, color: "var(--primary)" }}><Handshake size={34}/></div>
-      <h1>Convite para afiliação</h1>
+      <h1>Convite de parceria</h1>
       {status === "accepted" ? <>
-        <p role="status"><CheckCircle2 size={16} style={{ verticalAlign: "middle", marginRight: 6 }}/>Convite aceito. Sua afiliação está ativa.</p>
-        <Link className="primary-button" href="/afiliados">Ir para meus afiliados</Link>
+        <p role="status"><CheckCircle2 size={16} style={{ verticalAlign: "middle", marginRight: 6 }}/>Convite aceito. Sua parceria está ativa.</p>
+        <Link className="primary-button" href={partnerType==="accredited"?"/credenciados":"/afiliados"}>{partnerType==="accredited"?"Abrir carteira de clientes":"Ir para minhas afiliações"}</Link>
       </> : status === "rejected" ? <p role="status"><XCircle size={16} style={{ verticalAlign: "middle", marginRight: 6 }}/>Convite recusado.</p> : code ? <>
-        <p>Ao aceitar, você passa a participar do programa deste produto e recebe seu código de afiliado.</p>
+        <p>Ao aceitar, você passa a participar do programa deste produto, recebe seu código de parceiro e poderá acompanhar clientes e comissões.</p>
         {message && <p className="form-error" role="alert">{message}</p>}
         <div className="button-row">
           <button className="primary-button" disabled={busy} onClick={() => void respond("accept")}>{busy ? "Processando..." : "Aceitar convite"}</button>

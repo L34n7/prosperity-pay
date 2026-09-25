@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { checkoutUrl } from "@/lib/domain/offer-reference";
 
-type Membership={id:string;code:string;status:string;affiliate_programs:{product_id:string;mode:string;active:boolean;products:{name:string;affiliate_funnel_base_url:string|null;offers:{name:string;checkout_slug:string;status:string}[]}|null}|null};
+type Membership={id:string;code:string;status:string;partner_type:"affiliate"|"accredited";affiliate_programs:{product_id:string;mode:string;active:boolean;products:{name:string;affiliate_funnel_base_url:string|null;offers:{name:string;checkout_slug:string;status:string}[]}|null}|null};
 
 const statusLabel:Record<string,string>={active:"Ativo",pending:"Pendente",rejected:"Recusado",blocked:"Bloqueado",cancelled:"Cancelado"};
 
@@ -15,7 +15,7 @@ export function AffiliateLinks({memberships}:{memberships:Membership[]}){
       : null;
     return <div key={m.id}>
       <h2>{product?.name||"Produto"} · {statusLabel[m.status]??m.status}</h2>
-      <p>Código: {m.code}</p>
+      <p>{m.partner_type==="accredited"?"Credenciado":"Afiliado"} · Código: {m.code}</p>
       {m.status==="pending"&&m.affiliate_programs?.mode==="invite"&&m.affiliate_programs.active&&<div className="record-row" style={{borderColor:"rgba(34,230,161,.24)",background:"rgba(34,230,161,.035)",alignItems:"center"}}>
         <span style={{display:"grid",gap:3,minWidth:0,flex:1}}>
           <strong>Você recebeu um convite para este programa</strong>

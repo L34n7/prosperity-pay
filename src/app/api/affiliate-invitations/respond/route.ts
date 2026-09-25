@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient();
     const { data: membership, error } = await admin.from("affiliate_memberships")
-      .select("id, user_id, code, status, invited_by, affiliate_programs!inner(id, mode, active)")
+      .select("id, user_id, code, status, partner_type, invited_by, affiliate_programs!inner(id, mode, active)")
       .eq("code", code)
       .eq("status", "pending")
       .maybeSingle();
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       approved_by: membership.invited_by,
       approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    }).eq("id", membership.id).select("id, code, status").single();
+    }).eq("id", membership.id).select("id, code, status, partner_type").single();
     if (updateError) throw updateError;
 
     const { error: linkError } = await admin.from("affiliate_links").upsert({
