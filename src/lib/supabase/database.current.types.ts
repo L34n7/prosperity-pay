@@ -83,6 +83,18 @@ type AffiliateProgramSettingsColumns = {
   marketplace_tags: string[];
 };
 
+type ProductAccreditedSettingsRow = {
+  product_id: string;
+  active: boolean;
+  allow_direct_invites: boolean;
+  allow_affiliate_evolution: boolean;
+  customer_portfolio_access: boolean;
+  customer_contact_access: boolean;
+  subscription_details_access: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 type SubscriptionTransparentColumns = {
   payment_profile_id: string | null;
   product_id: string;
@@ -423,6 +435,7 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       first_access_tokens: FirstAccessTokenTable;
       affiliate_offer_commission_overrides: LooseTable<AffiliateOfferCommissionOverrideRow>;
       affiliate_addon_commission_overrides: LooseTable<AffiliateAddonCommissionOverrideRow>;
+      product_accredited_settings: LooseTable<ProductAccreditedSettingsRow>;
     };
     Functions: GeneratedFunctions & {
       bootstrap_initial_platform_admin: {

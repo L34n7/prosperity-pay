@@ -41,7 +41,11 @@ export async function POST(request: Request, context: Context) {
     }
     const admin = createAdminClient();
 
-    const [{ data: program, error: programError }, { data: product, error: productError }] = await Promise.all([
+    const [
+      { data: program, error: programError },
+      { data: product, error: productError },
+      { data: accreditedSettings, error: accreditedSettingsError },
+    ] = await Promise.all([
       admin.from("affiliate_programs")
         .select("id, mode, active")
         .eq("product_id", productId)
@@ -50,10 +54,25 @@ export async function POST(request: Request, context: Context) {
         .select("name")
         .eq("id", productId)
         .maybeSingle(),
+      partnerType === "accredited"
+        ? admin.from("product_accredited_settings")
+            .select("active,allow_direct_invites")
+            .eq("product_id", productId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
     ]);
-    if (programError || productError) throw programError ?? productError;
+    if (programError || productError || accreditedSettingsError) {
+      throw programError ?? productError ?? accreditedSettingsError;
+    }
     if (!program || !program.active || program.mode !== "invite") {
       return NextResponse.json({ error: "Ative o programa no modo Convite antes de convidar parceiros." }, { status: 409 });
+    }
+    if (
+      partnerType === "accredited" &&
+      accreditedSettings &&
+      (!accreditedSettings.active || !accreditedSettings.allow_direct_invites)
+    ) {
+      return NextResponse.json({ error: "Convites de credenciados estão desabilitados nas configurações do produto." }, { status: 409 });
     }
 
     const { data: profile, error: profileError } = await admin.from("profiles")

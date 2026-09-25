@@ -66,9 +66,26 @@ export async function PATCH(request: Request, context: Context) {
     }
     const admin = createAdminClient();
     const { data: current, error: currentError } = await admin.from("affiliate_memberships")
-      .select("id, code, affiliate_programs!inner(product_id)").eq("id", membershipId).single();
+      .select("id, code, partner_type, affiliate_programs!inner(product_id)").eq("id", membershipId).single();
     if (currentError || !current || current.affiliate_programs.product_id !== productId) {
       return NextResponse.json({ error: "Afiliado nao encontrado." }, { status: 404 });
+    }
+    if (partnerType === "accredited" && current.partner_type !== "accredited") {
+      const { data: accreditedSettings, error: accreditedSettingsError } = await admin
+        .from("product_accredited_settings")
+        .select("active,allow_affiliate_evolution")
+        .eq("product_id", productId)
+        .maybeSingle();
+      if (accreditedSettingsError) throw accreditedSettingsError;
+      if (
+        accreditedSettings &&
+        (!accreditedSettings.active || !accreditedSettings.allow_affiliate_evolution)
+      ) {
+        return NextResponse.json(
+          { error: "A evolução de Afiliado para Credenciado está desabilitada nas configurações do produto." },
+          { status: 409 },
+        );
+      }
     }
     const updates: Database["public"]["Tables"]["affiliate_memberships"]["Update"] = {
       updated_at: new Date().toISOString(),
