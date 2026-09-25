@@ -78,6 +78,8 @@ export function ProductsView() {
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [paymentType, setPaymentType] = useState<ProductPaymentType>("one_time");
+  const [automaticDueBillingEnabled, setAutomaticDueBillingEnabled] =
+    useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const previewUrl = useRef<string | null>(null);
 
@@ -103,6 +105,7 @@ export function ProductsView() {
   function resetDialogState() {
     selectImage(null);
     setPaymentType("one_time");
+    setAutomaticDueBillingEnabled(false);
     setDialogError("");
   }
 
@@ -138,6 +141,8 @@ export function ProductsView() {
         firstChargeCents: null,
         recurringPriceCents: paymentType === "recurring" ? toCents(data.get("price")) : null,
         mainOfferPriceCents: paymentType === "one_time" ? toCents(data.get("price")) : null,
+        automaticDueBillingEnabled:
+          paymentType === "recurring" && automaticDueBillingEnabled,
       };
       const result = await requestJson<{ product: { id: string } }>("/api/products", {
         method: "POST",
@@ -303,6 +308,28 @@ export function ProductsView() {
               <label className={styles.createField}><span>{paymentType === "recurring" ? "Mensalidade padrão" : "Preço padrão"}</span><div className={styles.priceField}><small>R$</small><input name="price" type="number" min="0.01" step="0.01" required/></div></label>
               {paymentType === "recurring" && <label className={styles.createField}><span>Ciclo da assinatura</span><select name="recurrenceFrequency" defaultValue="monthly"><option value="weekly">Semanal</option><option value="monthly">Mensal</option><option value="quarterly">Trimestral</option><option value="semiannual">Semestral</option><option value="annual">Anual</option></select><small>Modelo pré-pago: cada ciclo é liberado somente após pagamento aprovado.</small></label>}
             </div>
+
+            {paymentType === "recurring" && (
+              <div className={styles.autoBillingControl}>
+                <button
+                  type="button"
+                  className={`${styles.autoBillingSwitch} ${automaticDueBillingEnabled ? styles.autoBillingSwitchOn : ""}`}
+                  role="switch"
+                  aria-checked={automaticDueBillingEnabled}
+                  onClick={() =>
+                    setAutomaticDueBillingEnabled((value) => !value)
+                  }
+                >
+                  <span />
+                </button>
+                <div>
+                  <strong>Enviar cobrança automática no vencimento</strong>
+                  <small>
+                    No dia do vencimento, a Prosperity Pay gera o PIX da mensalidade e envia ao cliente um e-mail com o PIX Copia e Cola, a composição e um link para pagar também com cartão.
+                  </small>
+                </div>
+              </div>
+            )}
           </section>
 
           <section className={styles.createBlock}>
