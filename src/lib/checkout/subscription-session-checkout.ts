@@ -171,10 +171,27 @@ export async function getSubscriptionCheckoutSessionView(sessionToken: string) {
   const admin = createAdminClient();
   const session = await loadSession(admin, sessionToken);
   const { data: subscription, error: subscriptionError } = await admin.from("subscriptions")
-    .select("id,customer_id,product_id")
+    .select("id,customer_id,product_id,current_period_end")
     .eq("id", session.subscription_id)
     .single();
   if (subscriptionError || !subscription) throw new HttpError(404, "Assinatura não encontrada.");
+
+  if (
+    session.session_type === "subscription_renewal" &&
+    session.metadata.renewalDueAt &&
+    subscription.current_period_end
+  ) {
+    const dueAt = new Date(session.metadata.renewalDueAt).getTime();
+    const currentPeriodEnd = new Date(subscription.current_period_end).getTime();
+
+    if (
+      Number.isFinite(dueAt) &&
+      Number.isFinite(currentPeriodEnd) &&
+      currentPeriodEnd > dueAt + 60_000
+    ) {
+      throw new HttpError(409, "Esta mensalidade já foi paga.");
+    }
+  }
 
   const [productResult, customerResult, offerResult] = await Promise.all([
     admin.from("products").select("name,image_path").eq("id", subscription.product_id).single(),
