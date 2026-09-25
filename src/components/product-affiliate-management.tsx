@@ -11,7 +11,10 @@ import {
 import {
   PartnerIndividualCommissionDialog,
   PartnerOfferCommissionFields,
+  readPartnerAddonCommissionOverrides,
   readPartnerOfferCommissionOverrides,
+  type PartnerAddonCommissionOverride,
+  type PartnerAddonSettings,
   type PartnerOfferCommissionOverride,
 } from "@/components/partner-offer-commission-fields";
 import { requestJson } from "@/lib/operational";
@@ -25,6 +28,7 @@ type AffiliateMember = {
   created_at?: string;
   affiliate_commission_bps_override: number | null;
   offer_commission_overrides: PartnerOfferCommissionOverride[];
+  addon_commission_overrides: PartnerAddonCommissionOverride[];
   profiles: { full_name: string; email: string } | null;
 };
 
@@ -50,6 +54,7 @@ async function copy(text: string) {
 export function ProductAffiliateManagement({ id }: { id: string }) {
   const [program, setProgram] = useState<AffiliateProgramSettings | null>(null);
   const [offers, setOffers] = useState<AffiliateOfferSettings[]>([]);
+  const [addons, setAddons] = useState<PartnerAddonSettings[]>([]);
   const [product, setProduct] = useState<AffiliateProductSettings | null>(null);
   const [members, setMembers] = useState<AffiliateMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<AffiliateMember | null>(null);
@@ -68,12 +73,14 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
         program: AffiliateProgramSettings | null;
         memberships: AffiliateMember[];
         offers: AffiliateOfferSettings[];
+        addons: PartnerAddonSettings[];
         product: AffiliateProductSettings;
       }>(`/api/products/${id}/affiliates`);
       const nextMembers = (data.memberships ?? []).filter((member) => member.partner_type === "affiliate");
       setProgram(data.program);
       setMembers(nextMembers);
       setOffers(data.offers ?? []);
+      setAddons(data.addons ?? []);
       setProduct(data.product ?? null);
       setError("");
     } catch (cause) {
@@ -103,11 +110,19 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
       const formData = new FormData(form);
       const email = formData.get("email");
       const offerCommissionOverrides = readPartnerOfferCommissionOverrides(formData, offers);
+      const addonCommissionOverrides = program?.commission_addons
+        ? readPartnerAddonCommissionOverrides(formData, addons)
+        : [];
       const result = await requestJson<{ invitationPath: string }>(
         `/api/products/${id}/affiliates/invite`,
         {
           method: "POST",
-          body: JSON.stringify({ email, partnerType: "affiliate", offerCommissionOverrides }),
+          body: JSON.stringify({
+            email,
+            partnerType: "affiliate",
+            offerCommissionOverrides,
+            addonCommissionOverrides,
+          }),
         },
       );
       setInviteUrl(`${location.origin}${result.invitationPath}`);
@@ -139,7 +154,10 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
 
   async function saveIndividualSettings(
     member: AffiliateMember,
-    offerCommissionOverrides: Array<{ offerId: string; commissionBps: number | null }>,
+    input: {
+      offerCommissionOverrides: Array<{ offerId: string; commissionBps: number | null }>;
+      addonCommissionOverrides?: Array<{ addonId: string; commissionBps: number | null }>;
+    },
   ) {
     setBusy(true);
     setError("");
@@ -147,7 +165,12 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
     try {
       await requestJson(`/api/products/${id}/affiliates/${member.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ offerCommissionOverrides }),
+        body: JSON.stringify({
+          offerCommissionOverrides: input.offerCommissionOverrides,
+          ...(input.addonCommissionOverrides
+            ? { addonCommissionOverrides: input.addonCommissionOverrides }
+            : {}),
+        }),
       });
       setMessage(`Configurações individuais de ${member.profiles?.full_name || "afiliado"} salvas.`);
       setSelectedMember(null);
@@ -246,13 +269,13 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
                 <div className={styles.individualSummary}>
                   <span>Configuração individual</span>
                   <strong>
-                    {member.offer_commission_overrides.length
-                      ? `${member.offer_commission_overrides.length} oferta(s) personalizada(s)`
+                    {member.offer_commission_overrides.length + member.addon_commission_overrides.length
+                      ? `${member.offer_commission_overrides.length + member.addon_commission_overrides.length} regra(s) personalizada(s)`
                       : "Padrão das ofertas"}
                   </strong>
                   <small>
-                    {member.offer_commission_overrides.length
-                      ? "As demais ofertas continuam usando o percentual padrão."
+                    {member.offer_commission_overrides.length + member.addon_commission_overrides.length
+                      ? "Demais ofertas e adicionais continuam herdando as regras padrão."
                       : "Nenhuma exceção de comissão configurada."}
                   </small>
                 </div>
@@ -314,6 +337,8 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
           error={error}
           message={message}
           offers={offers}
+          addons={addons}
+          commissionAddonsEnabled={Boolean(program?.commission_addons)}
           onInvite={invite}
           onClose={() => setInviteOpen(false)}
         />
@@ -325,9 +350,12 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
           partnerLabel="Afiliado"
           offers={offers}
           overrides={selectedMember.offer_commission_overrides}
+          addons={addons}
+          addonOverrides={selectedMember.addon_commission_overrides}
+          commissionAddonsEnabled={Boolean(program?.commission_addons)}
           busy={busy}
           onClose={() => setSelectedMember(null)}
-          onSave={(overrides) => saveIndividualSettings(selectedMember, overrides)}
+          onSave={(input) => saveIndividualSettings(selectedMember, input)}
         />
       )}
     </div>
@@ -341,6 +369,8 @@ function AffiliateInviteDialog({
   error,
   message,
   offers,
+  addons,
+  commissionAddonsEnabled,
   onInvite,
   onClose,
 }: {
@@ -350,6 +380,8 @@ function AffiliateInviteDialog({
   error: string;
   message: string;
   offers: AffiliateOfferSettings[];
+  addons: PartnerAddonSettings[];
+  commissionAddonsEnabled: boolean;
   onInvite: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onClose: () => void;
 }) {
@@ -375,7 +407,11 @@ function AffiliateInviteDialog({
               <input name="email" type="email" placeholder="afiliado@exemplo.com" required autoFocus />
             </label>
           </div>
-          <PartnerOfferCommissionFields offers={offers} />
+          <PartnerOfferCommissionFields
+            offers={offers}
+            addons={addons}
+            commissionAddonsEnabled={commissionAddonsEnabled}
+          />
           <div className={styles.inviteSubmit}>
             <button className={styles.primary} disabled={busy || !enabled}>
               <UserPlus size={15} />{busy ? "Enviando..." : "Enviar convite"}

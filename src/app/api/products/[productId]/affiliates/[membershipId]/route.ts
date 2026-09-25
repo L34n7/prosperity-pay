@@ -4,7 +4,12 @@ import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.current.types";
 import { dispatchAffiliateMembershipWebhooksSafe } from "@/lib/integrations/affiliate-webhook";
-import { parseOfferCommissionOverrides, saveOfferCommissionOverrides } from "@/lib/affiliates/offer-commission-overrides";
+import {
+  parseAddonCommissionOverrides,
+  parseOfferCommissionOverrides,
+  saveAddonCommissionOverrides,
+  saveOfferCommissionOverrides,
+} from "@/lib/affiliates/offer-commission-overrides";
 
 type Context = { params: Promise<{ productId: string; membershipId: string }> };
 
@@ -18,13 +23,18 @@ export async function PATCH(request: Request, context: Context) {
     const rawStatus = typeof body.status === "string" ? body.status : undefined;
     const hasCommissionOverride = Object.prototype.hasOwnProperty.call(body, "commissionBpsOverride");
     const hasOfferCommissionOverrides = Object.prototype.hasOwnProperty.call(body, "offerCommissionOverrides");
+    const hasAddonCommissionOverrides = Object.prototype.hasOwnProperty.call(body, "addonCommissionOverrides");
     let offerCommissionOverrides: ReturnType<typeof parseOfferCommissionOverrides> = [];
-    if (hasOfferCommissionOverrides) {
-      try {
+    let addonCommissionOverrides: ReturnType<typeof parseAddonCommissionOverrides> = [];
+    try {
+      if (hasOfferCommissionOverrides) {
         offerCommissionOverrides = parseOfferCommissionOverrides(body.offerCommissionOverrides);
-      } catch (cause) {
-        return NextResponse.json({ error: cause instanceof Error ? cause.message : "Configuração individual inválida." }, { status: 400 });
       }
+      if (hasAddonCommissionOverrides) {
+        addonCommissionOverrides = parseAddonCommissionOverrides(body.addonCommissionOverrides);
+      }
+    } catch (cause) {
+      return NextResponse.json({ error: cause instanceof Error ? cause.message : "Configuração individual inválida." }, { status: 400 });
     }
     const rawPartnerType = typeof body.partnerType === "string" ? body.partnerType : undefined;
     const partnerType =
@@ -39,7 +49,7 @@ export async function PATCH(request: Request, context: Context) {
     }
     const status: "active" | "rejected" | "blocked" | undefined =
       rawStatus === "active" || rawStatus === "rejected" || rawStatus === "blocked" ? rawStatus : undefined;
-    if (!status && !hasCommissionOverride && !hasOfferCommissionOverrides && !partnerType) {
+    if (!status && !hasCommissionOverride && !hasOfferCommissionOverrides && !hasAddonCommissionOverrides && !partnerType) {
       return NextResponse.json({ error: "Nenhuma alteração informada." }, { status: 400 });
     }
     let commissionBpsOverride: number | null | undefined;
@@ -73,14 +83,24 @@ export async function PATCH(request: Request, context: Context) {
     const { data: membership, error } = await admin.from("affiliate_memberships").update(updates)
       .eq("id", membershipId).select().single();
     if (error || !membership) throw error ?? new Error("Falha ao atualizar afiliado.");
-    const offerOverrides = hasOfferCommissionOverrides
-      ? await saveOfferCommissionOverrides({
-          admin,
-          productId,
-          membershipId,
-          overrides: offerCommissionOverrides,
-        })
-      : null;
+    const [offerOverrides, addonOverrides] = await Promise.all([
+      hasOfferCommissionOverrides
+        ? saveOfferCommissionOverrides({
+            admin,
+            productId,
+            membershipId,
+            overrides: offerCommissionOverrides,
+          })
+        : Promise.resolve(null),
+      hasAddonCommissionOverrides
+        ? saveAddonCommissionOverrides({
+            admin,
+            productId,
+            membershipId,
+            overrides: addonCommissionOverrides,
+          })
+        : Promise.resolve(null),
+    ]);
     if (status === "active") {
       const { error: linkError } = await admin.from("affiliate_links").upsert({
         membership_id: membership.id, ref_code: membership.code, active: true,
@@ -88,6 +108,10 @@ export async function PATCH(request: Request, context: Context) {
       if (linkError) throw linkError;
     }
     await dispatchAffiliateMembershipWebhooksSafe(admin, membership.id);
-    return NextResponse.json({ membership, offerCommissionOverrides: offerOverrides });
+    return NextResponse.json({
+      membership,
+      offerCommissionOverrides: offerOverrides,
+      addonCommissionOverrides: addonOverrides,
+    });
   } catch (error) { return jsonError(error); }
 }

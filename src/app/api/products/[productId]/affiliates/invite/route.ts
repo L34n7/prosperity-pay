@@ -6,7 +6,12 @@ import { env, requireEnv } from "@/lib/env";
 import { sendAffiliateInvitationEmail } from "@/lib/email/resend-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dispatchAffiliateMembershipWebhooksSafe } from "@/lib/integrations/affiliate-webhook";
-import { parseOfferCommissionOverrides, saveOfferCommissionOverrides } from "@/lib/affiliates/offer-commission-overrides";
+import {
+  parseAddonCommissionOverrides,
+  parseOfferCommissionOverrides,
+  saveAddonCommissionOverrides,
+  saveOfferCommissionOverrides,
+} from "@/lib/affiliates/offer-commission-overrides";
 
 type Context = { params: Promise<{ productId: string }> };
 
@@ -27,8 +32,10 @@ export async function POST(request: Request, context: Context) {
     const partnerType =
       body.partnerType === "accredited" ? "accredited" : "affiliate";
     let offerCommissionOverrides: ReturnType<typeof parseOfferCommissionOverrides> = [];
+    let addonCommissionOverrides: ReturnType<typeof parseAddonCommissionOverrides> = [];
     try {
       offerCommissionOverrides = parseOfferCommissionOverrides(body.offerCommissionOverrides);
+      addonCommissionOverrides = parseAddonCommissionOverrides(body.addonCommissionOverrides);
     } catch (cause) {
       return NextResponse.json({ error: cause instanceof Error ? cause.message : "Configuração individual inválida." }, { status: 400 });
     }
@@ -110,12 +117,20 @@ export async function POST(request: Request, context: Context) {
       membership = data;
     }
 
-    await saveOfferCommissionOverrides({
-      admin,
-      productId,
-      membershipId: membership.id,
-      overrides: offerCommissionOverrides,
-    });
+    await Promise.all([
+      saveOfferCommissionOverrides({
+        admin,
+        productId,
+        membershipId: membership.id,
+        overrides: offerCommissionOverrides,
+      }),
+      saveAddonCommissionOverrides({
+        admin,
+        productId,
+        membershipId: membership.id,
+        overrides: addonCommissionOverrides,
+      }),
+    ]);
 
     const invitationPath = `/convites/afiliacao?code=${encodeURIComponent(membership.code)}`;
     const invitationUrl = new URL(

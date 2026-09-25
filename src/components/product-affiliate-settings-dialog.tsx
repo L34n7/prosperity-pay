@@ -58,9 +58,9 @@ export function ProductAffiliateSettingsDialog({productId,program,offers,product
         </section>
 
         <section className={styles.block}><div className={styles.blockTitle}><span><ShieldCheck size={17}/></span><div><h3>Regras financeiras gerais</h3><p>As porcentagens padrão são configuradas em cada Oferta. Aqui ficam somente regras válidas para todo o programa.</p></div></div>
-          <p className={styles.notice}>Comissão padrão por plano/oferta: configure na aba <strong>Ofertas</strong>. Exceções para um parceiro específico ficam nas configurações individuais do Afiliado ou Credenciado.</p>
+          <p className={styles.notice}>Comissão padrão por plano/oferta: configure na aba <strong>Ofertas</strong>. Adicionais comissionáveis herdam essa porcentagem, salvo quando houver uma exceção individual para o Afiliado ou Credenciado.</p>
           {product?.payment_type==="recurring"&&<div className={styles.toggleList}>
-            <div className={styles.toggleRow}><div><strong>Comissionar adicionais nas renovações</strong><small>Quando desligado, o parceiro recebe somente sobre a base comissionável do plano.</small></div><Switch checked={commissionAddons} onChange={setCommissionAddons} label="Comissionar adicionais"/></div>
+            <div className={styles.toggleRow}><div><strong>Comissionar adicionais nas renovações</strong><small>Quando ligado, adicionais entram na comissão e podem receber um percentual individual por Afiliado ou Credenciado. Quando desligado, não geram comissão.</small></div><Switch checked={commissionAddons} onChange={setCommissionAddons} label="Comissionar adicionais"/></div>
             <div className={styles.toggleRow}><div><strong>Comissionar ajustes proporcionais</strong><small>Quando desligado, upgrades e adicionais comprados no meio do ciclo não geram comissão.</small></div><Switch checked={commissionProratedChanges} onChange={setCommissionProratedChanges} label="Comissionar valores proporcionais"/></div>
           </div>}
         </section>

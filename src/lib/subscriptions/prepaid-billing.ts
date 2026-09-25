@@ -153,6 +153,7 @@ async function immediateSession(input: {
   description: string;
   itemCode: string;
   targetOfferId?: string;
+  addonId?: string;
 }) {
   if (!input.subscription.current_period_end) throw new HttpError(409, "Assinatura sem vencimento definido.");
   const expiresAt = quoteExpiry(input.subscription.current_period_end);
@@ -166,7 +167,10 @@ async function immediateSession(input: {
     quantity: 1,
     totalAmountCents: input.amountCents,
     commissionableAmountCents: input.commissionableAmountCents,
-    metadata: { subscriptionChangeId: input.changeId },
+    metadata: {
+      subscriptionChangeId: input.changeId,
+      ...(input.addonId ? { addonId: input.addonId } : {}),
+    },
   };
 
   const session = await newSession({
@@ -330,7 +334,10 @@ async function createAddonChange(
     current_amount_cents: subscription.current_amount_cents,
     quoted_target_amount_cents: targetTotal,
     proration_amount_cents: proration,
-    commissionable_amount_cents: immediate && policy.commissionProratedChanges ? proration : 0,
+    commissionable_amount_cents:
+      immediate && policy.commissionAddons && policy.commissionProratedChanges
+        ? proration
+        : 0,
     effective_mode: immediate ? "immediately_after_payment" : "next_period_after_payment",
     effective_at: immediate ? null : subscription.current_period_end,
     quote_expires_at: immediate && subscription.current_period_end
@@ -361,9 +368,11 @@ async function createAddonChange(
     subscription,
     changeId: change.id,
     amountCents: proration,
-    commissionableAmountCents: policy.commissionProratedChanges ? proration : 0,
+    commissionableAmountCents:
+      policy.commissionAddons && policy.commissionProratedChanges ? proration : 0,
     description: `Ajuste proporcional: ${addon.name} × ${quantity}`,
     itemCode: addon.code,
+    addonId: addon.id,
   });
 }
 

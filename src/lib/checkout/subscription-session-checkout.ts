@@ -298,6 +298,13 @@ export async function createSubscriptionSessionCheckout(input: SubscriptionSessi
       ? Number(subscription.cycle_number) + 1
       : Math.max(1, Number(subscription.cycle_number)),
     affiliateBaseAmountCents: Number(session.metadata.affiliateBaseAmountCents),
+    affiliateCommissionLines: session.metadata.lines.map((line) => ({
+      amountCents: Number(line.commissionableAmountCents),
+      addonId:
+        typeof line.metadata?.addonId === "string"
+          ? line.metadata.addonId
+          : null,
+    })),
     product,
     offer,
   });

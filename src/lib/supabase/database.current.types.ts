@@ -62,6 +62,15 @@ type AffiliateOfferCommissionOverrideRow = {
   updated_at: string;
 };
 
+type AffiliateAddonCommissionOverrideRow = {
+  id: string;
+  membership_id: string;
+  addon_id: string;
+  commission_bps: number;
+  created_at: string;
+  updated_at: string;
+};
+
 type AffiliateProgramSettingsColumns = {
   attribution_model: "last_click" | "first_click";
   customer_data_access: boolean;
@@ -413,6 +422,7 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       payment_email_deliveries: PaymentEmailDeliveryTable;
       first_access_tokens: FirstAccessTokenTable;
       affiliate_offer_commission_overrides: LooseTable<AffiliateOfferCommissionOverrideRow>;
+      affiliate_addon_commission_overrides: LooseTable<AffiliateAddonCommissionOverrideRow>;
     };
     Functions: GeneratedFunctions & {
       bootstrap_initial_platform_admin: {

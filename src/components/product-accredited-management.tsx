@@ -10,7 +10,10 @@ import type {
 import {
   PartnerIndividualCommissionDialog,
   PartnerOfferCommissionFields,
+  readPartnerAddonCommissionOverrides,
   readPartnerOfferCommissionOverrides,
+  type PartnerAddonCommissionOverride,
+  type PartnerAddonSettings,
   type PartnerOfferCommissionOverride,
 } from "@/components/partner-offer-commission-fields";
 import { requestJson } from "@/lib/operational";
@@ -24,6 +27,7 @@ type PartnerMember = {
   created_at?: string;
   affiliate_commission_bps_override: number | null;
   offer_commission_overrides: PartnerOfferCommissionOverride[];
+  addon_commission_overrides: PartnerAddonCommissionOverride[];
   profiles: { full_name: string; email: string } | null;
 };
 
@@ -51,6 +55,7 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
   const [members, setMembers] = useState<PartnerMember[]>([]);
   const [eligibleAffiliates, setEligibleAffiliates] = useState<PartnerMember[]>([]);
   const [offers, setOffers] = useState<AffiliateOfferSettings[]>([]);
+  const [addons, setAddons] = useState<PartnerAddonSettings[]>([]);
   const [selectedMember, setSelectedMember] = useState<PartnerMember | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [evolveOpen, setEvolveOpen] = useState(false);
@@ -66,6 +71,7 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
         program: AffiliateProgramSettings | null;
         memberships: PartnerMember[];
         offers: AffiliateOfferSettings[];
+        addons: PartnerAddonSettings[];
         product: AffiliateProductSettings;
       }>(`/api/products/${id}/affiliates`);
 
@@ -79,6 +85,7 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
       setMembers(accredited);
       setEligibleAffiliates(affiliates);
       setOffers(data.offers ?? []);
+      setAddons(data.addons ?? []);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao carregar credenciados.");
@@ -99,11 +106,19 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
       const formData = new FormData(form);
       const email = formData.get("email");
       const offerCommissionOverrides = readPartnerOfferCommissionOverrides(formData, offers);
+      const addonCommissionOverrides = program?.commission_addons
+        ? readPartnerAddonCommissionOverrides(formData, addons)
+        : [];
       const result = await requestJson<{ invitationPath: string }>(
         `/api/products/${id}/affiliates/invite`,
         {
           method: "POST",
-          body: JSON.stringify({ email, partnerType: "accredited", offerCommissionOverrides }),
+          body: JSON.stringify({
+            email,
+            partnerType: "accredited",
+            offerCommissionOverrides,
+            addonCommissionOverrides,
+          }),
         },
       );
       setInviteUrl(`${location.origin}${result.invitationPath}`);
@@ -154,7 +169,10 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
 
   async function saveIndividualSettings(
     member: PartnerMember,
-    offerCommissionOverrides: Array<{ offerId: string; commissionBps: number | null }>,
+    input: {
+      offerCommissionOverrides: Array<{ offerId: string; commissionBps: number | null }>;
+      addonCommissionOverrides?: Array<{ addonId: string; commissionBps: number | null }>;
+    },
   ) {
     setBusy(true);
     setError("");
@@ -162,7 +180,12 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
     try {
       await requestJson(`/api/products/${id}/affiliates/${member.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ offerCommissionOverrides }),
+        body: JSON.stringify({
+          offerCommissionOverrides: input.offerCommissionOverrides,
+          ...(input.addonCommissionOverrides
+            ? { addonCommissionOverrides: input.addonCommissionOverrides }
+            : {}),
+        }),
       });
       setMessage(`Configurações individuais de ${member.profiles?.full_name || "credenciado"} salvas.`);
       setSelectedMember(null);
@@ -245,13 +268,13 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
                 <div className={styles.individualSummary}>
                   <span>Configuração individual</span>
                   <strong>
-                    {member.offer_commission_overrides.length
-                      ? `${member.offer_commission_overrides.length} oferta(s) personalizada(s)`
+                    {member.offer_commission_overrides.length + member.addon_commission_overrides.length
+                      ? `${member.offer_commission_overrides.length + member.addon_commission_overrides.length} regra(s) personalizada(s)`
                       : "Padrão das ofertas"}
                   </strong>
                   <small>
-                    {member.offer_commission_overrides.length
-                      ? "As demais ofertas continuam usando o percentual padrão."
+                    {member.offer_commission_overrides.length + member.addon_commission_overrides.length
+                      ? "Demais ofertas e adicionais continuam herdando as regras padrão."
                       : "Nenhuma exceção de comissão configurada."}
                   </small>
                 </div>
@@ -292,6 +315,8 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
           error={error}
           message={message}
           offers={offers}
+          addons={addons}
+          commissionAddonsEnabled={Boolean(program?.commission_addons)}
           onInvite={invite}
           onClose={() => setInviteOpen(false)}
         />
@@ -312,9 +337,12 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
           partnerLabel="Credenciado"
           offers={offers}
           overrides={selectedMember.offer_commission_overrides}
+          addons={addons}
+          addonOverrides={selectedMember.addon_commission_overrides}
+          commissionAddonsEnabled={Boolean(program?.commission_addons)}
           busy={busy}
           onClose={() => setSelectedMember(null)}
-          onSave={(overrides) => saveIndividualSettings(selectedMember, overrides)}
+          onSave={(input) => saveIndividualSettings(selectedMember, input)}
         />
       )}
     </div>
@@ -328,6 +356,8 @@ function AccreditedInviteDialog({
   error,
   message,
   offers,
+  addons,
+  commissionAddonsEnabled,
   onInvite,
   onClose,
 }: {
@@ -337,6 +367,8 @@ function AccreditedInviteDialog({
   error: string;
   message: string;
   offers: AffiliateOfferSettings[];
+  addons: PartnerAddonSettings[];
+  commissionAddonsEnabled: boolean;
   onInvite: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   onClose: () => void;
 }) {
@@ -362,7 +394,11 @@ function AccreditedInviteDialog({
               <input name="email" type="email" placeholder="credenciado@exemplo.com" required autoFocus />
             </label>
           </div>
-          <PartnerOfferCommissionFields offers={offers} />
+          <PartnerOfferCommissionFields
+            offers={offers}
+            addons={addons}
+            commissionAddonsEnabled={commissionAddonsEnabled}
+          />
           <div className={styles.inviteSubmit}>
             <button className={styles.primary} disabled={busy || !enabled}>
               <UserRoundCheck size={15} />{busy ? "Enviando..." : "Enviar convite"}
