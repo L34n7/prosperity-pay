@@ -1,7 +1,6 @@
 import { HttpError } from "@/lib/api/http";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { digits, sha256 } from "@/lib/security/hash";
-import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 import { createRecurringSnapshot } from "@/lib/subscriptions/recurring-financials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncTransparentOrder, type MercadoPagoOrder } from "@/lib/checkout/transparent-checkout-service";
@@ -42,6 +41,7 @@ type SessionMetadata = {
   affiliateBaseAmountCents: number;
   targetOfferId: string;
   billingReason: "subscription_change" | "subscription_renewal";
+  renewalDueAt?: string;
 };
 
 function parseMetadata(value: Json): SessionMetadata {
@@ -75,6 +75,10 @@ function parseMetadata(value: Json): SessionMetadata {
     affiliateBaseAmountCents: Number(raw.affiliateBaseAmountCents ?? 0),
     targetOfferId: String(raw.targetOfferId ?? ""),
     billingReason: billingReason as SessionMetadata["billingReason"],
+    renewalDueAt:
+      typeof raw.renewalDueAt === "string"
+        ? raw.renewalDueAt
+        : undefined,
   };
 }
 
@@ -142,105 +146,6 @@ async function loadSession(admin: AdminClient, token: string) {
   return { ...data, metadata: parseMetadata(data.metadata) };
 }
 
-async function releasePendingPixForCard(
-  admin: AdminClient,
-  sessionId: string,
-  orderId: string,
-) {
-  const [{ data: payment, error: paymentError }, { data: checkout, error: checkoutError }] =
-    await Promise.all([
-      admin
-        .from("payments")
-        .select("id,status,raw_provider_data")
-        .eq("order_id", orderId)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
-      admin
-        .from("payment_provider_checkouts")
-        .select("connection_id,external_checkout_id")
-        .eq("order_id", orderId)
-        .maybeSingle(),
-    ]);
-
-  if (paymentError) throw paymentError;
-  if (checkoutError) throw checkoutError;
-  if (!payment || !checkout?.connection_id || !checkout.external_checkout_id) {
-    return false;
-  }
-
-  if (!["pending", "processing"].includes(String(payment.status))) {
-    return false;
-  }
-
-  const metadata = mercadoPagoPaymentMetadata(payment.raw_provider_data);
-  if (metadata.method !== "pix") {
-    return false;
-  }
-
-  const token = await getProviderAccessToken(checkout.connection_id);
-  const externalOrderId = checkout.external_checkout_id;
-
-  const currentOrder = await mpRequest<MercadoPagoOrder>(
-    token,
-    `/v1/orders/${encodeURIComponent(externalOrderId)}`,
-  );
-
-  await syncTransparentOrder({
-    admin,
-    internalOrderId: orderId,
-    mpOrder: currentOrder,
-  });
-
-  const transaction = currentOrder.transactions?.payments?.[0];
-  if (transaction?.status === "processed") {
-    return false;
-  }
-
-  await mpRequest<MercadoPagoOrder>(
-    token,
-    `/v1/orders/${encodeURIComponent(externalOrderId)}/cancel`,
-    { method: "POST" },
-    `replace-pix-${orderId}`.slice(0, 64),
-  );
-
-  const now = new Date().toISOString();
-  const { error: paymentCancelError } = await admin
-    .from("payments")
-    .update({
-      status: "cancelled",
-      status_detail: "replaced_by_card",
-      updated_at: now,
-    })
-    .eq("id", payment.id)
-    .in("status", ["pending", "processing"]);
-
-  if (paymentCancelError) throw paymentCancelError;
-
-  const { error: orderCancelError } = await admin
-    .from("orders")
-    .update({
-      status: "cancelled",
-      cancelled_at: now,
-      updated_at: now,
-    })
-    .eq("id", orderId)
-    .neq("status", "paid");
-
-  if (orderCancelError) throw orderCancelError;
-
-  const { error: sessionReleaseError } = await admin
-    .from("subscription_checkout_sessions")
-    .update({ order_id: null, updated_at: now })
-    .eq("id", sessionId)
-    .eq("order_id", orderId)
-    .is("consumed_at", null);
-
-  if (sessionReleaseError) throw sessionReleaseError;
-
-  return true;
-}
-
 async function existingResult(admin: AdminClient, orderId: string) {
   const { data: checkout, error: checkoutError } = await admin.from("payment_provider_checkouts")
     .select("connection_id,external_checkout_id")
@@ -294,24 +199,24 @@ export async function getSubscriptionCheckoutSessionView(sessionToken: string) {
 
 export async function createSubscriptionSessionCheckout(input: SubscriptionSessionCheckoutInput) {
   const admin = createAdminClient();
-  let session = await loadSession(admin, input.sessionToken);
+  const session = await loadSession(admin, input.sessionToken);
 
-  if (session.order_id) {
-    if (input.paymentMethod === "card") {
-      const released = await releasePendingPixForCard(
-        admin,
-        session.id,
-        session.order_id,
-      );
+  const { data: existingOrder, error: existingOrderError } = await admin
+    .from("orders")
+    .select("id")
+    .eq("idempotency_key", input.idempotencyKey)
+    .maybeSingle();
 
-      if (released) {
-        session = await loadSession(admin, input.sessionToken);
-      } else {
-        return existingResult(admin, session.order_id);
-      }
-    } else {
-      return existingResult(admin, session.order_id);
-    }
+  if (existingOrderError) throw existingOrderError;
+  if (existingOrder?.id) {
+    return existingResult(admin, existingOrder.id);
+  }
+
+  if (
+    session.session_type !== "subscription_renewal" &&
+    session.order_id
+  ) {
+    return existingResult(admin, session.order_id);
   }
 
   const document = digits(input.customerDocument || "");
@@ -335,10 +240,27 @@ export async function createSubscriptionSessionCheckout(input: SubscriptionSessi
   }
 
   const { data: subscription, error: subscriptionError } = await admin.from("subscriptions")
-    .select("id,product_id,customer_id,offer_id,order_id,provider_id,cycle_number,currency,affiliate_membership_id")
+    .select("id,product_id,customer_id,offer_id,order_id,provider_id,cycle_number,currency,affiliate_membership_id,current_period_end")
     .eq("id", session.subscription_id)
     .single();
   if (subscriptionError || !subscription) throw new HttpError(404, "Assinatura não encontrada.");
+
+  if (
+    session.session_type === "subscription_renewal" &&
+    session.metadata.renewalDueAt &&
+    subscription.current_period_end
+  ) {
+    const dueAt = new Date(session.metadata.renewalDueAt).getTime();
+    const currentPeriodEnd = new Date(subscription.current_period_end).getTime();
+
+    if (
+      Number.isFinite(dueAt) &&
+      Number.isFinite(currentPeriodEnd) &&
+      currentPeriodEnd > dueAt + 60_000
+    ) {
+      throw new HttpError(409, "Esta mensalidade já foi paga.");
+    }
+  }
 
   const [productResult, offerResult, customerResult] = await Promise.all([
     admin.from("products").select("id,name,producer_id,status,settlement_model,prosperity_fee_type,prosperity_fee_bps,prosperity_fee_fixed_cents").eq("id", subscription.product_id).single(),
@@ -377,18 +299,45 @@ export async function createSubscriptionSessionCheckout(input: SubscriptionSessi
   }).select("id").single();
   if (orderError || !order) throw orderError ?? new Error("Falha ao criar pedido da assinatura.");
 
-  const { data: claimedOrderId, error: claimError } = await admin.rpc("claim_subscription_checkout_session", {
-    target_session_id: session.id,
-    target_order_id: order.id,
-  });
-  if (claimError) throw claimError;
-  if (!claimedOrderId) {
-    await admin.from("orders").delete().eq("id", order.id).eq("status", "draft");
-    throw new HttpError(410, "Esta sessão expirou.");
-  }
-  if (claimedOrderId !== order.id) {
-    await admin.from("orders").delete().eq("id", order.id).eq("status", "draft");
-    return existingResult(admin, claimedOrderId);
+  if (session.session_type === "subscription_renewal") {
+    const { error: attemptSessionError } = await admin
+      .from("subscription_checkout_sessions")
+      .insert({
+        token_hash: sha256(
+          `attempt:${session.id}:${order.id}:${crypto.randomUUID()}`,
+        ),
+        subscription_id: session.subscription_id,
+        subscription_change_id: null,
+        session_type: "subscription_renewal",
+        amount_cents: session.amount_cents,
+        currency: session.currency,
+        order_id: order.id,
+        expires_at: session.expires_at,
+        metadata: session.metadata as unknown as Json,
+      });
+
+    if (attemptSessionError) {
+      await admin.from("orders").delete().eq("id", order.id).eq("status", "draft");
+      throw attemptSessionError;
+    }
+  } else {
+    const { data: claimedOrderId, error: claimError } = await admin.rpc(
+      "claim_subscription_checkout_session",
+      {
+        target_session_id: session.id,
+        target_order_id: order.id,
+      },
+    );
+
+    if (claimError) throw claimError;
+    if (!claimedOrderId) {
+      await admin.from("orders").delete().eq("id", order.id).eq("status", "draft");
+      throw new HttpError(410, "Esta sessão expirou.");
+    }
+    if (claimedOrderId !== order.id) {
+      await admin.from("orders").delete().eq("id", order.id).eq("status", "draft");
+      return existingResult(admin, claimedOrderId);
+    }
   }
 
   if (session.subscription_change_id) {
