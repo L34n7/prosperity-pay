@@ -11,6 +11,7 @@ export type SubscriptionAction =
   | { type: "change_plan"; offerReference: string }
   | { type: "add_addon"; addonCode: string; quantity?: number }
   | { type: "remove_addon"; addonCode: string; quantity?: number }
+  | { type: "cancel_scheduled_plan_change"; changeId?: string }
   | { type: "renew" };
 
 type LoadedSubscription = {
@@ -374,6 +375,53 @@ type ProjectedAddon = {
   quantity: number;
 };
 
+async function cancelScheduledPlanChange(
+  admin: AdminClient,
+  subscription: LoadedSubscription,
+  changeId?: string,
+) {
+  let query = admin
+    .from("subscription_changes")
+    .select("id")
+    .eq("subscription_id", subscription.id)
+    .eq("status", "scheduled")
+    .not("to_offer_id", "is", null)
+    .order("created_at", { ascending: false });
+
+  if (changeId) {
+    query = query.eq("id", changeId);
+  }
+
+  const { data: changes, error: changesError } = await query;
+  if (changesError) throw changesError;
+
+  const ids = (changes ?? []).map((item) => item.id).filter(Boolean);
+  if (ids.length === 0) {
+    throw new HttpError(409, "Não há alteração de plano agendada para cancelar.");
+  }
+
+  const { error: cancelError } = await admin
+    .from("subscription_changes")
+    .update({
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+    })
+    .in("id", ids)
+    .eq("subscription_id", subscription.id)
+    .eq("status", "scheduled");
+
+  if (cancelError) throw cancelError;
+
+  return {
+    status: "cancelled" as const,
+    subscriptionId: subscription.id,
+    changeId: ids[0],
+    amountCents: 0,
+    targetAmountCents: Number(subscription.current_amount_cents),
+    currency: subscription.currency,
+  };
+}
+
 async function createRenewal(admin: AdminClient, subscription: LoadedSubscription) {
   if (!subscription.current_period_end) throw new HttpError(409, "Assinatura sem vencimento definido.");
 
@@ -547,6 +595,14 @@ export async function createPrepaidSubscriptionIntent(input: {
 
   if (input.action.type === "renew") {
     return createRenewal(admin, subscription);
+  }
+
+  if (input.action.type === "cancel_scheduled_plan_change") {
+    return cancelScheduledPlanChange(
+      admin,
+      subscription,
+      input.action.changeId,
+    );
   }
 
   const { data: openChange, error: openChangeError } = await admin.from("subscription_changes")
