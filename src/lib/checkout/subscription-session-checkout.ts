@@ -1,6 +1,7 @@
 import { HttpError } from "@/lib/api/http";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { digits, sha256 } from "@/lib/security/hash";
+import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 import { createRecurringSnapshot } from "@/lib/subscriptions/recurring-financials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncTransparentOrder, type MercadoPagoOrder } from "@/lib/checkout/transparent-checkout-service";
@@ -13,7 +14,7 @@ export type SubscriptionSessionCheckoutInput = {
   sessionToken: string;
   customerName?: string;
   customerEmail: string;
-  customerDocument: string;
+  customerDocument?: string;
   deviceId?: string;
   idempotencyKey: string;
   paymentMethod: PaymentMethod;
@@ -141,6 +142,105 @@ async function loadSession(admin: AdminClient, token: string) {
   return { ...data, metadata: parseMetadata(data.metadata) };
 }
 
+async function releasePendingPixForCard(
+  admin: AdminClient,
+  sessionId: string,
+  orderId: string,
+) {
+  const [{ data: payment, error: paymentError }, { data: checkout, error: checkoutError }] =
+    await Promise.all([
+      admin
+        .from("payments")
+        .select("id,status,raw_provider_data")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+      admin
+        .from("payment_provider_checkouts")
+        .select("connection_id,external_checkout_id")
+        .eq("order_id", orderId)
+        .maybeSingle(),
+    ]);
+
+  if (paymentError) throw paymentError;
+  if (checkoutError) throw checkoutError;
+  if (!payment || !checkout?.connection_id || !checkout.external_checkout_id) {
+    return false;
+  }
+
+  if (!["pending", "processing"].includes(String(payment.status))) {
+    return false;
+  }
+
+  const metadata = mercadoPagoPaymentMetadata(payment.raw_provider_data);
+  if (metadata.method !== "pix") {
+    return false;
+  }
+
+  const token = await getProviderAccessToken(checkout.connection_id);
+  const externalOrderId = checkout.external_checkout_id;
+
+  const currentOrder = await mpRequest<MercadoPagoOrder>(
+    token,
+    `/v1/orders/${encodeURIComponent(externalOrderId)}`,
+  );
+
+  await syncTransparentOrder({
+    admin,
+    internalOrderId: orderId,
+    mpOrder: currentOrder,
+  });
+
+  const transaction = currentOrder.transactions?.payments?.[0];
+  if (transaction?.status === "processed") {
+    return false;
+  }
+
+  await mpRequest<MercadoPagoOrder>(
+    token,
+    `/v1/orders/${encodeURIComponent(externalOrderId)}/cancel`,
+    { method: "POST" },
+    `replace-pix-${orderId}`.slice(0, 64),
+  );
+
+  const now = new Date().toISOString();
+  const { error: paymentCancelError } = await admin
+    .from("payments")
+    .update({
+      status: "cancelled",
+      status_detail: "replaced_by_card",
+      updated_at: now,
+    })
+    .eq("id", payment.id)
+    .in("status", ["pending", "processing"]);
+
+  if (paymentCancelError) throw paymentCancelError;
+
+  const { error: orderCancelError } = await admin
+    .from("orders")
+    .update({
+      status: "cancelled",
+      cancelled_at: now,
+      updated_at: now,
+    })
+    .eq("id", orderId)
+    .neq("status", "paid");
+
+  if (orderCancelError) throw orderCancelError;
+
+  const { error: sessionReleaseError } = await admin
+    .from("subscription_checkout_sessions")
+    .update({ order_id: null, updated_at: now })
+    .eq("id", sessionId)
+    .eq("order_id", orderId)
+    .is("consumed_at", null);
+
+  if (sessionReleaseError) throw sessionReleaseError;
+
+  return true;
+}
+
 async function existingResult(admin: AdminClient, orderId: string) {
   const { data: checkout, error: checkoutError } = await admin.from("payment_provider_checkouts")
     .select("connection_id,external_checkout_id")
@@ -194,11 +294,36 @@ export async function getSubscriptionCheckoutSessionView(sessionToken: string) {
 
 export async function createSubscriptionSessionCheckout(input: SubscriptionSessionCheckoutInput) {
   const admin = createAdminClient();
-  const session = await loadSession(admin, input.sessionToken);
-  if (session.order_id) return existingResult(admin, session.order_id);
+  let session = await loadSession(admin, input.sessionToken);
 
-  const document = digits(input.customerDocument);
-  if (document.length !== 11) throw new HttpError(400, "CPF inválido.");
+  if (session.order_id) {
+    if (input.paymentMethod === "card") {
+      const released = await releasePendingPixForCard(
+        admin,
+        session.id,
+        session.order_id,
+      );
+
+      if (released) {
+        session = await loadSession(admin, input.sessionToken);
+      } else {
+        return existingResult(admin, session.order_id);
+      }
+    } else {
+      return existingResult(admin, session.order_id);
+    }
+  }
+
+  const document = digits(input.customerDocument || "");
+  if (
+    input.paymentMethod === "card" &&
+    document.length !== 11
+  ) {
+    throw new HttpError(400, "CPF inválido.");
+  }
+  if (document && document.length !== 11) {
+    throw new HttpError(400, "CPF inválido.");
+  }
   if (input.paymentMethod === "card" && (!input.card?.token || !input.card.paymentMethodId)) {
     throw new HttpError(400, "Dados tokenizados do cartão ausentes.");
   }
@@ -231,7 +356,7 @@ export async function createSubscriptionSessionCheckout(input: SubscriptionSessi
 
   await admin.from("customers").update({
     name: input.customerName?.trim() || customerResult.data.name,
-    document_hash: sha256(document),
+    ...(document ? { document_hash: sha256(document) } : {}),
   }).eq("id", subscription.customer_id);
 
   const connection = await centralConnection(admin);
@@ -334,7 +459,9 @@ export async function createSubscriptionSessionCheckout(input: SubscriptionSessi
   const providerToken = await getProviderAccessToken(connection.id);
   const payer = {
     email: input.customerEmail.trim().toLowerCase(),
-    identification: { type: "CPF", number: document },
+    ...(document
+      ? { identification: { type: "CPF", number: document } }
+      : {}),
   };
   const providerPayment = input.paymentMethod === "card" ? {
     amount: money(amountCents),
