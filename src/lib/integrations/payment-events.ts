@@ -51,7 +51,7 @@ async function hydratePayment(admin: AdminClient, paymentId: string) {
 
   const { data: order, error: orderError } = await admin
     .from("orders")
-    .select("id,offer_id,customer_id,product_id,billing_reason,subscription_id,subscription_change_id")
+    .select("id,offer_id,customer_id,product_id,billing_reason,subscription_id,subscription_change_id,idempotency_key")
     .eq("id", payment.order_id)
     .single();
 
@@ -170,6 +170,10 @@ export async function dispatchPaymentIntegrationEvents(
       ? "card"
       : null;
   const pix = pixDataFromRaw(hydrated.payment.raw_provider_data);
+  const generationSource =
+    String(hydrated.order.idempotency_key || "").startsWith("automatic-due:")
+      ? "platform_automatic"
+      : "customer";
   const results: Array<{
     integration: string;
     sent: boolean;
@@ -193,6 +197,7 @@ export async function dispatchPaymentIntegrationEvents(
         paid_at: hydrated.payment.paid_at,
         refunded_at: hydrated.payment.refunded_at,
         method,
+        generation_source: generationSource,
         pix_code: pix.code,
         pix_ticket_url: pix.ticketUrl,
       },
