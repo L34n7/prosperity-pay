@@ -26,6 +26,13 @@ type Offer = {
   paymentPixEnabled: boolean;
 };
 
+type PriceCompositionLine = {
+  label: string;
+  amountCents: number;
+  quantity?: number;
+  type?: "base" | "addon" | "proration";
+};
+
 type CardFormData = {
   paymentMethodId?: string;
   issuerId?: string;
@@ -91,6 +98,7 @@ export function CheckoutFlow({
   sessionToken,
   initialBuyer,
   prepaidSubscription = false,
+  priceComposition,
 }: {
   offer: Offer;
   affiliate?: string;
@@ -103,6 +111,7 @@ export function CheckoutFlow({
   sessionToken?: string;
   initialBuyer?: { name?: string | null; email?: string | null };
   prepaidSubscription?: boolean;
+  priceComposition?: PriceCompositionLine[];
 }) {
   const recurring = offer.billingType === "recurring";
   const initialPrice = recurring && offer.firstChargeCents ? offer.firstChargeCents : offer.priceCents;
@@ -439,11 +448,47 @@ export function CheckoutFlow({
           {offer.imageUrl && <Image className={styles.productImage} src={offer.imageUrl} alt={offer.productName} width={720} height={400} unoptimized/>}
           <span className={styles.productBadge}>{offer.productName}</span>
           <h1>{offer.name}</h1>
-          <div className={styles.priceBlock}>
-            <span>Total {recurring ? "da primeira cobrança" : ""}</span>
-            <strong>{formatCents(initialPrice)}</strong>
-            {recurring && <small>{offer.firstChargeCents && offer.firstChargeCents !== offer.priceCents ? `Depois ${formatCents(offer.priceCents)} ${recurrenceLabel(offer)}` : `${formatCents(offer.priceCents)} ${recurrenceLabel(offer)}`}</small>}
-          </div>
+
+          {priceComposition && priceComposition.length > 0 ? (
+            <div className={styles.compositionCard}>
+              <span className={styles.compositionEyebrow}>Composição</span>
+
+              <div className={styles.compositionFormula}>
+                {priceComposition.map((line, index) => (
+                  <div
+                    className={styles.compositionLine}
+                    key={`${line.label}-${line.amountCents}-${index}`}
+                  >
+                    <span className={styles.compositionOperator}>
+                      {index === 0 ? "" : "+"}
+                    </span>
+                    <div className={styles.compositionLineInfo}>
+                      <strong>{line.label}</strong>
+                      {line.quantity && line.quantity > 1 ? (
+                        <small>Quantidade: {line.quantity}</small>
+                      ) : null}
+                    </div>
+                    <strong className={styles.compositionAmount}>
+                      {formatCents(line.amountCents)}
+                    </strong>
+                  </div>
+                ))}
+
+                <div className={styles.compositionDivider} />
+
+                <div className={styles.compositionTotal}>
+                  <span>Total</span>
+                  <strong>{formatCents(initialPrice)}</strong>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className={styles.priceBlock}>
+              <span>Total {recurring ? "da primeira cobrança" : ""}</span>
+              <strong>{formatCents(initialPrice)}</strong>
+              {recurring && <small>{offer.firstChargeCents && offer.firstChargeCents !== offer.priceCents ? `Depois ${formatCents(offer.priceCents)} ${recurrenceLabel(offer)}` : `${formatCents(offer.priceCents)} ${recurrenceLabel(offer)}`}</small>}
+            </div>
+          )}
           <div className={styles.securityNote}><ShieldCheck size={22}/><div><strong>Pagamento protegido</strong><span>Os dados do cartão são enviados diretamente ao Mercado Pago e não passam pelos servidores da Prosperity Pay.</span></div></div>
         </div>
       </section>
@@ -451,8 +496,22 @@ export function CheckoutFlow({
       <section className={styles.checkoutPane}>
         <div className={styles.checkoutCard}>
           <div className={styles.cardHeader}>
-            <div><span>Checkout Prosperity Pay</span><h2>Finalizar compra</h2></div>
-            <div className={styles.amount}><strong>{formatCents(initialPrice)}</strong>{recurring && <small>{recurrenceLabel(offer)}</small>}</div>
+            <div>
+              <span>Checkout Prosperity Pay</span>
+              <h2>{offer.name}</h2>
+              {priceComposition && priceComposition.length > 1 ? (
+                <small className={styles.cardHeaderComposition}>
+                  {priceComposition
+                    .map((line) => line.label)
+                    .filter(Boolean)
+                    .join(" + ")}
+                </small>
+              ) : null}
+            </div>
+            <div className={styles.amount}>
+              <strong>{formatCents(initialPrice)}</strong>
+              {recurring && <small>{recurrenceLabel(offer)}</small>}
+            </div>
           </div>
 
           {affiliate && <div className={styles.referral}>Indicação de afiliado aplicada</div>}
