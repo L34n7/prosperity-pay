@@ -16,6 +16,13 @@ type DueSubscription = {
   status: string;
 };
 
+type BillingProduct = {
+  id: string;
+  name: string;
+  status: string;
+  automatic_due_billing_enabled: boolean;
+};
+
 function sessionTokenFromUrl(value: string) {
   try {
     const url = new URL(value);
@@ -109,12 +116,7 @@ async function finishDelivery(
 async function processOne(
   admin: AdminClient,
   subscription: DueSubscription,
-  product: {
-    id: string;
-    name: string;
-    status: string;
-    automatic_due_billing_enabled: boolean;
-  },
+  product: BillingProduct,
 ) {
   if (!product.automatic_due_billing_enabled || product.status !== "active") {
     return { status: "disabled" as const };
@@ -278,8 +280,17 @@ export async function processAutomaticDueBilling(limit = 100) {
 
   if (productsError) throw productsError;
 
-  const byProduct = new Map(
-    (products ?? []).map((product: any) => [product.id, product]),
+  const byProduct = new Map<string, BillingProduct>(
+    (products ?? []).map((product: any) => [
+      String(product.id),
+      {
+        id: String(product.id),
+        name: String(product.name || "Produto"),
+        status: String(product.status || ""),
+        automatic_due_billing_enabled:
+          product.automatic_due_billing_enabled === true,
+      },
+    ]),
   );
 
   const results = [];
