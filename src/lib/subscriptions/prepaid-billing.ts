@@ -586,12 +586,57 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
   };
 }
 
+async function expireAbandonedSubscriptionChanges(
+  admin: AdminClient,
+  subscriptionId: string,
+) {
+  const nowIso = new Date().toISOString();
+
+  const { data: candidates, error: candidatesError } = await admin
+    .from("subscription_changes")
+    .select("id,status,quote_expires_at,payment_order_id")
+    .eq("subscription_id", subscriptionId)
+    .eq("status", "awaiting_payment");
+
+  if (candidatesError) throw candidatesError;
+
+  const staleIds = (candidates ?? [])
+    .filter((change) => {
+      if (change.payment_order_id) return false;
+      if (!change.quote_expires_at) return false;
+      const expiresAt = new Date(change.quote_expires_at).getTime();
+      return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+    })
+    .map((change) => change.id);
+
+  if (staleIds.length === 0) return;
+
+  const { error: sessionExpireError } = await admin
+    .from("subscription_checkout_sessions")
+    .update({ expires_at: nowIso })
+    .in("subscription_change_id", staleIds)
+    .is("consumed_at", null);
+
+  if (sessionExpireError) throw sessionExpireError;
+
+  const { error: changesExpireError } = await admin
+    .from("subscription_changes")
+    .update({ status: "expired" })
+    .in("id", staleIds)
+    .eq("subscription_id", subscriptionId)
+    .eq("status", "awaiting_payment");
+
+  if (changesExpireError) throw changesExpireError;
+}
+
 export async function createPrepaidSubscriptionIntent(input: {
   subscriptionId: string;
   action: SubscriptionAction;
 }) {
   const admin = createAdminClient();
   const subscription = await loadSubscription(admin, input.subscriptionId);
+
+  await expireAbandonedSubscriptionChanges(admin, subscription.id);
 
   if (input.action.type === "renew") {
     return createRenewal(admin, subscription);
