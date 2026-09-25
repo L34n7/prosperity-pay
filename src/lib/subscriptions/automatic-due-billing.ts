@@ -54,14 +54,14 @@ async function claimBillingDelivery(
       status: "processing",
       attempts: 1,
     })
-    .select("id,status,attempts,updated_at")
+    .select("id,status,attempts,updated_at,order_id,payment_id,checkout_url,pix_code,pix_ticket_url,recipient_email")
     .single();
 
   if (!inserted.error && inserted.data) return inserted.data;
   if (inserted.error?.code !== "23505") throw inserted.error;
 
   const existingResult = await table
-    .select("id,status,attempts,updated_at")
+    .select("id,status,attempts,updated_at,order_id,payment_id,checkout_url,pix_code,pix_ticket_url,recipient_email")
     .eq("subscription_id", input.subscriptionId)
     .eq("due_at", input.dueAt)
     .single();
@@ -87,7 +87,7 @@ async function claimBillingDelivery(
       updated_at: new Date().toISOString(),
     })
     .eq("id", existing.id)
-    .select("id,status,attempts,updated_at")
+    .select("id,status,attempts,updated_at,order_id,payment_id,checkout_url,pix_code,pix_ticket_url,recipient_email")
     .single();
 
   if (retry.error || !retry.data) {
@@ -144,54 +144,96 @@ async function processOne(
       throw customerError ?? new Error("Cliente sem e-mail para cobrança.");
     }
 
-    const intent = await createPrepaidSubscriptionIntent({
-      subscriptionId: subscription.id,
-      action: { type: "renew" },
-    });
+    let checkoutUrl =
+      typeof delivery.checkout_url === "string"
+        ? delivery.checkout_url
+        : "";
+    let pixCode =
+      typeof delivery.pix_code === "string"
+        ? delivery.pix_code
+        : "";
+    let pixTicketUrl =
+      typeof delivery.pix_ticket_url === "string"
+        ? delivery.pix_ticket_url
+        : "";
+    let orderId =
+      typeof delivery.order_id === "string"
+        ? delivery.order_id
+        : "";
+    let paymentId =
+      typeof delivery.payment_id === "string"
+        ? delivery.payment_id
+        : "";
 
-    if (intent.status !== "awaiting_payment" || !intent.checkoutUrl) {
-      throw new Error("A renovação não gerou um checkout disponível.");
+    if (!checkoutUrl || !pixCode || !orderId || !paymentId) {
+      const intent = await createPrepaidSubscriptionIntent({
+        subscriptionId: subscription.id,
+        action: { type: "renew" },
+      });
+
+      if (intent.status !== "awaiting_payment" || !intent.checkoutUrl) {
+        throw new Error("A renovação não gerou um checkout disponível.");
+      }
+
+      checkoutUrl = intent.checkoutUrl;
+      const token = sessionTokenFromUrl(checkoutUrl);
+
+      const pixResult = await createSubscriptionSessionCheckout({
+        sessionToken: token,
+        customerName: customer.name || undefined,
+        customerEmail: customer.email,
+        idempotencyKey: `automatic-due:${subscription.id}:${subscription.current_period_end}`,
+        paymentMethod: "pix",
+      });
+
+      if (!pixResult.orderId) {
+        throw new Error("Cobrança automática sem pedido interno.");
+      }
+
+      orderId = pixResult.orderId;
+      pixCode =
+        "qrCode" in pixResult && typeof pixResult.qrCode === "string"
+          ? pixResult.qrCode
+          : "";
+      pixTicketUrl =
+        "ticketUrl" in pixResult && typeof pixResult.ticketUrl === "string"
+          ? pixResult.ticketUrl
+          : "";
+
+      if (!pixCode) {
+        throw new Error("Mercado Pago não retornou o PIX Copia e Cola.");
+      }
+
+      const { data: payment, error: paymentError } = await admin
+        .from("payments")
+        .select("id")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .single();
+
+      if (paymentError || !payment) {
+        throw paymentError ?? new Error("Pagamento da cobrança não encontrado.");
+      }
+
+      paymentId = payment.id;
+
+      // Persiste a cobrança antes de tentar enviar o e-mail. Se o provedor
+      // de e-mail estiver indisponível, o próximo cron reutiliza o mesmo PIX.
+      await finishDelivery(admin, delivery.id, {
+        status: "processing",
+        order_id: orderId,
+        payment_id: paymentId,
+        checkout_url: checkoutUrl,
+        pix_code: pixCode,
+        pix_ticket_url: pixTicketUrl || null,
+        recipient_email: customer.email,
+        last_error: null,
+      });
     }
 
-    const token = sessionTokenFromUrl(intent.checkoutUrl);
+    const token = sessionTokenFromUrl(checkoutUrl);
     const view = await getSubscriptionCheckoutSessionView(token);
-
-    const pixResult = await createSubscriptionSessionCheckout({
-      sessionToken: token,
-      customerName: customer.name || undefined,
-      customerEmail: customer.email,
-      idempotencyKey: `automatic-due:${subscription.id}:${subscription.current_period_end}`,
-      paymentMethod: "pix",
-    });
-
-    if (!pixResult.orderId) {
-      throw new Error("Cobrança automática sem pedido interno.");
-    }
-
-    const pixCode =
-      "qrCode" in pixResult && typeof pixResult.qrCode === "string"
-        ? pixResult.qrCode
-        : "";
-    const pixTicketUrl =
-      "ticketUrl" in pixResult && typeof pixResult.ticketUrl === "string"
-        ? pixResult.ticketUrl
-        : "";
-
-    if (!pixCode) {
-      throw new Error("Mercado Pago não retornou o PIX Copia e Cola.");
-    }
-
-    const { data: payment, error: paymentError } = await admin
-      .from("payments")
-      .select("id")
-      .eq("order_id", pixResult.orderId)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .single();
-
-    if (paymentError || !payment) {
-      throw paymentError ?? new Error("Pagamento da cobrança não encontrado.");
-    }
 
     await sendSubscriptionBillingEmail({
       to: customer.email,
@@ -205,14 +247,14 @@ async function processOne(
       })),
       totalAmountCents: Number(view.amountCents),
       pixCode,
-      checkoutUrl: intent.checkoutUrl,
+      checkoutUrl,
     });
 
     await finishDelivery(admin, delivery.id, {
       status: "sent",
-      order_id: pixResult.orderId,
-      payment_id: payment.id,
-      checkout_url: intent.checkoutUrl,
+      order_id: orderId,
+      payment_id: paymentId,
+      checkout_url: checkoutUrl,
       pix_code: pixCode,
       pix_ticket_url: pixTicketUrl || null,
       recipient_email: customer.email,
@@ -223,7 +265,7 @@ async function processOne(
     return {
       status: "sent" as const,
       subscriptionId: subscription.id,
-      orderId: pixResult.orderId,
+      orderId,
       amountCents: Number(view.amountCents),
     };
   } catch (error) {
