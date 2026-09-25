@@ -468,11 +468,34 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
   let baseDescription = base.description;
   let baseAmount = Number(base.unit_amount_cents);
   const addons = new Map<string, ProjectedAddon>();
-  for (const item of items.filter(item => item.item_type === "addon" && item.addon_id)) {
+  const activeAddonItems = items.filter(
+    item => item.item_type === "addon" && item.addon_id
+  );
+  const activeAddonIds = activeAddonItems
+    .map(item => item.addon_id!)
+    .filter(Boolean);
+
+  const catalogNames = new Map<string, string>();
+  if (activeAddonIds.length > 0) {
+    const { data: catalogAddons, error: catalogAddonsError } = await admin
+      .from("product_addons")
+      .select("id,name")
+      .in("id", activeAddonIds);
+
+    if (catalogAddonsError) throw catalogAddonsError;
+
+    for (const addon of catalogAddons ?? []) {
+      catalogNames.set(addon.id, addon.name);
+    }
+  }
+
+  for (const item of activeAddonItems) {
     addons.set(item.addon_id!, {
       id: item.addon_id!,
       code: item.code,
-      description: item.description,
+      description:
+        catalogNames.get(item.addon_id!) ||
+        item.description,
       unitAmountCents: Number(item.unit_amount_cents),
       quantity: Number(item.quantity),
     });
