@@ -166,7 +166,12 @@ async function processOne(
       throw new Error("Cobrança automática sem pedido interno.");
     }
 
-    if (!pixResult.qrCode) {
+    const pixCode =
+      "qrCode" in pixResult ? pixResult.qrCode : undefined;
+    const pixTicketUrl =
+      "ticketUrl" in pixResult ? pixResult.ticketUrl : undefined;
+
+    if (!pixCode) {
       throw new Error("Mercado Pago não retornou o PIX Copia e Cola.");
     }
 
@@ -193,7 +198,7 @@ async function processOne(
         totalAmountCents: Number(line.totalAmountCents || 0),
       })),
       totalAmountCents: Number(view.amountCents),
-      pixCode: pixResult.qrCode,
+      pixCode,
       checkoutUrl: intent.checkoutUrl,
     });
 
@@ -202,8 +207,8 @@ async function processOne(
       order_id: pixResult.orderId,
       payment_id: payment.id,
       checkout_url: intent.checkoutUrl,
-      pix_code: pixResult.qrCode,
-      pix_ticket_url: pixResult.ticketUrl || null,
+      pix_code: pixCode,
+      pix_ticket_url: pixTicketUrl || null,
       recipient_email: customer.email,
       sent_at: new Date().toISOString(),
       last_error: null,
