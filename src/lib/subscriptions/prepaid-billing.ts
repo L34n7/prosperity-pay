@@ -452,22 +452,6 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
 
   const payingAhead = now < periodEndMs;
 
-  const { data: renewalInProgress, error: renewalInProgressError } = await admin
-    .from("subscription_checkout_sessions")
-    .select("id,order_id")
-    .eq("subscription_id", subscription.id)
-    .eq("session_type", "subscription_renewal")
-    .is("consumed_at", null)
-    .not("order_id", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (renewalInProgressError) throw renewalInProgressError;
-  if (renewalInProgress?.order_id) {
-    throw new HttpError(409, "Já existe um pagamento de renovação aguardando conclusão.");
-  }
-
   const items = await activeItems(admin, subscription.id);
   const base = items.find(item => item.item_type === "base");
   if (!base) throw new HttpError(409, "Item base da assinatura não encontrado.");
@@ -586,12 +570,6 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
   const affiliateBaseAmountCents = lines.reduce((sum, line) => sum + line.commissionableAmountCents, 0);
   if (amountCents <= 0) throw new HttpError(409, "Valor de renovação inválido.");
 
-  await admin.from("subscription_checkout_sessions")
-    .update({ expires_at: new Date().toISOString() })
-    .eq("subscription_id", subscription.id)
-    .eq("session_type", "subscription_renewal")
-    .is("consumed_at", null);
-
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const session = await newSession({
     admin,
@@ -605,6 +583,7 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
       affiliateBaseAmountCents,
       targetOfferId,
       billingReason: "subscription_renewal",
+      renewalDueAt: subscription.current_period_end,
     } as unknown as Json,
   });
 
