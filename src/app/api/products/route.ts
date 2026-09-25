@@ -212,7 +212,7 @@ export async function POST(request: Request) {
       partner_payment_emails_enabled: true,
       billing_model: "prepaid",
     };
-    const { data, error } = await supabase.from("products").insert(insert).select().single();
+    const { data, error } = await (supabase.from("products") as any).insert(insert).select().single();
     if (error) throw error;
     return NextResponse.json({ product: data }, { status: 201 });
   } catch (error) { return jsonError(error); }
