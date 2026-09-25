@@ -28,6 +28,7 @@ type Product = {
   first_charge_cents: number | null;
   recurring_price_cents: number | null;
   main_offer_price_cents: number | null;
+  automatic_due_billing_enabled: boolean;
 };
 
 type Props = {
@@ -49,6 +50,8 @@ function cents(value: FormDataEntryValue | null) {
 
 export function ProductSettings({ product, busy, onSave, onChangeImage, onRemoveImage, onDelete }: Props) {
   const [active, setActive] = useState(product.status === "active");
+  const [automaticDueBillingEnabled, setAutomaticDueBillingEnabled] =
+    useState(product.automatic_due_billing_enabled === true);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -71,6 +74,8 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
       firstChargeCents: product.different_first_charge ? product.first_charge_cents : null,
       recurringPriceCents: product.payment_type === "recurring" ? cents(data.get("recurringPrice")) : null,
       mainOfferPriceCents: product.payment_type === "one_time" ? cents(data.get("mainOfferPrice")) : null,
+      automaticDueBillingEnabled:
+        product.payment_type === "recurring" && automaticDueBillingEnabled,
     });
   }
 
@@ -113,6 +118,38 @@ export function ProductSettings({ product, busy, onSave, onChangeImage, onRemove
           {product.payment_type === "recurring" && <label className={styles.field}><span>Modelo de cobrança</span><select value="prepaid" disabled><option value="prepaid">Pré-pago</option></select></label>}
         </div>
         <p className={styles.hint}>{product.payment_type === "recurring" ? "A assinatura é pré-paga: pagamento aprovado libera o ciclo; upgrades e novos adicionais cobram somente o proporcional restante. O modelo pós-pago ficará disponível futuramente." : "O valor efetivamente cobrado no checkout é o preço configurado em cada oferta."}</p>
+
+        {product.payment_type === "recurring" && (
+          <div className={styles.statusField}>
+            <span>Cobrança automática no vencimento</span>
+            <div className={styles.statusControl}>
+              <button
+                type="button"
+                className={`${styles.switch} ${automaticDueBillingEnabled ? styles.switchOn : ""}`}
+                role="switch"
+                aria-checked={automaticDueBillingEnabled}
+                aria-label={
+                  automaticDueBillingEnabled
+                    ? "Desativar cobrança automática"
+                    : "Ativar cobrança automática"
+                }
+                onClick={() =>
+                  setAutomaticDueBillingEnabled((value) => !value)
+                }
+              >
+                <span />
+              </button>
+              <div>
+                <strong>
+                  {automaticDueBillingEnabled ? "Ativada" : "Desativada"}
+                </strong>
+                <small>
+                  Quando ativada, a Prosperity Pay gera o PIX no vencimento e envia ao cliente um e-mail com composição, PIX Copia e Cola e link para pagamento por cartão.
+                </small>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className={styles.card}>
