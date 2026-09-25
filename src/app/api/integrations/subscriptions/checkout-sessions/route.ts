@@ -7,31 +7,50 @@ import { createAdminClient } from "@/lib/supabase/admin";
 async function ensureIntegrationOwnsSubscriptionRoute(integrationKey: string, subscriptionId: string) {
   const admin = createAdminClient();
   const { data: subscription, error: subscriptionError } = await admin.from("subscriptions")
-    .select("offer_id")
+    .select("offer_id,product_id")
     .eq("id", subscriptionId)
     .single();
   if (subscriptionError || !subscription) throw new HttpError(404, "Assinatura não encontrada.");
 
-  const { data: offer, error: offerError } = await admin.from("offers")
-    .select("checkout_slug")
-    .eq("id", subscription.offer_id)
-    .single();
-  if (offerError || !offer) throw new HttpError(404, "Oferta da assinatura não encontrada.");
-
-  const { data: route, error: routeError } = await admin.from("integration_webhook_routes")
-    .select("id")
+  const { data: routes, error: routeError } = await admin.from("integration_webhook_routes")
+    .select("offer_reference")
     .eq("integration", integrationKey)
-    .eq("offer_reference", offer.checkout_slug)
-    .eq("active", true)
-    .maybeSingle();
+    .eq("active", true);
   if (routeError) throw routeError;
-  if (!route) throw new HttpError(403, "Esta integração não pode alterar a assinatura informada.");
+
+  const references = (routes ?? [])
+    .map((route) => String(route.offer_reference || "").trim())
+    .filter(Boolean);
+
+  if (references.length === 0) {
+    throw new HttpError(403, "Esta integração não pode alterar a assinatura informada.");
+  }
+
+  const { data: allowedOffer, error: allowedOfferError } = await admin.from("offers")
+    .select("id")
+    .eq("product_id", subscription.product_id)
+    .in("checkout_slug", references)
+    .limit(1)
+    .maybeSingle();
+
+  if (allowedOfferError) throw allowedOfferError;
+  if (!allowedOffer) {
+    throw new HttpError(403, "Esta integração não pode alterar a assinatura informada.");
+  }
 }
 
 function parseAction(body: Record<string, unknown>): SubscriptionAction {
   const action = asObject(body.action);
   const type = requiredString(action, "type", 40);
   if (type === "renew") return { type };
+
+  if (type === "cancel_scheduled_plan_change") {
+    const changeId =
+      typeof action.changeId === "string" && action.changeId.trim()
+        ? action.changeId.trim()
+        : undefined;
+    return { type, changeId };
+  }
 
   if (type === "change_plan") {
     return {
@@ -76,7 +95,12 @@ export async function POST(request: Request) {
       action: parseAction(body),
     });
 
-    return NextResponse.json(result, { status: result.status === "scheduled" ? 200 : 201 });
+    return NextResponse.json(result, {
+      status:
+        result.status === "scheduled" || result.status === "cancelled"
+          ? 200
+          : 201,
+    });
   } catch (error) {
     return jsonError(error);
   }
