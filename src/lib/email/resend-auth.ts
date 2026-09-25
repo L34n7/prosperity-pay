@@ -465,11 +465,11 @@ export async function sendSubscriptionBillingEmail(params: {
   checkoutUrl: string;
 }) {
   const name = escapeHtml(params.name || "cliente");
-  const productName = escapeHtml(params.productName || "Assinatura");
   const checkoutUrl = escapeHtml(params.checkoutUrl);
   const pixCode = escapeHtml(params.pixCode);
   const dueDate = escapeHtml(formatBillingDate(params.dueAt));
   const total = escapeHtml(formatBillingCurrency(params.totalAmountCents));
+  const logoUrl = "https://crmprosperity.com/logo.png";
 
   const rows = params.lines
     .filter((line) => Number(line.totalAmountCents || 0) >= 0)
@@ -477,113 +477,102 @@ export async function sendSubscriptionBillingEmail(params: {
       const description = escapeHtml(line.description || "Item da mensalidade");
       const quantity = Math.max(1, Number(line.quantity || 1));
       const amount = escapeHtml(formatBillingCurrency(line.totalAmountCents));
-      const quantityLabel = quantity > 1
-        ? ` <span style="color:#6b7f76;font-weight:600;">× ${quantity}</span>`
-        : "";
+      const quantityLabel =
+        quantity > 1
+          ? ` <span style="color:#6b7f76;font-weight:600;">× ${quantity}</span>`
+          : "";
       const operator = index === 0 ? "" : "+";
 
       return `
         <tr>
-          <td style="width:24px;padding:9px 0;color:#159474;font-size:15px;font-weight:900;">${operator}</td>
-          <td style="padding:9px 8px;color:#18342c;font-size:14px;font-weight:750;">${description}${quantityLabel}</td>
-          <td align="right" style="padding:9px 0;color:#102a23;font-size:14px;font-weight:850;white-space:nowrap;">${amount}</td>
+          <td style="width:24px;padding:9px 0;color:#20b486;font-size:15px;font-weight:900;">${operator}</td>
+          <td style="padding:9px 8px;color:#17322f;font-size:14px;font-weight:750;">${description}${quantityLabel}</td>
+          <td align="right" style="padding:9px 0;color:#17322f;font-size:14px;font-weight:850;white-space:nowrap;">${amount}</td>
         </tr>`;
     })
     .join("");
 
   const html = `
-  <!DOCTYPE html>
-  <html lang="pt-BR">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Sua mensalidade está disponível</title>
-    </head>
-    <body style="margin:0;padding:0;background:#eef4f1;font-family:Arial,Helvetica,sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef4f1;padding:34px 14px;">
-        <tr>
-          <td align="center">
-            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:640px;background:#ffffff;border:1px solid #d8e5df;border-radius:22px;overflow:hidden;box-shadow:0 24px 70px rgba(10,45,35,.12);">
-              <tr>
-                <td style="background:linear-gradient(135deg,#071a14 0%,#0a2c22 58%,#11674f 100%);padding:34px 32px;">
+    <div style="margin:0;padding:32px 16px;background:#eef4f2;font-family:Arial,Helvetica,sans-serif">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+        <tr><td align="center">
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:620px;background:#fff;border:1px solid #dce7e4;border-radius:20px;overflow:hidden;box-shadow:0 18px 45px rgba(7,19,26,.10)">
+            <tr>
+              <td style="padding:30px 32px;background:linear-gradient(135deg,#20b486,#07131a);color:#fff">
+                <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                  <tr>
+                    <td style="padding:0;vertical-align:middle">
+                      <div style="font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;opacity:.86">CRM Prosperity · Cobrança de mensalidade</div>
+                      <h1 style="margin:12px 0 0;font-size:25px;line-height:1.25">Sua mensalidade está disponível</h1>
+                      <p style="margin:8px 0 0;font-size:14px;line-height:1.5;color:#d9eee7">Vencimento em ${dueDate}</p>
+                    </td>
+                    <td width="86" align="right" style="width:86px;padding:0 0 0 18px;vertical-align:middle">
+                      <img src="${logoUrl}" alt="CRM Prosperity" width="72" style="display:block;width:72px;height:auto;border:0;outline:none;text-decoration:none" />
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:30px 32px;color:#3f5752;font-size:15px;line-height:1.65">
+                <p style="margin:0 0 14px">Olá, <strong>${name}</strong>.</p>
+                <p style="margin:0 0 22px">
+                  Sua mensalidade do <strong>CRM Prosperity</strong> já está disponível para pagamento.
+                  Você pode pagar pelo PIX abaixo ou abrir o checkout para concluir com cartão.
+                </p>
+
+                <div style="margin:22px 0;padding:19px 20px;background:#f6f9f8;border:1px solid #dce7e4;border-left:4px solid #20b486;border-radius:10px">
+                  <div style="margin:0 0 12px;color:#17322f;font-size:15px;font-weight:800">Composição da mensalidade</div>
                   <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                    ${rows}
                     <tr>
-                      <td>
-                        <div style="color:#6bf0bc;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;">Cobrança de mensalidade</div>
-                        <h1 style="margin:0;color:#ffffff;font-size:27px;line-height:1.22;font-weight:850;letter-spacing:-.03em;">Sua mensalidade está disponível</h1>
-                        <p style="margin:10px 0 0;color:#c2d9cf;font-size:14px;line-height:1.55;">${productName} · vencimento em ${dueDate}</p>
-                      </td>
-                      <td align="right" valign="top" style="padding-left:20px;">
-                        <div style="display:inline-block;padding:9px 12px;border:1px solid rgba(107,240,188,.28);border-radius:12px;background:rgba(8,28,21,.55);color:#ffffff;font-size:15px;font-weight:900;">
-                          Prosperity <span style="color:#f2ce70;font-size:11px;letter-spacing:.1em;">PAY</span>
-                        </div>
-                      </td>
+                      <td colspan="3" style="height:1px;background:#dce7e4"></td>
+                    </tr>
+                    <tr>
+                      <td colspan="2" style="padding-top:14px;color:#60736b;font-size:12px;font-weight:850;text-transform:uppercase">Total</td>
+                      <td align="right" style="padding-top:14px;color:#149a73;font-size:21px;font-weight:900;white-space:nowrap">${total}</td>
                     </tr>
                   </table>
-                </td>
-              </tr>
+                </div>
 
-              <tr>
-                <td style="padding:32px;">
-                  <p style="margin:0 0 10px;color:#102a23;font-size:18px;line-height:1.5;font-weight:850;">Olá, ${name}!</p>
-                  <p style="margin:0 0 24px;color:#5b6f67;font-size:14px;line-height:1.7;">
-                    A cobrança do seu próximo ciclo já foi gerada. Você pode pagar pelo PIX abaixo ou abrir o checkout para concluir com cartão.
+                <div style="margin:22px 0;padding:19px 20px;background:#f6fbf9;border:1px solid #d5e9e1;border-left:4px solid #20b486;border-radius:10px">
+                  <div style="margin:0 0 8px;color:#17322f;font-size:15px;font-weight:800">PIX Copia e Cola</div>
+                  <p style="margin:0 0 11px;color:#60736b;font-size:13px;line-height:1.55">
+                    Copie o código abaixo e cole na área PIX do seu banco:
                   </p>
+                  <div style="padding:13px 14px;border:1px dashed #9fcdbb;border-radius:9px;background:#fff;color:#17322f;font-family:Consolas,Monaco,monospace;font-size:11px;line-height:1.55;word-break:break-all">${pixCode}</div>
+                </div>
 
-                  <div style="margin-bottom:24px;padding:18px 20px;border:1px solid #dbe8e2;border-radius:16px;background:#f8fbf9;">
-                    <div style="margin-bottom:8px;color:#178465;font-size:10px;font-weight:900;letter-spacing:.11em;text-transform:uppercase;">Composição da mensalidade</div>
-                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                      ${rows}
-                      <tr>
-                        <td colspan="3" style="height:1px;background:#dce8e2;"></td>
-                      </tr>
-                      <tr>
-                        <td colspan="2" style="padding-top:14px;color:#60736b;font-size:12px;font-weight:850;text-transform:uppercase;">Total</td>
-                        <td align="right" style="padding-top:14px;color:#0d8e68;font-size:21px;font-weight:900;white-space:nowrap;">${total}</td>
-                      </tr>
-                    </table>
-                  </div>
+                <div style="text-align:center;margin-top:26px">
+                  <a href="${checkoutUrl}" style="display:inline-block;background:#20b486;color:#fff;text-decoration:none;padding:15px 24px;border-radius:10px;font-size:15px;font-weight:700">
+                    Pagar com cartão ou abrir checkout
+                  </a>
+                </div>
 
-                  <div style="margin-bottom:24px;padding:18px 20px;border:1px solid #cce5da;border-radius:16px;background:#f2faf6;">
-                    <div style="margin-bottom:7px;color:#126b53;font-size:12px;font-weight:900;">PIX Copia e Cola</div>
-                    <p style="margin:0;color:#50675d;font-size:12px;line-height:1.55;">Copie o código abaixo e cole na área PIX do seu banco:</p>
-                    <div style="margin-top:12px;padding:13px 14px;border:1px dashed #9ccab7;border-radius:11px;background:#ffffff;color:#173c31;font-family:Consolas,Monaco,monospace;font-size:11px;line-height:1.55;word-break:break-all;">${pixCode}</div>
-                  </div>
-
-                  <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-                    <tr>
-                      <td align="center" style="padding:2px 0 26px;">
-                        <a href="${checkoutUrl}" style="display:inline-block;background:linear-gradient(135deg,#0f8065 0%,#16a477 100%);color:#ffffff;text-decoration:none;padding:15px 25px;border-radius:12px;font-size:14px;font-weight:900;box-shadow:0 10px 24px rgba(15,128,101,.18);">
-                          Pagar com cartão ou abrir checkout
-                        </a>
-                      </td>
-                    </tr>
-                  </table>
-
-                  <div style="padding:15px 17px;border-radius:13px;background:#f8faf9;border:1px solid #e2eae6;">
-                    <p style="margin:0;color:#72827b;font-size:12px;line-height:1.6;">
-                      Você pode manter este PIX em aberto e, se preferir, abrir o checkout para pagar com cartão ou gerar um novo PIX. O ciclo só é renovado após a confirmação de um dos pagamentos.
-                    </p>
-                  </div>
-
-                  <p style="margin:22px 0 0;color:#8a9992;font-size:11px;line-height:1.6;word-break:break-all;">
-                    Link de pagamento: ${checkoutUrl}
+                <div style="margin:24px 0 0;padding:16px 18px;background:#f6f9f8;border:1px solid #dce7e4;border-radius:10px">
+                  <p style="margin:0;color:#60736b;font-size:13px;line-height:1.6">
+                    O PIX continua válido mesmo que você abra o checkout. Se preferir, você também pode gerar outro PIX ou concluir o pagamento com cartão.
                   </p>
-                </td>
-              </tr>
+                </div>
 
-              <tr>
-                <td style="background:#f7faf8;border-top:1px solid #dce8e1;padding:20px 30px;text-align:center;">
-                  <p style="margin:0 0 5px;color:#17362d;font-size:13px;font-weight:900;">Prosperity Pay</p>
-                  <p style="margin:0;color:#91a099;font-size:11px;line-height:1.5;">Cobrança segura processada pela Prosperity Pay.</p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
+                <p style="margin:20px 0 0;color:#8ca09b;font-size:11px;line-height:1.6;word-break:break-all">
+                  Link para pagamento: ${checkoutUrl}
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:16px 32px;background:#f6f9f8;border-top:1px solid #dce7e4;color:#8ca09b;font-size:12px;line-height:1.5">
+                Este é um aviso automático sobre sua assinatura do CRM Prosperity.
+                <br />
+                <span style="font-size:11px;color:#a0afa9">Pagamento processado com segurança pela Prosperity Pay.</span>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
       </table>
-    </body>
-  </html>`;
+    </div>`;
 
   const compositionText = params.lines
     .map((line, index) => {
@@ -594,12 +583,12 @@ export async function sendSubscriptionBillingEmail(params: {
 
   await sendEmail({
     to: params.to,
-    subject: `Mensalidade disponível • ${params.productName}`,
+    subject: "Sua mensalidade está disponível • CRM Prosperity",
     html,
     text: [
-      `Olá, ${params.name}!`,
+      `Olá, ${params.name}.`,
       "",
-      `Sua mensalidade de ${params.productName} está disponível.`,
+      "Sua mensalidade do CRM Prosperity está disponível para pagamento.",
       `Vencimento: ${formatBillingDate(params.dueAt)}`,
       "",
       "Composição:",
@@ -612,7 +601,8 @@ export async function sendSubscriptionBillingEmail(params: {
       "Para pagar com cartão ou abrir o checkout:",
       params.checkoutUrl,
       "",
-      "Prosperity Pay",
+      "CRM Prosperity",
+      "Pagamento processado pela Prosperity Pay.",
     ].join("\n"),
   });
 }
