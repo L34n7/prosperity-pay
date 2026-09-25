@@ -166,7 +166,7 @@ export async function PATCH(request: Request, context: Context) {
       }
     }
 
-    const { data, error } = await supabase.from("products").update(update).eq("id", productId).select().single();
+    const { data, error } = await (supabase.from("products") as any).update(update).eq("id", productId).select().single();
     if (error) throw error;
 
     const billing = paymentType === "recurring" ? recurrenceToBilling(update.recurrence_frequency as RecurrenceFrequency) : null;
