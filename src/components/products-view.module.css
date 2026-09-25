@@ -570,6 +570,14 @@
 .createField textarea{padding:10px 11px;resize:vertical;line-height:1.5}
 .createField input:focus,.createField select:focus,.createField textarea:focus{border-color:rgba(34,230,161,.48);box-shadow:0 0 0 3px rgba(34,230,161,.055)}
 .createField>small{margin-top:-2px;color:var(--text-subtle);font-size:.58rem;font-weight:500}
+.autoBillingControl{display:flex;align-items:flex-start;gap:12px;margin-top:12px;padding:13px 14px;border:1px solid rgba(83,135,108,.18);border-radius:12px;background:rgba(8,18,13,.68)}
+.autoBillingControl>div{display:grid;gap:3px;min-width:0}
+.autoBillingControl strong{color:var(--text);font-size:.72rem}
+.autoBillingControl small{color:var(--text-subtle);font-size:.61rem;line-height:1.5;font-weight:500}
+.autoBillingSwitch{position:relative;flex:0 0 auto;width:42px;height:24px;padding:0;border:1px solid rgba(120,146,133,.3);border-radius:999px;background:#101a15;cursor:pointer;transition:.18s ease}
+.autoBillingSwitch span{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#8ba097;transition:.18s ease}
+.autoBillingSwitchOn{border-color:rgba(34,230,161,.5);background:rgba(34,230,161,.16)}
+.autoBillingSwitchOn span{left:21px;background:#22e6a1}
 .priceField{position:relative}.priceField small{position:absolute;z-index:1;top:50%;left:11px;transform:translateY(-50%);color:var(--gold-soft);font-size:.62rem;font-weight:750}.priceField input{padding-left:34px}
 .createUpload{display:flex;align-items:center;gap:11px;min-height:66px;padding:12px 13px;border:1px dashed rgba(83,135,108,.25);border-radius:11px;background:rgba(255,255,255,.01);color:var(--primary);cursor:pointer}
 .createUpload:hover{border-color:rgba(34,230,161,.3);background:rgba(34,230,161,.025)}
