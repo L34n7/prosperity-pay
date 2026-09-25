@@ -167,9 +167,13 @@ async function processOne(
     }
 
     const pixCode =
-      "qrCode" in pixResult ? pixResult.qrCode : undefined;
+      "qrCode" in pixResult && typeof pixResult.qrCode === "string"
+        ? pixResult.qrCode
+        : "";
     const pixTicketUrl =
-      "ticketUrl" in pixResult ? pixResult.ticketUrl : undefined;
+      "ticketUrl" in pixResult && typeof pixResult.ticketUrl === "string"
+        ? pixResult.ticketUrl
+        : "";
 
     if (!pixCode) {
       throw new Error("Mercado Pago não retornou o PIX Copia e Cola.");
