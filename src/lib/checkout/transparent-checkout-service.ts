@@ -465,13 +465,12 @@ export async function syncTransparentOrder(input: {
     if (error && error.code !== "23505") throw error;
   }
 
+  let subscriptionApplied = false;
+  let shouldPostFinancials = becameApproved;
+
   if (status === "approved") {
     const { error: orderError } = await admin.from("orders").update({ status: "paid", paid_at: paidAt }).eq("id", internalOrderId);
     if (orderError) throw orderError;
-    if (becameApproved) {
-      const { error } = await admin.rpc("post_payment_financials", { target_payment_id: currentPayment.id });
-      if (error) throw error;
-    }
 
     if (becameApproved && billingOrder.subscription_id) {
       const { data: storedOffer } = await admin.from("offers")
@@ -479,56 +478,115 @@ export async function syncTransparentOrder(input: {
         .eq("id", billingOrder.offer_id)
         .single();
       let start = new Date(paidAt ?? Date.now());
+      let renewalClaimed = true;
 
       if (billingOrder.billing_reason === "subscription_renewal") {
-        const { data: currentSubscription, error: currentSubscriptionError } = await admin
-          .from("subscriptions")
-          .select("current_period_end")
-          .eq("id", billingOrder.subscription_id)
-          .single();
+        const [{ data: currentSubscription, error: currentSubscriptionError }, { data: attemptSession, error: attemptSessionError }] =
+          await Promise.all([
+            admin
+              .from("subscriptions")
+              .select("current_period_end")
+              .eq("id", billingOrder.subscription_id)
+              .single(),
+            admin
+              .from("subscription_checkout_sessions")
+              .select("metadata")
+              .eq("order_id", internalOrderId)
+              .maybeSingle(),
+          ]);
 
         if (currentSubscriptionError || !currentSubscription) {
           throw currentSubscriptionError ?? new Error("Assinatura da renovação não encontrada.");
         }
+        if (attemptSessionError) throw attemptSessionError;
 
-        const currentPeriodEndMs = currentSubscription.current_period_end
-          ? new Date(currentSubscription.current_period_end).getTime()
-          : Number.NaN;
+        const rawMetadata =
+          attemptSession?.metadata &&
+          typeof attemptSession.metadata === "object" &&
+          !Array.isArray(attemptSession.metadata)
+            ? (attemptSession.metadata as Record<string, unknown>)
+            : {};
+        const renewalDueAt =
+          typeof rawMetadata.renewalDueAt === "string"
+            ? rawMetadata.renewalDueAt
+            : null;
 
-        // Pagamento antecipado compra o próximo ciclo completo. O período pago
-        // começa no vencimento atual; pagar antes não encurta a mensalidade.
-        if (Number.isFinite(currentPeriodEndMs) && currentPeriodEndMs > start.getTime()) {
-          start = new Date(currentPeriodEndMs);
+        if (renewalDueAt) {
+          const { data: claimed, error: claimError } = await (admin as any).rpc(
+            "claim_prepaid_subscription_renewal_payment",
+            {
+              target_subscription_id: billingOrder.subscription_id,
+              target_payment_id: currentPayment.id,
+              target_due_at: renewalDueAt,
+            },
+          );
+
+          if (claimError) throw claimError;
+          renewalClaimed = claimed === true;
+
+          if (!renewalClaimed) {
+            shouldPostFinancials = false;
+
+            const { error: duplicateMarkError } = await admin
+              .from("payments")
+              .update({
+                status_detail: "duplicate_renewal_payment",
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", currentPayment.id);
+
+            if (duplicateMarkError) throw duplicateMarkError;
+          }
+        }
+
+        if (renewalClaimed) {
+          const currentPeriodEndMs = currentSubscription.current_period_end
+            ? new Date(currentSubscription.current_period_end).getTime()
+            : Number.NaN;
+
+          // Pagamento antecipado compra o próximo ciclo completo. O período pago
+          // começa no vencimento atual; pagar antes não encurta a mensalidade.
+          if (Number.isFinite(currentPeriodEndMs) && currentPeriodEndMs > start.getTime()) {
+            start = new Date(currentPeriodEndMs);
+          }
         }
       }
 
-      const end = periodEnd(
-        start,
-        (storedOffer ?? { billing_interval: "month", billing_interval_count: 1 }) as Pick<Offer, "billing_interval" | "billing_interval_count">,
-      );
+      if (
+        billingOrder.billing_reason !== "subscription_renewal" ||
+        renewalClaimed
+      ) {
+        const end = periodEnd(
+          start,
+          (storedOffer ?? { billing_interval: "month", billing_interval_count: 1 }) as Pick<Offer, "billing_interval" | "billing_interval_count">,
+        );
 
-      if (billingOrder.billing_reason === "subscription_initial") {
-        const { error } = await admin.rpc("activate_prepaid_subscription", {
-          target_subscription_id: billingOrder.subscription_id,
-          target_payment_id: currentPayment.id,
-          target_period_start: start.toISOString(),
-          target_period_end: end.toISOString(),
-        });
-        if (error) throw error;
-      } else if (billingOrder.billing_reason === "subscription_renewal") {
-        const { error } = await admin.rpc("apply_prepaid_subscription_renewal", {
-          target_subscription_id: billingOrder.subscription_id,
-          target_payment_id: currentPayment.id,
-          target_period_start: start.toISOString(),
-          target_period_end: end.toISOString(),
-        });
-        if (error) throw error;
-      } else if (billingOrder.billing_reason === "subscription_change" && billingOrder.subscription_change_id) {
-        const { error } = await admin.rpc("apply_paid_subscription_change", {
-          target_change_id: billingOrder.subscription_change_id,
-          target_payment_id: currentPayment.id,
-        });
-        if (error) throw error;
+        if (billingOrder.billing_reason === "subscription_initial") {
+          const { error } = await admin.rpc("activate_prepaid_subscription", {
+            target_subscription_id: billingOrder.subscription_id,
+            target_payment_id: currentPayment.id,
+            target_period_start: start.toISOString(),
+            target_period_end: end.toISOString(),
+          });
+          if (error) throw error;
+          subscriptionApplied = true;
+        } else if (billingOrder.billing_reason === "subscription_renewal") {
+          const { error } = await admin.rpc("apply_prepaid_subscription_renewal", {
+            target_subscription_id: billingOrder.subscription_id,
+            target_payment_id: currentPayment.id,
+            target_period_start: start.toISOString(),
+            target_period_end: end.toISOString(),
+          });
+          if (error) throw error;
+          subscriptionApplied = true;
+        } else if (billingOrder.billing_reason === "subscription_change" && billingOrder.subscription_change_id) {
+          const { error } = await admin.rpc("apply_paid_subscription_change", {
+            target_change_id: billingOrder.subscription_change_id,
+            target_payment_id: currentPayment.id,
+          });
+          if (error) throw error;
+          subscriptionApplied = true;
+        }
       }
 
       const { error: consumeError } = await admin.from("subscription_checkout_sessions")
@@ -536,6 +594,11 @@ export async function syncTransparentOrder(input: {
         .eq("order_id", internalOrderId)
         .is("consumed_at", null);
       if (consumeError) throw consumeError;
+    }
+
+    if (shouldPostFinancials) {
+      const { error } = await admin.rpc("post_payment_financials", { target_payment_id: currentPayment.id });
+      if (error) throw error;
     }
   } else if (status === "cancelled") {
     await admin.from("orders").update({ status: "cancelled", cancelled_at: new Date().toISOString() }).eq("id", internalOrderId);
@@ -548,7 +611,7 @@ export async function syncTransparentOrder(input: {
   await Promise.all([
     dispatchPaymentIntegrationEventsSafe(admin, currentPayment.id),
     dispatchPaymentEmailNotificationsSafe(admin, currentPayment.id),
-    becameApproved && billingOrder.subscription_id
+    subscriptionApplied && billingOrder.subscription_id
       ? dispatchSubscriptionIntegrationEventSafe(admin, internalOrderId)
       : Promise.resolve({ sent: 0 }),
   ]);
