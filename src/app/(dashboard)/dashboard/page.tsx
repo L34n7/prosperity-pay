@@ -160,7 +160,8 @@ export default async function Page() {
                   <th>Método</th>
                   <th>Status</th>
                   <th>Valor</th>
-                  <th>Data do pagamento</th>
+                  <th>Data</th>
+                  <th>Data pagamento</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,6 +173,7 @@ export default async function Page() {
                     "Plano não identificado";
                   const customer = order?.customers;
                   const method = paymentMethodOf(payment.raw_provider_data);
+                  const generatedAt = payment.created_at ?? order?.created_at ?? null;
                   const paidAt = payment.paid_at ?? order?.paid_at ?? null;
 
                   return (
@@ -194,6 +196,9 @@ export default async function Page() {
                       </td>
                       <td className="payment-value">
                         {formatCents(payment.gross_amount_cents)}
+                      </td>
+                      <td className="payment-date">
+                        {generatedAt ? formatDate(generatedAt) : "—"}
                       </td>
                       <td className="payment-date">
                         {paidAt ? formatDate(paidAt) : "—"}
