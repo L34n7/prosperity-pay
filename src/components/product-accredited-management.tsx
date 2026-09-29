@@ -20,6 +20,7 @@ import {
   type PartnerAddonSettings,
   type PartnerOfferCommissionOverride,
 } from "@/components/partner-offer-commission-fields";
+import { PartnerCheckoutLinks } from "@/components/partner-checkout-links";
 import { requestJson } from "@/lib/operational";
 import styles from "./product-partner-management.module.css";
 
@@ -70,6 +71,7 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
   const [copied, setCopied] = useState("");
+  const [expandedLinks, setExpandedLinks] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -290,13 +292,17 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
         {members.length ? (
           <div className={styles.list}>
             {members.map((member) => (
-              <div className={styles.row} key={member.id}>
-                <div className={styles.identity}>
-                  <strong>{member.profiles?.full_name || "Credenciado"}</strong>
-                  <small>{member.profiles?.email || "E-mail não disponível"}</small>
-                </div>
-                <code className={styles.code}>{member.code}</code>
-                <div className={styles.individualSummary}>
+              <div className={styles.partnerItem} key={member.id}>
+                <div className={styles.row}>
+                  <div className={styles.identity}>
+                    <strong>{member.profiles?.full_name || "Credenciado"}</strong>
+                    <small>{member.profiles?.email || "E-mail não disponível"}</small>
+                  </div>
+                  <div className={styles.partnerCode}>
+                    <span>ID credenciado</span>
+                    <code>{member.code}</code>
+                  </div>
+                  <div className={styles.individualSummary}>
                   <span>Configuração individual</span>
                   <strong>
                     {member.offer_commission_overrides.length + member.addon_commission_overrides.length
@@ -310,8 +316,15 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
                   </small>
                 </div>
                 <StatusBadge status={member.status} />
-                <div className={styles.rowActions}>
-                  <button type="button" className={styles.secondary} disabled={busy} onClick={() => setSelectedMember(member)}>
+                  <div className={styles.rowActions}>
+                    <button
+                      type="button"
+                      className={styles.secondary}
+                      onClick={() => setExpandedLinks((current) => current === member.id ? null : member.id)}
+                    >
+                      <Link2 size={14} />Links afiliado ou credenciado
+                    </button>
+                    <button type="button" className={styles.secondary} disabled={busy} onClick={() => setSelectedMember(member)}>
                     <SlidersHorizontal size={14} />Config. individuais
                   </button>
                   {member.status === "pending" && (
@@ -329,7 +342,15 @@ export function ProductAccreditedManagement({ id }: { id: string }) {
                       Bloquear
                     </button>
                   )}
+                  </div>
                 </div>
+                {expandedLinks === member.id && (
+                  <PartnerCheckoutLinks
+                    partnerCode={member.code}
+                    offers={offers}
+                    partnerLabel="Credenciado"
+                  />
+                )}
               </div>
             ))}
           </div>

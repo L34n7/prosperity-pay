@@ -12,7 +12,7 @@ export async function GET(_:Request,{params}:{params:Promise<{productId:string}>
     const [programResult,productResult,offersResult,addonsResult]=await Promise.all([
       admin.from("affiliate_programs").select("id,mode,active,cookie_days,terms,attribution_model,customer_data_access,marketplace_enabled,commission_addons,commission_prorated_changes,support_email,landing_page_url,marketplace_description,marketplace_tags").eq("product_id",productId).maybeSingle(),
       admin.from("products").select("settlement_model,payment_type,prosperity_fee_type,prosperity_fee_bps,prosperity_fee_fixed_cents").eq("id",productId).single(),
-      admin.from("offers").select("id,name,price_cents,status,affiliate_enabled,affiliate_commission_bps,prosperity_fee_type,prosperity_fee_bps,prosperity_fee_fixed_cents").eq("product_id",productId).order("created_at"),
+      admin.from("offers").select("id,name,checkout_slug,price_cents,status,affiliate_enabled,affiliate_commission_bps,prosperity_fee_type,prosperity_fee_bps,prosperity_fee_fixed_cents").eq("product_id",productId).order("created_at"),
       admin.from("product_addons").select("id,name,code,unit_amount_cents,active").eq("product_id",productId).order("created_at")
     ]);
     if(programResult.error)throw programResult.error;if(productResult.error)throw productResult.error;if(offersResult.error)throw offersResult.error;if(addonsResult.error)throw addonsResult.error;

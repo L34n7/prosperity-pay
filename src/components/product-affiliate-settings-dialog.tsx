@@ -8,7 +8,7 @@ import styles from "./product-affiliate-settings-dialog.module.css";
 export type AffiliateMode="public"|"approval"|"invite";
 export type AttributionModel="last_click"|"first_click";
 export type AffiliateProgramSettings={id:string;mode:AffiliateMode;active:boolean;cookie_days:number;terms:string|null;attribution_model:AttributionModel;customer_data_access:boolean;marketplace_enabled:boolean;commission_addons:boolean;commission_prorated_changes:boolean;support_email:string|null;landing_page_url:string|null;marketplace_description:string|null;marketplace_tags:string[]};
-export type AffiliateOfferSettings={id:string;name:string;price_cents:number;status:string;affiliate_enabled:boolean;affiliate_commission_bps:number;prosperity_fee_type:"percentage"|"fixed"|"hybrid"|null;prosperity_fee_bps:number|null;prosperity_fee_fixed_cents:number|null};
+export type AffiliateOfferSettings={id:string;name:string;checkout_slug:string;price_cents:number;status:string;affiliate_enabled:boolean;affiliate_commission_bps:number;prosperity_fee_type:"percentage"|"fixed"|"hybrid"|null;prosperity_fee_bps:number|null;prosperity_fee_fixed_cents:number|null};
 export type AffiliateProductSettings={settlement_model:"connected_account"|"prosperity_balance";payment_type:"one_time"|"recurring";prosperity_fee_type:"percentage"|"fixed"|"hybrid";prosperity_fee_bps:number;prosperity_fee_fixed_cents:number};
 
 function Switch({checked,disabled,onChange,label}:{checked:boolean;disabled?:boolean;onChange:(value:boolean)=>void;label:string}){return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className={`${styles.switch} ${checked?styles.switchOn:""}`} onClick={()=>onChange(!checked)}><span/></button>}
