@@ -287,13 +287,15 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
                 </div>
                 <StatusBadge status={member.status} />
                   <div className={styles.rowActions}>
-                    <button
-                      type="button"
-                      className={styles.secondary}
-                      onClick={() => setExpandedLinks((current) => current === member.id ? null : member.id)}
-                    >
-                      <Link2 size={14} />Links afiliado ou credenciado
-                    </button>
+                    {member.status === "active" && (
+                      <button
+                        type="button"
+                        className={styles.secondary}
+                        onClick={() => setExpandedLinks((current) => current === member.id ? null : member.id)}
+                      >
+                        <Link2 size={14} />Links
+                      </button>
+                    )}
                     <button type="button" className={styles.secondary} disabled={busy} onClick={() => setSelectedMember(member)}>
                     <SlidersHorizontal size={14} />Config. individuais
                   </button>
@@ -319,7 +321,7 @@ export function ProductAffiliateManagement({ id }: { id: string }) {
                   )}
                   </div>
                 </div>
-                {expandedLinks === member.id && (
+                {member.status === "active" && expandedLinks === member.id && (
                   <PartnerCheckoutLinks
                     partnerCode={member.code}
                     offers={offers}
