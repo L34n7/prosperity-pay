@@ -65,6 +65,10 @@ function saleDateOf(payment: Payment, order: Order | undefined) {
   return payment.paid_at ?? order?.paid_at ?? payment.created_at;
 }
 
+function generatedDateOf(payment: Payment, order: Order | undefined) {
+  return payment.created_at ?? order?.created_at ?? null;
+}
+
 function paymentDateOf(payment: Payment, order: Order | undefined) {
   return payment.paid_at ?? order?.paid_at ?? null;
 }
@@ -84,12 +88,14 @@ export function PaymentsView({
   const [offer, setOffer] = useState("");
   const [method, setMethod] = useState("");
   const [model, setModel] = useState("");
+  const [sortKey, setSortKey] = useState("generated");
+  const [sortDirection, setSortDirection] = useState<1 | -1>(-1);
 
   const orderMap = new Map(orders.map((order) => [order.id, order]));
   const chosen = payments.find((payment) => payment.id === selected);
   const detail = chosen ? orderMap.get(chosen.order_id) : undefined;
 
-  const list = payments.filter((payment) => {
+  const filtered = payments.filter((payment) => {
     const order = orderMap.get(payment.order_id);
     const saleDate = new Date(saleDateOf(payment, order)).getTime();
 
@@ -101,6 +107,51 @@ export function PaymentsView({
       (!method || methodOf(payment) === method) &&
       (!period || saleDate >= cutoff)
     );
+  });
+
+  function changeSort(key: string) {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === 1 ? -1 : 1));
+      return;
+    }
+    setSortKey(key);
+    setSortDirection(["buyer", "plan", "method", "status"].includes(key) ? 1 : -1);
+  }
+
+  function sortMark(key: string) {
+    if (sortKey !== key) return "↕";
+    return sortDirection === 1 ? "↑" : "↓";
+  }
+
+  const list = [...filtered].sort((a, b) => {
+    const orderA = orderMap.get(a.order_id);
+    const orderB = orderMap.get(b.order_id);
+    let comparison = 0;
+
+    if (sortKey === "buyer") {
+      comparison = (orderA?.customers?.name || orderA?.customers?.email || "").localeCompare(
+        orderB?.customers?.name || orderB?.customers?.email || "",
+        "pt-BR",
+      );
+    } else if (sortKey === "plan") {
+      comparison = planOf(a, orderA).localeCompare(planOf(b, orderB), "pt-BR");
+    } else if (sortKey === "method") {
+      comparison = methodOf(a).localeCompare(methodOf(b), "pt-BR");
+    } else if (sortKey === "status") {
+      comparison = a.status.localeCompare(b.status, "pt-BR");
+    } else if (sortKey === "value") {
+      comparison = Number(a.gross_amount_cents) - Number(b.gross_amount_cents);
+    } else if (sortKey === "paid") {
+      comparison =
+        new Date(paymentDateOf(a, orderA) || 0).getTime() -
+        new Date(paymentDateOf(b, orderB) || 0).getTime();
+    } else {
+      comparison =
+        new Date(generatedDateOf(a, orderA) || 0).getTime() -
+        new Date(generatedDateOf(b, orderB) || 0).getTime();
+    }
+
+    return comparison * sortDirection;
   });
 
   const net = detail?.financial_snapshots
@@ -214,12 +265,13 @@ export function PaymentsView({
             <table className="payment-report-table">
               <thead>
                 <tr>
-                  <th>Comprador</th>
-                  <th>Plano / produto</th>
-                  <th>Método</th>
-                  <th>Status</th>
-                  <th>Valor</th>
-                  <th>Data do pagamento</th>
+                  <th><button type="button" className="payment-sort-button" onClick={() => changeSort("buyer")}>Comprador <span>{sortMark("buyer")}</span></button></th>
+                  <th><button type="button" className="payment-sort-button" onClick={() => changeSort("plan")}>Plano / produto <span>{sortMark("plan")}</span></button></th>
+                  <th><button type="button" className="payment-sort-button" onClick={() => changeSort("method")}>Método <span>{sortMark("method")}</span></button></th>
+                  <th><button type="button" className="payment-sort-button" onClick={() => changeSort("status")}>Status <span>{sortMark("status")}</span></button></th>
+                  <th><button type="button" className="payment-sort-button" onClick={() => changeSort("value")}>Valor <span>{sortMark("value")}</span></button></th>
+                  <th><button type="button" className="payment-sort-button" onClick={() => changeSort("generated")}>Data <span>{sortMark("generated")}</span></button></th>
+                  <th><button type="button" className="payment-sort-button" onClick={() => changeSort("paid")}>Data do pagamento <span>{sortMark("paid")}</span></button></th>
                   <th aria-label="Abrir detalhes" />
                 </tr>
               </thead>
@@ -253,6 +305,7 @@ export function PaymentsView({
                         <StatusBadge status={payment.status as PaymentStatus} />
                       </td>
                       <td className="payment-value">{formatCents(payment.gross_amount_cents)}</td>
+                      <td className="payment-date">{generatedDateOf(payment, order) ? formatDate(generatedDateOf(payment, order)!) : "—"}</td>
                       <td className="payment-date">{paymentDateOf(payment, order) ? formatDate(paymentDateOf(payment, order)!) : "—"}</td>
                       <td className="payment-open-cell">
                         <span aria-hidden="true">→</span>
@@ -296,6 +349,7 @@ export function PaymentsView({
                 ["Comprador", detail.customers?.name || "—"],
                 ["E-mail", detail.customers?.email || "—"],
                 ["Plano", planOf(chosen, detail)],
+                ["Data", generatedDateOf(chosen, detail) ? formatDate(generatedDateOf(chosen, detail)!) : "—"],
                 ["Data do pagamento", paymentDateOf(chosen, detail) ? formatDate(paymentDateOf(chosen, detail)!) : "—"],
                 ["Bruto", formatCents(chosen.gross_amount_cents)],
                 ["Taxa gateway apurada", formatCents(chosen.provider_fee_amount_cents)],
