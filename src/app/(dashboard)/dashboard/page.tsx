@@ -63,51 +63,9 @@ export default async function Page() {
       );
     }, 0);
 
-  const accreditedProductIds = new Set(
-    data.partnerMemberships
-      .filter((membership) => membership.partner_type === "accredited")
-      .map((membership) => {
-        const program = Array.isArray(membership.affiliate_programs)
-          ? membership.affiliate_programs[0]
-          : membership.affiliate_programs;
-        return program?.product_id ?? null;
-      })
-      .filter((productId): productId is string => Boolean(productId)),
-  );
-
-  function commissionProductId(
-    commission: (typeof data.commissions)[number],
-  ) {
-    const payment = Array.isArray(commission.payments)
-      ? commission.payments[0]
-      : commission.payments;
-    const order = payment
-      ? Array.isArray(payment.orders)
-        ? payment.orders[0]
-        : payment.orders
-      : null;
-    return order?.product_id ?? null;
-  }
-
-  const affiliate = data.commissions
-    .filter(
-      (commission) =>
-        commission.commission_type === "affiliate" &&
-        !accreditedProductIds.has(commissionProductId(commission) ?? ""),
-    )
-    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
-
-  const accredited = data.commissions
-    .filter(
-      (commission) =>
-        commission.commission_type === "affiliate" &&
-        accreditedProductIds.has(commissionProductId(commission) ?? ""),
-    )
-    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
-
-  const coproducer = data.commissions
-    .filter((commission) => commission.commission_type === "coproducer")
-    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
+  const affiliate = data.commissionTotals.affiliate_cents;
+  const accredited = data.commissionTotals.accredited_cents;
+  const coproducer = data.commissionTotals.coproducer_cents;
 
   const orderMap = new Map(data.orders.map((order) => [order.id, order]));
   const recentPayments = [...data.payments]
