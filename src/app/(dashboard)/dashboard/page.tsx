@@ -40,9 +40,11 @@ export default async function Page() {
     (sum, payment) => sum + Number(payment.gross_amount_cents),
     0,
   );
+  const ticketAverage = approved.length ? Math.round(volume / approved.length) : 0;
+  const approvedOrderIds = new Set(approved.map((payment) => payment.order_id));
 
   const ownRevenue = data.orders
-    .filter((order) => approved.some((payment) => payment.order_id === order.id))
+    .filter((order) => approvedOrderIds.has(order.id))
     .reduce((sum, order) => {
       if (
         order.settlement_model === "prosperity_balance" &&
@@ -97,6 +99,22 @@ export default async function Page() {
     )
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
 
+  const totalCommissions = affiliate + accredited + coproducer;
+  const withdrawalsTotal = data.withdrawals.reduce(
+    (sum, withdrawal) => sum + Number(withdrawal.amount_cents),
+    0,
+  );
+  const totalFees = data.orders
+    .filter((order) => approvedOrderIds.has(order.id))
+    .reduce((sum, order) => {
+      const payment = approved.find((item) => item.order_id === order.id);
+      return (
+        sum +
+        Number(order.financial_snapshots?.prosperity_fee_amount_cents ?? 0) +
+        Number(payment?.provider_fee_amount_cents ?? 0)
+      );
+    }, 0);
+
   const orderMap = new Map(data.orders.map((order) => [order.id, order]));
   const recentPayments = [...data.payments]
     .sort((a, b) => {
@@ -124,20 +142,15 @@ export default async function Page() {
           ["Vendas", String(approved.length)],
           ["Volume processado", formatCents(volume)],
           ["Receita dos produtos", formatCents(ownRevenue)],
+          ["Ticket médio", formatCents(ticketAverage)],
+          ["Saldo disponível", formatCents(data.balance.available_cents)],
           ["Saldo em retenção", formatCents(data.balance.pending_cents)],
+          ["Saques realizados", formatCents(withdrawalsTotal)],
+          ["Taxas", formatCents(totalFees)],
           ["Comissões de afiliado", formatCents(affiliate)],
           ["Comissões de credenciado", formatCents(accredited)],
           ["Comissões de coprodutor", formatCents(coproducer)],
-          ["Saldo disponível", formatCents(data.balance.available_cents)],
-          [
-            "Saques",
-            formatCents(
-              data.withdrawals.reduce(
-                (sum, withdrawal) => sum + Number(withdrawal.amount_cents),
-                0,
-              ),
-            ),
-          ],
+          ["Comissões totais", formatCents(totalCommissions)],
         ].map(([label, value]) => (
           <article className="panel operational-stat" key={label}>
             <span>{label}</span>
