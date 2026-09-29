@@ -63,8 +63,46 @@ export default async function Page() {
       );
     }, 0);
 
+  const accreditedProductIds = new Set(
+    data.partnerMemberships
+      .filter((membership) => membership.partner_type === "accredited")
+      .map((membership) => {
+        const program = Array.isArray(membership.affiliate_programs)
+          ? membership.affiliate_programs[0]
+          : membership.affiliate_programs;
+        return program?.product_id ?? null;
+      })
+      .filter((productId): productId is string => Boolean(productId)),
+  );
+
+  function commissionProductId(
+    commission: (typeof data.commissions)[number],
+  ) {
+    const payment = Array.isArray(commission.payments)
+      ? commission.payments[0]
+      : commission.payments;
+    const order = payment
+      ? Array.isArray(payment.orders)
+        ? payment.orders[0]
+        : payment.orders
+      : null;
+    return order?.product_id ?? null;
+  }
+
   const affiliate = data.commissions
-    .filter((commission) => commission.commission_type === "affiliate")
+    .filter(
+      (commission) =>
+        commission.commission_type === "affiliate" &&
+        !accreditedProductIds.has(commissionProductId(commission) ?? ""),
+    )
+    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
+
+  const accredited = data.commissions
+    .filter(
+      (commission) =>
+        commission.commission_type === "affiliate" &&
+        accreditedProductIds.has(commissionProductId(commission) ?? ""),
+    )
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
 
   const coproducer = data.commissions
@@ -72,6 +110,13 @@ export default async function Page() {
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
 
   const orderMap = new Map(data.orders.map((order) => [order.id, order]));
+  const recentPayments = [...data.payments]
+    .sort((a, b) => {
+      const aDate = a.created_at ?? orderMap.get(a.order_id)?.created_at ?? "";
+      const bDate = b.created_at ?? orderMap.get(b.order_id)?.created_at ?? "";
+      return new Date(bDate).getTime() - new Date(aDate).getTime();
+    })
+    .slice(0, 5);
 
   return (
     <>
@@ -91,9 +136,10 @@ export default async function Page() {
           ["Vendas", String(approved.length)],
           ["Volume processado", formatCents(volume)],
           ["Receita dos produtos", formatCents(ownRevenue)],
+          ["Saldo em retenção", formatCents(data.balance.pending_cents)],
           ["Comissões de afiliado", formatCents(affiliate)],
-          ["Coprodução", formatCents(coproducer)],
-          ["Saldo pendente", formatCents(data.balance.pending_cents)],
+          ["Comissões de credenciado", formatCents(accredited)],
+          ["Comissões de coprodutor", formatCents(coproducer)],
           ["Saldo disponível", formatCents(data.balance.available_cents)],
           [
             "Saques",
@@ -165,7 +211,7 @@ export default async function Page() {
                 </tr>
               </thead>
               <tbody>
-                {data.payments.slice(0, 5).map((payment) => {
+                {recentPayments.map((payment) => {
                   const order = orderMap.get(payment.order_id);
                   const plan =
                     metadataText(payment.raw_provider_data, "plan_label") ??
