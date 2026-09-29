@@ -13,6 +13,8 @@ export async function getFinanceView() {
     { data: commissions, error: commissionsError },
     { data: balance, error: balanceError },
     { data: withdrawals, error: withdrawalsError },
+    { data: partnerMemberships, error: partnerMembershipsError },
+    { data: partnerPrograms, error: partnerProgramsError },
   ] = await Promise.all([
     supabase
       .from("orders")
@@ -25,7 +27,7 @@ export async function getFinanceView() {
     supabase
       .from("commissions")
       .select(
-        "id,payment_id,commission_type,status,amount_cents,available_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(products(name),offers!orders_offer_id_fkey(name)))",
+        "id,payment_id,commission_type,status,amount_cents,available_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(product_id,products(name),offers!orders_offer_id_fkey(name)))",
       )
       .eq("beneficiary_user_id", user.id)
       .order("created_at", { ascending: false })
@@ -37,10 +39,31 @@ export async function getFinanceView() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(100),
+    admin
+      .from("affiliate_memberships")
+      .select("program_id,partner_type")
+      .eq("user_id", user.id),
+    admin
+      .from("affiliate_programs")
+      .select("id,product_id"),
   ]);
 
-  if (ordersError || commissionsError || balanceError || withdrawalsError) {
-    throw ordersError || commissionsError || balanceError || withdrawalsError;
+  if (
+    ordersError ||
+    commissionsError ||
+    balanceError ||
+    withdrawalsError ||
+    partnerMembershipsError ||
+    partnerProgramsError
+  ) {
+    throw (
+      ordersError ||
+      commissionsError ||
+      balanceError ||
+      withdrawalsError ||
+      partnerMembershipsError ||
+      partnerProgramsError
+    );
   }
 
   const safeOrders = orders ?? [];
@@ -123,6 +146,8 @@ export async function getFinanceView() {
         : null,
     })),
     commissions: commissions ?? [],
+    partnerMemberships: partnerMemberships ?? [],
+    partnerPrograms: partnerPrograms ?? [],
     balance: balance ?? {
       pending_cents: 0,
       available_cents: 0,

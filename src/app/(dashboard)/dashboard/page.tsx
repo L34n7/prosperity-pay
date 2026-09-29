@@ -63,15 +63,40 @@ export default async function Page() {
       );
     }, 0);
 
-  const affiliate = data.commissions
-    .filter((commission) => commission.commission_type === "affiliate")
-    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
-
   const coproducer = data.commissions
     .filter((commission) => commission.commission_type === "coproducer")
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
 
-  const accredited = 0;
+  const partnerTypeByProduct = new Map<string, string>();
+  for (const membership of data.partnerMemberships) {
+    const program = data.partnerPrograms.find(
+      (item) => item.id === membership.program_id,
+    );
+    if (program) {
+      partnerTypeByProduct.set(program.product_id, membership.partner_type);
+    }
+  }
+
+  const affiliate = data.commissions
+    .filter(
+      (commission) =>
+        commission.commission_type === "affiliate" &&
+        partnerTypeByProduct.get(
+          commission.payments?.orders?.product_id ?? "",
+        ) !== "accredited",
+    )
+    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
+
+  const accredited = data.commissions
+    .filter(
+      (commission) =>
+        commission.commission_type === "affiliate" &&
+        partnerTypeByProduct.get(
+          commission.payments?.orders?.product_id ?? "",
+        ) === "accredited",
+    )
+    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
+
   const orderMap = new Map(data.orders.map((order) => [order.id, order]));
   const recentPayments = [...data.payments]
     .sort((a, b) => {
