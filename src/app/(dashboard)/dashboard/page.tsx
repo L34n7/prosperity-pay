@@ -63,10 +63,15 @@ export default async function Page() {
       );
     }, 0);
 
-  const affiliate = data.commissionTotals.affiliate_cents;
-  const accredited = data.commissionTotals.accredited_cents;
-  const coproducer = data.commissionTotals.coproducer_cents;
+  const affiliate = data.commissions
+    .filter((commission) => commission.commission_type === "affiliate")
+    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
 
+  const coproducer = data.commissions
+    .filter((commission) => commission.commission_type === "coproducer")
+    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
+
+  const accredited = 0;
   const orderMap = new Map(data.orders.map((order) => [order.id, order]));
   const recentPayments = [...data.payments]
     .sort((a, b) => {

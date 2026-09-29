@@ -13,7 +13,6 @@ export async function getFinanceView() {
     { data: commissions, error: commissionsError },
     { data: balance, error: balanceError },
     { data: withdrawals, error: withdrawalsError },
-    { data: partnerMemberships, error: partnerMembershipsError },
   ] = await Promise.all([
     supabase
       .from("orders")
@@ -26,7 +25,7 @@ export async function getFinanceView() {
     supabase
       .from("commissions")
       .select(
-        "id,payment_id,commission_type,status,amount_cents,available_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(product_id,products(name),offers!orders_offer_id_fkey(name)))",
+        "id,payment_id,commission_type,status,amount_cents,available_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(products(name),offers!orders_offer_id_fkey(name)))",
       )
       .eq("beneficiary_user_id", user.id)
       .order("created_at", { ascending: false })
@@ -38,78 +37,11 @@ export async function getFinanceView() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(100),
-    admin
-      .from("affiliate_memberships")
-      .select("program_id,partner_type")
-      .eq("user_id", user.id),
   ]);
 
-  if (
-    ordersError ||
-    commissionsError ||
-    balanceError ||
-    withdrawalsError ||
-    partnerMembershipsError
-  ) {
-    throw (
-      ordersError ||
-      commissionsError ||
-      balanceError ||
-      withdrawalsError ||
-      partnerMembershipsError
-    );
+  if (ordersError || commissionsError || balanceError || withdrawalsError) {
+    throw ordersError || commissionsError || balanceError || withdrawalsError;
   }
-
-  const partnerProgramIds = Array.from(
-    new Set((partnerMemberships ?? []).map((membership) => membership.program_id)),
-  );
-  const partnerProgramsResult = partnerProgramIds.length
-    ? await admin
-        .from("affiliate_programs")
-        .select("id,product_id")
-        .in("id", partnerProgramIds)
-    : { data: [], error: null };
-
-  if (partnerProgramsResult.error) throw partnerProgramsResult.error;
-
-  const productIdByProgram = new Map(
-    (partnerProgramsResult.data ?? []).map((program) => [
-      program.id,
-      program.product_id,
-    ]),
-  );
-  const partnerTypeByProduct = new Map(
-    (partnerMemberships ?? [])
-      .map((membership) => [
-        productIdByProgram.get(membership.program_id) ?? null,
-        membership.partner_type,
-      ] as const)
-      .filter(
-        (entry): entry is readonly [string, "affiliate" | "accredited"] =>
-          Boolean(entry[0]),
-      ),
-  );
-
-  const commissionTotals = (commissions ?? []).reduce(
-    (totals, commission) => {
-      if (commission.commission_type === "coproducer") {
-        totals.coproducer_cents += Number(commission.amount_cents);
-        return totals;
-      }
-
-      if (commission.commission_type === "affiliate") {
-        const productId = commission.payments?.orders?.product_id ?? null;
-        if (productId && partnerTypeByProduct.get(productId) === "accredited") {
-          totals.accredited_cents += Number(commission.amount_cents);
-        } else {
-          totals.affiliate_cents += Number(commission.amount_cents);
-        }
-      }
-
-      return totals;
-    },
-    { affiliate_cents: 0, accredited_cents: 0, coproducer_cents: 0 },
-  );
 
   const safeOrders = orders ?? [];
   const orderIds = safeOrders.map((order) => order.id);
@@ -191,7 +123,6 @@ export async function getFinanceView() {
         : null,
     })),
     commissions: commissions ?? [],
-    commissionTotals,
     balance: balance ?? {
       pending_cents: 0,
       available_cents: 0,
