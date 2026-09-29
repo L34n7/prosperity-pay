@@ -65,40 +65,8 @@ function saleDateOf(payment: Payment, order: Order | undefined) {
   return payment.paid_at ?? order?.paid_at ?? payment.created_at;
 }
 
-function generatedDateOf(payment: Payment, order: Order | undefined) {
-  return payment.created_at ?? order?.created_at ?? null;
-}
-
 function paymentDateOf(payment: Payment, order: Order | undefined) {
   return payment.paid_at ?? order?.paid_at ?? null;
-}
-
-function SortableHeader({
-  label,
-  column,
-  sortKey,
-  direction,
-  onSort,
-}: {
-  label: string;
-  column: SortKey;
-  sortKey: SortKey;
-  direction: SortDirection;
-  onSort: (column: SortKey) => void;
-}) {
-  const active = sortKey === column;
-  return (
-    <th aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}>
-      <button
-        type="button"
-        className={"payment-sort-button " + (active ? "is-active" : "")}
-        onClick={() => onSort(column)}
-      >
-        {label}
-        <span aria-hidden="true">{active ? (direction === "asc" ? "↑" : "↓") : "↕"}</span>
-      </button>
-    </th>
-  );
 }
 
 export function PaymentsView({
@@ -116,14 +84,12 @@ export function PaymentsView({
   const [offer, setOffer] = useState("");
   const [method, setMethod] = useState("");
   const [model, setModel] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("generated_at");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   const orderMap = new Map(orders.map((order) => [order.id, order]));
   const chosen = payments.find((payment) => payment.id === selected);
   const detail = chosen ? orderMap.get(chosen.order_id) : undefined;
 
-  const filtered = payments.filter((payment) => {
+  const list = payments.filter((payment) => {
     const order = orderMap.get(payment.order_id);
     const saleDate = new Date(saleDateOf(payment, order)).getTime();
 
@@ -135,56 +101,6 @@ export function PaymentsView({
       (!method || methodOf(payment) === method) &&
       (!period || saleDate >= cutoff)
     );
-  });
-
-  function toggleSort(column: SortKey) {
-    if (sortKey === column) {
-      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortKey(column);
-    setSortDirection(
-      column === "buyer" ||
-        column === "plan" ||
-        column === "method" ||
-        column === "status"
-        ? "asc"
-        : "desc",
-    );
-  }
-
-  const list = [...filtered].sort((a, b) => {
-    const orderA = orderMap.get(a.order_id);
-    const orderB = orderMap.get(b.order_id);
-    let comparison = 0;
-
-    if (sortKey === "buyer") {
-      comparison = (orderA?.customers?.name || orderA?.customers?.email || "").localeCompare(
-        orderB?.customers?.name || orderB?.customers?.email || "",
-        "pt-BR",
-      );
-    } else if (sortKey === "plan") {
-      comparison = planOf(a, orderA).localeCompare(planOf(b, orderB), "pt-BR");
-    } else if (sortKey === "method") {
-      comparison = methodOf(a).localeCompare(methodOf(b), "pt-BR");
-    } else if (sortKey === "status") {
-      comparison = a.status.localeCompare(b.status, "pt-BR");
-    } else if (sortKey === "value") {
-      comparison = Number(a.gross_amount_cents) - Number(b.gross_amount_cents);
-    } else if (sortKey === "generated_at") {
-      comparison =
-        new Date(generatedDateOf(a, orderA) ?? 0).getTime() -
-        new Date(generatedDateOf(b, orderB) ?? 0).getTime();
-    } else {
-      const aDate = paymentDateOf(a, orderA);
-      const bDate = paymentDateOf(b, orderB);
-      if (!aDate && !bDate) comparison = 0;
-      else if (!aDate) return 1;
-      else if (!bDate) return -1;
-      else comparison = new Date(aDate).getTime() - new Date(bDate).getTime();
-    }
-
-    return sortDirection === "asc" ? comparison : -comparison;
   });
 
   const net = detail?.financial_snapshots
@@ -298,13 +214,12 @@ export function PaymentsView({
             <table className="payment-report-table">
               <thead>
                 <tr>
-                  <SortableHeader label="Comprador" column="buyer" sortKey={sortKey} direction={sortDirection} onSort={toggleSort} />
-                  <SortableHeader label="Plano / produto" column="plan" sortKey={sortKey} direction={sortDirection} onSort={toggleSort} />
-                  <SortableHeader label="Método" column="method" sortKey={sortKey} direction={sortDirection} onSort={toggleSort} />
-                  <SortableHeader label="Status" column="status" sortKey={sortKey} direction={sortDirection} onSort={toggleSort} />
-                  <SortableHeader label="Valor" column="value" sortKey={sortKey} direction={sortDirection} onSort={toggleSort} />
-                  <SortableHeader label="Data" column="generated_at" sortKey={sortKey} direction={sortDirection} onSort={toggleSort} />
-                  <SortableHeader label="Data do pagamento" column="paid_at" sortKey={sortKey} direction={sortDirection} onSort={toggleSort} />
+                  <th>Comprador</th>
+                  <th>Plano / produto</th>
+                  <th>Método</th>
+                  <th>Status</th>
+                  <th>Valor</th>
+                  <th>Data do pagamento</th>
                   <th aria-label="Abrir detalhes" />
                 </tr>
               </thead>
@@ -338,7 +253,6 @@ export function PaymentsView({
                         <StatusBadge status={payment.status as PaymentStatus} />
                       </td>
                       <td className="payment-value">{formatCents(payment.gross_amount_cents)}</td>
-                      <td className="payment-date">{generatedDateOf(payment, order) ? formatDate(generatedDateOf(payment, order)!) : "—"}</td>
                       <td className="payment-date">{paymentDateOf(payment, order) ? formatDate(paymentDateOf(payment, order)!) : "—"}</td>
                       <td className="payment-open-cell">
                         <span aria-hidden="true">→</span>
@@ -382,7 +296,6 @@ export function PaymentsView({
                 ["Comprador", detail.customers?.name || "—"],
                 ["E-mail", detail.customers?.email || "—"],
                 ["Plano", planOf(chosen, detail)],
-                ["Data", generatedDateOf(chosen, detail) ? formatDate(generatedDateOf(chosen, detail)!) : "—"],
                 ["Data do pagamento", paymentDateOf(chosen, detail) ? formatDate(paymentDateOf(chosen, detail)!) : "—"],
                 ["Bruto", formatCents(chosen.gross_amount_cents)],
                 ["Taxa gateway apurada", formatCents(chosen.provider_fee_amount_cents)],
