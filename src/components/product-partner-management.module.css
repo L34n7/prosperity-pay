@@ -160,7 +160,9 @@
 .partnerLinksHeader strong {
   display: block;
   color: var(--text-secondary);
-  font-size: .66rem;
+  font-size: .82rem;
+  font-weight: 750;
+  line-height: 1.25;
 }
 .partnerLinksHeader small {
   display: block;
@@ -194,7 +196,9 @@
 }
 .partnerLinkOffer strong {
   color: var(--text-secondary);
-  font-size: .64rem;
+  font-size: .78rem;
+  font-weight: 750;
+  line-height: 1.25;
 }
 .partnerLinkOffer small {
   margin-top: 2px;
