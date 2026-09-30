@@ -239,6 +239,26 @@ a {
 .eyebrow { margin: 0; color: var(--primary); font-size: .67rem; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
 .page-heading-action { flex: 0 0 auto; }
 
+.dashboard-mode-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: .74rem;
+  font-weight: 650;
+}
+.dashboard-mode-control > span:first-child {
+  white-space: nowrap;
+}
+.dashboard-mode-control .select-field {
+  min-width: 145px;
+}
+
+.partner-role-stats {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  margin-top: 14px;
+}
+
 .select-field { position: relative; display: inline-flex; min-width: 154px; height: 40px; align-items: center; }
 .select-field select { width: 100%; height: 100%; appearance: none; padding: 0 34px 0 12px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--surface); color: var(--text-secondary); cursor: pointer; font-size: .78rem; }
 .select-field svg { position: absolute; right: 11px; pointer-events: none; color: var(--text-subtle); }

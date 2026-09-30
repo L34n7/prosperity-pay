@@ -27,7 +27,7 @@ export async function getFinanceView() {
     supabase
       .from("commissions")
       .select(
-        "id,payment_id,commission_type,status,amount_cents,available_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(product_id,products(name),offers!orders_offer_id_fkey(name)))",
+        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(product_id,products(name),offers!orders_offer_id_fkey(name)))",
       )
       .eq("beneficiary_user_id", user.id)
       .order("created_at", { ascending: false })
@@ -41,7 +41,7 @@ export async function getFinanceView() {
       .limit(100),
     admin
       .from("affiliate_memberships")
-      .select("program_id,partner_type")
+      .select("program_id,partner_type,status")
       .eq("user_id", user.id),
     admin
       .from("affiliate_programs")
@@ -81,7 +81,7 @@ export async function getFinanceView() {
 
   const producerAccountIds = (producerAccounts ?? []).map((account) => account.id);
 
-  const [paymentsResult, customersResult, producerLedgerResult] = await Promise.all([
+  const [paymentsResult, customersResult, producerLedgerResult, productsCountResult, participantCountResult] = await Promise.all([
     orderIds.length
       ? supabase
           .from("payments")
@@ -102,11 +102,86 @@ export async function getFinanceView() {
           .in("account_id", producerAccountIds)
           .eq("status", "posted")
       : Promise.resolve({ data: [], error: null }),
+    admin
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("producer_id", user.id),
+    admin
+      .from("product_participants")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("active", true),
   ]);
 
-  if (paymentsResult.error || customersResult.error || producerLedgerResult.error) {
-    throw paymentsResult.error || customersResult.error || producerLedgerResult.error;
+  if (
+    paymentsResult.error ||
+    customersResult.error ||
+    producerLedgerResult.error ||
+    productsCountResult.error ||
+    participantCountResult.error
+  ) {
+    throw (
+      paymentsResult.error ||
+      customersResult.error ||
+      producerLedgerResult.error ||
+      productsCountResult.error ||
+      participantCountResult.error
+    );
   }
+
+  const paymentIds = (paymentsResult.data ?? []).map((payment) => payment.id);
+
+  const [outgoingCommissionsResult, attributionsResult] = await Promise.all([
+    paymentIds.length
+      ? admin
+          .from("commissions")
+          .select("id,payment_id,beneficiary_user_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at")
+          .in("payment_id", paymentIds)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? admin
+          .from("affiliate_attributions")
+          .select("order_id,affiliate_membership_id")
+          .in("order_id", orderIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (outgoingCommissionsResult.error || attributionsResult.error) {
+    throw outgoingCommissionsResult.error || attributionsResult.error;
+  }
+
+  const outgoingMembershipIds = Array.from(
+    new Set(
+      (attributionsResult.data ?? [])
+        .map((item) => item.affiliate_membership_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const outgoingMembershipsResult = outgoingMembershipIds.length
+    ? await admin
+        .from("affiliate_memberships")
+        .select("id,partner_type")
+        .in("id", outgoingMembershipIds)
+    : { data: [], error: null };
+
+  if (outgoingMembershipsResult.error) throw outgoingMembershipsResult.error;
+
+  const outgoingMembershipType = new Map(
+    (outgoingMembershipsResult.data ?? []).map((membership) => [
+      membership.id,
+      membership.partner_type,
+    ]),
+  );
+  const outgoingPartnerTypes = Object.fromEntries(
+    (attributionsResult.data ?? [])
+      .filter((item) => item.order_id)
+      .map((item) => [
+        item.order_id as string,
+        item.affiliate_membership_id
+          ? outgoingMembershipType.get(item.affiliate_membership_id) ?? "affiliate"
+          : "affiliate",
+      ]),
+  );
 
   const producerRevenueEntryTypes = new Set([
     "sale_credit",
@@ -146,8 +221,36 @@ export async function getFinanceView() {
         : null,
     })),
     commissions: commissions ?? [],
+    outgoingCommissions: outgoingCommissionsResult.data ?? [],
+    outgoingPartnerTypes,
     partnerMemberships: partnerMemberships ?? [],
     partnerPrograms: partnerPrograms ?? [],
+    hasProducts: Number(productsCountResult.count ?? 0) > 0,
+    hasPartner:
+      (partnerMemberships ?? []).some((membership) => membership.status === "active") ||
+      Number(participantCountResult.count ?? 0) > 0 ||
+      (commissions ?? []).some(
+        (commission) =>
+          commission.status !== "cancelled" && commission.status !== "reversed",
+      ),
+    partnerRoles: {
+      affiliate: (partnerMemberships ?? []).some(
+        (membership) =>
+          membership.status === "active" && membership.partner_type === "affiliate",
+      ),
+      accredited: (partnerMemberships ?? []).some(
+        (membership) =>
+          membership.status === "active" && membership.partner_type === "accredited",
+      ),
+      coproducer:
+        Number(participantCountResult.count ?? 0) > 0 ||
+        (commissions ?? []).some(
+          (commission) =>
+            commission.commission_type === "coproducer" &&
+            commission.status !== "cancelled" &&
+            commission.status !== "reversed",
+        ),
+    },
     balance: balance ?? {
       pending_cents: 0,
       available_cents: 0,
