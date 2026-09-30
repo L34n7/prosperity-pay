@@ -73,6 +73,14 @@ function paymentDateOf(payment: Payment, order: Order | undefined) {
   return payment.paid_at ?? order?.paid_at ?? null;
 }
 
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
+}
+
 export function PaymentsView({
   orders,
   payments,
@@ -81,6 +89,7 @@ export function PaymentsView({
   payments: Payment[];
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [period, setPeriod] = useState("");
   const [cutoff, setCutoff] = useState(0);
   const [status, setStatus] = useState("");
@@ -95,11 +104,28 @@ export function PaymentsView({
   const chosen = payments.find((payment) => payment.id === selected);
   const detail = chosen ? orderMap.get(chosen.order_id) : undefined;
 
+  const normalizedSearch = normalizeSearch(search);
+
   const filtered = payments.filter((payment) => {
     const order = orderMap.get(payment.order_id);
     const saleDate = new Date(saleDateOf(payment, order)).getTime();
+    const generatedDate = generatedDateOf(payment, order);
+    const paymentDate = paymentDateOf(payment, order);
+    const searchableText = normalizeSearch(
+      [
+        order?.customers?.name ?? "",
+        order?.customers?.email ?? "",
+        planOf(payment, order),
+        order?.products?.name ?? "",
+        formatCents(payment.gross_amount_cents),
+        String(Number(payment.gross_amount_cents) / 100).replace(".", ","),
+        generatedDate ? formatDate(generatedDate) : "",
+        paymentDate ? formatDate(paymentDate) : "",
+      ].join(" "),
+    );
 
     return (
+      (!normalizedSearch || searchableText.includes(normalizedSearch)) &&
       (!status || payment.status === status) &&
       (!product || order?.product_id === product) &&
       (!offer || order?.offer_id === offer) &&
@@ -169,6 +195,17 @@ export function PaymentsView({
       />
 
       <section className="panel operational-panel">
+        <label className="payment-search">
+          <span>Buscar pagamentos</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar por nome, e-mail, plano, valor ou data..."
+            autoComplete="off"
+          />
+        </label>
+
         <div className="filter-row payment-filters">
           <label>
             Período
