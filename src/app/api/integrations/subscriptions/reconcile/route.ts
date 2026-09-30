@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { asObject, HttpError, jsonError, requiredString } from "@/lib/api/http";
+import { asObject, HttpError, jsonError, optionalString, requiredString } from "@/lib/api/http";
 import { requireSignedIntegrationRequest } from "@/lib/integrations/inbound-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -70,6 +70,7 @@ export async function POST(request: Request) {
     const subscriptionId = requiredString(body, "subscriptionId", 80);
     const offerReference = requiredString(body, "offerReference", 120).toLowerCase();
     const baseAmountCents = positiveCents(body.baseAmountCents, "Valor base");
+    const affiliateRefCode = optionalString(body, "affiliateRefCode", 120);
     const whatsappQuantity = nonNegativeInteger(
       body.whatsappNumberQuantity,
       "Quantidade de números adicionais",
@@ -106,6 +107,51 @@ export async function POST(request: Request) {
     }
 
     await ensureIntegrationOwnsProduct(admin, integrationKey, subscription.product_id);
+
+    let affiliateMembershipId: string | null = null;
+    let affiliateLinkId: string | null = null;
+
+    if (affiliateRefCode) {
+      const { data: affiliateLink, error: affiliateLinkError } = await admin
+        .from("affiliate_links")
+        .select("id,membership_id")
+        .eq("ref_code", affiliateRefCode)
+        .eq("active", true)
+        .maybeSingle();
+
+      if (affiliateLinkError) throw affiliateLinkError;
+      if (!affiliateLink) {
+        throw new HttpError(409, "Link de afiliado informado não está ativo.");
+      }
+
+      const { data: membership, error: membershipError } = await admin
+        .from("affiliate_memberships")
+        .select("id,program_id,status")
+        .eq("id", affiliateLink.membership_id)
+        .maybeSingle();
+
+      if (membershipError) throw membershipError;
+      if (!membership || membership.status !== "active") {
+        throw new HttpError(409, "Afiliado informado não está ativo.");
+      }
+
+      const { data: program, error: programError } = await admin
+        .from("affiliate_programs")
+        .select("id,product_id,active")
+        .eq("id", membership.program_id)
+        .maybeSingle();
+
+      if (programError) throw programError;
+      if (!program?.active || program.product_id !== subscription.product_id) {
+        throw new HttpError(
+          409,
+          "O afiliado informado não pertence ao programa deste produto.",
+        );
+      }
+
+      affiliateMembershipId = membership.id;
+      affiliateLinkId = affiliateLink.id;
+    }
 
     const { data: targetOffer, error: targetOfferError } = await admin
       .from("offers")
@@ -231,11 +277,24 @@ export async function POST(request: Request) {
         amount_cents: currentAmountCents,
         base_amount_cents: baseAmountCents,
         current_amount_cents: currentAmountCents,
+        ...(affiliateRefCode
+          ? {
+              affiliate_membership_id: affiliateMembershipId,
+              affiliate_link_id: affiliateLinkId,
+            }
+          : {}),
         metadata: {
           ...metadata,
           reconciledComposition: true,
           reconciledAt: new Date().toISOString(),
           reconciledByIntegration: integrationKey,
+          ...(affiliateRefCode
+            ? {
+                affiliateRefCode,
+                affiliateSyncedAt: new Date().toISOString(),
+                affiliateSyncedByIntegration: integrationKey,
+              }
+            : {}),
         },
       })
       .eq("id", subscriptionId);
@@ -258,6 +317,9 @@ export async function POST(request: Request) {
         offer_reference: targetOffer.checkout_slug,
         base_amount_cents: baseAmountCents,
         current_amount_cents: currentAmountCents,
+        affiliate_ref: affiliateRefCode ?? null,
+        affiliate_membership_id: affiliateMembershipId,
+        affiliate_link_id: affiliateLinkId,
         items: (items ?? []).map((item) => ({
           id: item.id,
           type: item.item_type,
