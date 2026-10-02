@@ -1050,6 +1050,27 @@ a {
   white-space: nowrap;
 }
 
+.payment-date-stack {
+  display: grid;
+  gap: 3px;
+  line-height: 1.15;
+}
+
+.payment-date-stack > span {
+  display: block;
+  margin: 0 !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit;
+  white-space: nowrap;
+}
+
+.payment-date-stack > span:last-child {
+  color: #748a80 !important;
+  font-size: .72rem !important;
+  font-weight: 600;
+}
+
 .payment-method-pill {
   display: inline-flex !important;
   width: max-content;
