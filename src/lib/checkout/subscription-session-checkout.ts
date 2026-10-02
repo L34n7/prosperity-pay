@@ -1,9 +1,10 @@
 import { HttpError } from "@/lib/api/http";
+import { buyerValidationError } from "@/lib/checkout/buyer-validation";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { digits, sha256 } from "@/lib/security/hash";
 import { createRecurringSnapshot } from "@/lib/subscriptions/recurring-financials";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { syncTransparentOrder, type MercadoPagoOrder } from "@/lib/checkout/transparent-checkout-service";
+import { MercadoPagoRequestError, mpRequest, syncTransparentOrder, type MercadoPagoOrder } from "@/lib/checkout/transparent-checkout-service";
 import type { Json } from "@/lib/supabase/database.types";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -105,22 +106,6 @@ function mappedResult(orderId: string, mpOrder: MercadoPagoOrder) {
   };
 }
 
-async function mpRequest<T>(token: string, path: string, init?: RequestInit, idempotencyKey?: string) {
-  const response = await fetch(`https://api.mercadopago.com${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}),
-      ...init?.headers,
-    },
-    cache: "no-store",
-  });
-  const body = await response.json() as T & { message?: string; error?: string };
-  if (!response.ok) throw new HttpError(502, body.message || body.error || `Mercado Pago respondeu HTTP ${response.status}.`);
-  return body;
-}
-
 async function centralConnection(admin: AdminClient) {
   const { data, error } = await admin.from("payment_provider_connections")
     .select("id,provider_id,payment_providers!inner(code)")
@@ -215,6 +200,9 @@ export async function getSubscriptionCheckoutSessionView(sessionToken: string) {
 }
 
 export async function createSubscriptionSessionCheckout(input: SubscriptionSessionCheckoutInput) {
+  // Automatic renewal PIX can omit the CPF; validate it whenever supplied.
+  const validationError = buyerValidationError(input.customerEmail, input.customerDocument || (input.paymentMethod === "card" ? "" : undefined));
+  if (validationError) throw new HttpError(400, validationError);
   const admin = createAdminClient();
   const session = await loadSession(admin, input.sessionToken);
 
@@ -459,11 +447,29 @@ export async function createSubscriptionSessionCheckout(input: SubscriptionSessi
       }),
     }, input.idempotencyKey);
   } catch (error) {
-    await admin.from("orders").update({ status: "cancelled", cancelled_at: new Date().toISOString() }).eq("id", order.id);
+    if (error instanceof MercadoPagoRequestError) {
+      const providerOrder = error.providerBody as MercadoPagoOrder;
+      if (providerOrder?.id) {
+        const { error: linkError } = await admin.from("payment_provider_checkouts")
+          .update({ external_checkout_id: providerOrder.id }).eq("order_id", order.id);
+        if (linkError) throw linkError;
+        try {
+          await syncTransparentOrder({ admin, internalOrderId: order.id, mpOrder: providerOrder });
+        } catch (syncError) {
+          console.error("[subscription-session-checkout] Falha ao sincronizar order rejeitada.", {
+            orderId: order.id,
+            providerOrderId: providerOrder.id,
+            error: syncError instanceof Error ? syncError.message : String(syncError),
+          });
+        }
+      }
+    }
+    await admin.from("orders").update({ status: "cancelled", cancelled_at: new Date().toISOString() }).eq("id", order.id).neq("status", "paid");
     await admin.from("payments").update({
       status: "rejected",
       status_detail: error instanceof Error ? error.message.slice(0, 500) : "provider_error",
-    }).eq("id", paymentRow.id);
+      raw_provider_data: error instanceof MercadoPagoRequestError ? error.providerBody as Json : undefined,
+    }).eq("id", paymentRow.id).neq("status", "approved");
     throw error;
   }
 

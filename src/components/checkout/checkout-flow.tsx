@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Check, Copy, CreditCard, LockKeyhole, QrCode, ShieldCheck } from "lucide-react";
 import { Brand } from "@/components/ui/brand";
 import { formatCents } from "@/lib/operational";
+import { buyerValidationError } from "@/lib/checkout/buyer-validation";
 import styles from "./transparent-checkout.module.css";
 
 type PaymentMethod = "card" | "pix";
@@ -251,7 +252,9 @@ export function CheckoutFlow({
         newAttempt();
       }
       if (body.status === "rejected" || body.status === "cancelled") {
-        throw new Error("Pagamento não aprovado. Confira os dados ou tente outro cartão.");
+        throw new Error(cardAttempt
+          ? "Pagamento não aprovado. Confira os dados ou tente outro cartão."
+          : "O Mercado Pago não conseguiu gerar este PIX. Confira os dados do pagador e tente novamente.");
       }
       return true;
     } catch (cause) {
@@ -274,8 +277,7 @@ export function CheckoutFlow({
     if (!data.name.trim()) return "Preencha o nome completo.";
     if (!data.email.trim()) return "Preencha o e-mail.";
     if (!data.document) return "Preencha o CPF.";
-    if (data.document.length !== 11) return "O CPF deve conter 11 dígitos.";
-    return "";
+    return buyerValidationError(data.email, data.document);
   }
 
   async function submitCard(cardForm: CardFormInstance) {

@@ -1,4 +1,5 @@
 import { HttpError } from "@/lib/api/http";
+import { buyerValidationError } from "@/lib/checkout/buyer-validation";
 import { resolveOfferCommissionOverride } from "@/lib/affiliates/offer-commission-overrides";
 import { FinancialDistributionService, type FeeRule } from "@/lib/financial/financial-distribution-service";
 import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
@@ -139,7 +140,7 @@ function checkoutStatusFromOrder(status: string) {
   return "pending";
 }
 
-class MercadoPagoRequestError<T = unknown> extends HttpError {
+export class MercadoPagoRequestError<T = unknown> extends HttpError {
   constructor(
     public readonly providerStatus: number,
     public readonly providerBody: T,
@@ -158,6 +159,17 @@ function mercadoPagoErrorMessage(body: Record<string, unknown>, status: number) 
         : "";
 
   const errors = Array.isArray(body.errors) ? body.errors : [];
+  const fieldDetails = errors.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    return Array.isArray(record.details) ? record.details.filter((detail): detail is string => typeof detail === "string") : [];
+  });
+  if (fieldDetails.some((detail) => detail.includes("payer.email"))) {
+    return "Informe um e-mail válido, como nome@exemplo.com.br.";
+  }
+  if (fieldDetails.some((detail) => detail.includes("payer.identification"))) {
+    return "CPF inválido. Confira os 11 dígitos do CPF do pagador.";
+  }
   const details = errors
     .map((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) return "";
@@ -185,7 +197,7 @@ function mercadoPagoErrorMessage(body: Record<string, unknown>, status: number) 
   return directMessage || details.join(" | ") || `Mercado Pago respondeu HTTP ${status}.`;
 }
 
-async function mpRequest<T>(token: string, path: string, init?: RequestInit, idempotencyKey?: string) {
+export async function mpRequest<T>(token: string, path: string, init?: RequestInit, idempotencyKey?: string) {
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
     headers: {
@@ -213,7 +225,7 @@ async function mpRequest<T>(token: string, path: string, init?: RequestInit, ide
       orderStatusDetail: typeof body.status_detail === "string" ? body.status_detail : undefined,
       paymentStatus: payments?.[0]?.status,
       paymentStatusDetail: payments?.[0]?.status_detail,
-      errors: Array.isArray(body.errors) ? body.errors : undefined,
+      errors: JSON.stringify(body.errors ?? []),
     });
 
     throw new MercadoPagoRequestError(
@@ -245,7 +257,8 @@ async function selectCentralConnection(admin: AdminClient, product: Product) {
 async function resolveCustomer(admin: AdminClient, input: TransparentCheckoutInput) {
   const email = input.customerEmail.trim().toLowerCase();
   const document = digits(input.customerDocument);
-  if (document.length !== 11) throw new HttpError(400, "CPF inválido.");
+  const validationError = buyerValidationError(email, document);
+  if (validationError) throw new HttpError(400, validationError);
 
   const { data: existing } = await admin.from("customers")
     .select("id,email,name,external_customer_id")
@@ -984,6 +997,8 @@ async function createRecurringCardFirstPayment(input: {
 }
 
 export async function createTransparentCheckout(input: TransparentCheckoutInput) {
+  const validationError = buyerValidationError(input.customerEmail, input.customerDocument);
+  if (validationError) throw new HttpError(400, validationError);
   const admin = createAdminClient();
   const { data: existing } = await admin.from("orders")
     .select("id,status,payment_provider_checkouts(connection_id,external_checkout_id),payments(status,raw_provider_data)")
