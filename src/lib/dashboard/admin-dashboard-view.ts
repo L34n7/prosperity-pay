@@ -1,5 +1,6 @@
 import { ensureInitialPlatformAdmin, requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isHiddenTestPayment } from "@/lib/payments/payment-visibility";
 
 export async function getAdminDashboardView() {
   const { user, supabase } = await requireUser();
@@ -70,7 +71,7 @@ export async function getAdminDashboardView() {
       coproducer_commission_cents: 0,
       total_commission_cents: 0,
     },
-    payments: payments ?? [],
+    payments: (payments ?? []).filter((payment) => !isHiddenTestPayment(payment.raw_provider_data)),
     orders: (orders ?? []).map((order) => ({
       ...order,
       customers: customerMap.get(order.customer_id) ?? null,
