@@ -557,8 +557,6 @@ export function CheckoutFlow({
             </div>
           </div>
 
-          {affiliate && <div className={styles.referral}>Indicação de afiliado aplicada</div>}
-
           <div className={styles.methodLabel}>Forma de pagamento</div>
           <div className={styles.methods}>
             {offer.paymentCardEnabled && <button type="button" className={method === "card" ? styles.methodActive : styles.method} onClick={() => { setMethod("card"); setError(""); setResult(null); }}><CreditCard size={20}/><span><strong>Cartão de crédito</strong><small>{recurring ? "Renovação automática" : `Até ${offer.maxInstallments}x`}</small></span></button>}
