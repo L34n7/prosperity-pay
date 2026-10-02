@@ -184,6 +184,37 @@ export async function getFinanceView() {
       ]),
   );
 
+  const paymentOrderMap = new Map(
+    (paymentsResult.data ?? []).map((payment) => [payment.id, payment.order_id]),
+  );
+  const partnerCommissionByOrder = new Map<
+    string,
+    { affiliate: number; accredited: number; coproducer: number }
+  >();
+
+  for (const commission of outgoingCommissionsResult.data ?? []) {
+    if (commission.status === "cancelled" || commission.status === "reversed") continue;
+    const orderId = paymentOrderMap.get(commission.payment_id);
+    if (!orderId) continue;
+
+    const current = partnerCommissionByOrder.get(orderId) ?? {
+      affiliate: 0,
+      accredited: 0,
+      coproducer: 0,
+    };
+    const amount = Number(commission.amount_cents ?? 0);
+
+    if (commission.commission_type === "coproducer") {
+      current.coproducer += amount;
+    } else if (outgoingPartnerTypes[orderId] === "accredited") {
+      current.accredited += amount;
+    } else {
+      current.affiliate += amount;
+    }
+
+    partnerCommissionByOrder.set(orderId, current);
+  }
+
   const producerRevenueEntryTypes = new Set([
     "sale_credit",
     "gateway_fee",
@@ -214,13 +245,25 @@ export async function getFinanceView() {
   );
 
   return {
-    orders: safeOrders.map((order) => ({
-      ...order,
-      customers: customerMap.get(order.customer_id) ?? null,
-      producer_net_cents: ordersWithSaleCredit.has(order.id)
-        ? producerNetByOrder.get(order.id) ?? 0
-        : null,
-    })),
+    orders: safeOrders.map((order) => {
+      const partnerCommission = partnerCommissionByOrder.get(order.id) ?? {
+        affiliate: 0,
+        accredited: 0,
+        coproducer: 0,
+      };
+
+      return {
+        ...order,
+        customers: customerMap.get(order.customer_id) ?? null,
+        affiliate_partner_type: outgoingPartnerTypes[order.id] ?? null,
+        affiliate_commission_cents: partnerCommission.affiliate,
+        accredited_commission_cents: partnerCommission.accredited,
+        coproducer_commission_cents: partnerCommission.coproducer,
+        producer_net_cents: ordersWithSaleCredit.has(order.id)
+          ? producerNetByOrder.get(order.id) ?? 0
+          : null,
+      };
+    }),
     commissions: commissions ?? [],
     outgoingCommissions: outgoingCommissionsResult.data ?? [],
     outgoingPartnerTypes,
