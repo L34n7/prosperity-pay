@@ -16,7 +16,10 @@ type Payload = {
   type?: string;
   action?: string;
   user_id?: string | number;
-  data?: { id?: string | number };
+  data?: {
+    id?: string | number;
+    external_reference?: string;
+  };
 };
 
 type RawPayment = {
@@ -151,10 +154,11 @@ async function processOrderEvent(input: {
   providerId: string;
   dataId: string;
   eventId: string;
+  payload: Payload;
 }) {
-  const { admin, providerId, dataId, eventId } = input;
+  const { admin, providerId, dataId, eventId, payload } = input;
 
-  const { data: checkout, error: checkoutError } = await admin.from("payment_provider_checkouts")
+  let { data: checkout, error: checkoutError } = await admin.from("payment_provider_checkouts")
     .select("order_id,connection_id")
     .eq("provider_id", providerId)
     .eq("external_checkout_id", dataId)
@@ -162,6 +166,38 @@ async function processOrderEvent(input: {
 
   if (checkoutError) {
     throw checkoutError;
+  }
+
+  if (!checkout) {
+    const externalReference =
+      typeof payload.data?.external_reference === "string"
+        ? payload.data.external_reference
+        : "";
+    const match = externalReference.match(
+      /^prosperity-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+    );
+    const internalOrderId = match?.[1];
+
+    if (internalOrderId) {
+      const { data: recovered, error: recoveredError } = await admin
+        .from("payment_provider_checkouts")
+        .select("order_id,connection_id")
+        .eq("provider_id", providerId)
+        .eq("order_id", internalOrderId)
+        .maybeSingle();
+
+      if (recoveredError) throw recoveredError;
+
+      if (recovered) {
+        const { error: linkError } = await admin
+          .from("payment_provider_checkouts")
+          .update({ external_checkout_id: dataId })
+          .eq("order_id", internalOrderId)
+          .is("external_checkout_id", null);
+        if (linkError) throw linkError;
+        checkout = recovered;
+      }
+    }
   }
 
   if (!checkout) {
@@ -464,7 +500,7 @@ export async function POST(request: Request) {
     if (payload.type === "payment") {
       finalStatus = await processPaymentEvent({ admin, providerId: provider.id, payload, dataId, eventId: event.id });
     } else if (payload.type === "order" || payload.type === "orders") {
-      await processOrderEvent({ admin, providerId: provider.id, dataId, eventId: event.id });
+      await processOrderEvent({ admin, providerId: provider.id, dataId, eventId: event.id, payload });
     } else if (payload.type === "subscription_preapproval") {
       await processSubscriptionEvent({ admin, providerId: provider.id, payload, dataId });
     } else if (payload.type === "subscription_authorized_payment") {
