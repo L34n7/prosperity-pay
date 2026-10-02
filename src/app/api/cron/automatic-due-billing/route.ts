@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { processAutomaticDueBilling } from "@/lib/subscriptions/automatic-due-billing";
+import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 function authorized(request: Request) {
   const cronSecret = process.env.CRON_SECRET?.trim();
@@ -26,10 +28,13 @@ export async function GET(request: Request) {
   }
 
   try {
+    const admin = createAdminClient();
+    const expiredPayments = await expireStalePayments(admin);
     const result = await processAutomaticDueBilling(100);
 
     return NextResponse.json({
       ok: true,
+      expiredPayments,
       ...result,
     });
   } catch (error) {
