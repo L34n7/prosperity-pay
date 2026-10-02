@@ -25,7 +25,6 @@ type Order = {
     coproducer_amount_cents: number;
     producer_amount_cents: number;
   } | null;
-  affiliate_partner_type: "affiliate" | "accredited" | null;
   affiliate_commission_cents: number;
   accredited_commission_cents: number;
   coproducer_commission_cents: number;
