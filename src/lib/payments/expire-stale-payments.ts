@@ -52,6 +52,15 @@ export async function expireStalePayments(admin: AdminClient, scope: Scope = {})
     .eq("status", "pending_payment");
   if (orderError) throw orderError;
 
+  const { error: subscriptionError } = await admin.from("subscriptions")
+    .update({
+      status: "cancelled",
+      cancelled_at: now,
+    })
+    .in("order_id", cancelledOrderIds)
+    .eq("status", "pending");
+  if (subscriptionError) throw subscriptionError;
+
   return cancelledOrderIds.length;
 }
 
