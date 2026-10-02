@@ -81,6 +81,21 @@ function paymentDateOf(payment: Payment, order: Order | undefined) {
   return payment.paid_at ?? order?.paid_at ?? null;
 }
 
+function dateTimeParts(value: string | null | undefined) {
+  if (!value) return null;
+
+  const date = new Date(value);
+  return {
+    date: date.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }),
+    time: date.toLocaleTimeString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+  };
+}
+
 function receivedOf(payment: Payment, order: Order | undefined) {
   if (!order) return null;
   if (order.producer_net_cents != null) return Number(order.producer_net_cents);
@@ -397,6 +412,8 @@ export function PaymentsView({
                   const customer = order?.customers;
                   const plan = planOf(payment, order);
                   const paymentMethod = methodOf(payment);
+                  const generatedAt = dateTimeParts(generatedDateOf(payment, order));
+                  const paidAt = dateTimeParts(paymentDateOf(payment, order));
 
                   return (
                     <tr
@@ -424,8 +441,22 @@ export function PaymentsView({
                       <td className="payment-value">
                         {receivedOf(payment, order) == null ? "—" : formatCents(receivedOf(payment, order))}
                       </td>
-                      <td className="payment-date">{generatedDateOf(payment, order) ? formatDate(generatedDateOf(payment, order)!) : "—"}</td>
-                      <td className="payment-date">{paymentDateOf(payment, order) ? formatDate(paymentDateOf(payment, order)!) : "—"}</td>
+                      <td className="payment-date">
+                        {generatedAt ? (
+                          <div className="payment-date-stack">
+                            <span>{generatedAt.date}</span>
+                            <span>{generatedAt.time}</span>
+                          </div>
+                        ) : "—"}
+                      </td>
+                      <td className="payment-date">
+                        {paidAt ? (
+                          <div className="payment-date-stack">
+                            <span>{paidAt.date}</span>
+                            <span>{paidAt.time}</span>
+                          </div>
+                        ) : "—"}
+                      </td>
                       <td className="payment-open-cell">
                         <span aria-hidden="true">→</span>
                       </td>
