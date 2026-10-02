@@ -173,19 +173,21 @@ export async function getFinanceView() {
       membership.partner_type,
     ]),
   );
-  const outgoingPartnerTypes = Object.fromEntries(
+  const outgoingPartnerTypes: Record<string, string> = Object.fromEntries(
     (attributionsResult.data ?? [])
-      .filter((item) => item.order_id)
+      .filter((item) => Boolean(item.order_id))
       .map((item) => [
-        item.order_id as string,
+        String(item.order_id),
         item.affiliate_membership_id
           ? outgoingMembershipType.get(item.affiliate_membership_id) ?? "affiliate"
           : "affiliate",
-      ]),
+      ] as const),
   );
 
-  const paymentOrderMap = new Map(
-    (paymentsResult.data ?? []).map((payment) => [payment.id, payment.order_id]),
+  const paymentOrderMap = new Map<string, string>(
+    (paymentsResult.data ?? [])
+      .filter((payment) => Boolean(payment.id) && Boolean(payment.order_id))
+      .map((payment) => [String(payment.id), String(payment.order_id)] as const),
   );
   const partnerCommissionByOrder = new Map<
     string,
@@ -194,7 +196,7 @@ export async function getFinanceView() {
 
   for (const commission of outgoingCommissionsResult.data ?? []) {
     if (commission.status === "cancelled" || commission.status === "reversed") continue;
-    const orderId = paymentOrderMap.get(commission.payment_id);
+    const orderId = paymentOrderMap.get(String(commission.payment_id));
     if (!orderId) continue;
 
     const current = partnerCommissionByOrder.get(orderId) ?? {
