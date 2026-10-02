@@ -78,6 +78,17 @@ function paymentDateOf(payment: Payment, order: Order | undefined) {
   return payment.paid_at ?? order?.paid_at ?? null;
 }
 
+function receivedOf(payment: Payment, order: Order | undefined) {
+  if (!order) return null;
+  if (order.producer_net_cents != null) return Number(order.producer_net_cents);
+  if (!order.financial_snapshots) return null;
+
+  return (
+    Number(order.financial_snapshots.producer_amount_cents ?? 0) -
+    Number(payment.provider_fee_amount_cents ?? 0)
+  );
+}
+
 function normalizeSearch(value: string) {
   return value
     .normalize("NFD")
@@ -174,8 +185,8 @@ export function PaymentsView({
       comparison = Number(a.gross_amount_cents) - Number(b.gross_amount_cents);
     } else if (sortKey === "received") {
       comparison =
-        Number(orderA?.producer_net_cents ?? -1) -
-        Number(orderB?.producer_net_cents ?? -1);
+        Number(receivedOf(a, orderA) ?? -1) -
+        Number(receivedOf(b, orderB) ?? -1);
     } else if (sortKey === "paid") {
       comparison =
         new Date(paymentDateOf(a, orderA) || 0).getTime() -
@@ -189,14 +200,7 @@ export function PaymentsView({
     return comparison * sortDirection;
   });
 
-  const net = detail?.producer_net_cents ?? (
-    detail?.financial_snapshots
-      ? Number(detail.financial_snapshots.producer_amount_cents) -
-        (detail.settlement_model === "prosperity_balance"
-          ? Number(chosen?.provider_fee_amount_cents ?? 0)
-          : 0)
-      : 0
-  );
+  const net = chosen ? receivedOf(chosen, detail) ?? 0 : 0;
 
   return (
     <>
@@ -355,7 +359,7 @@ export function PaymentsView({
                       </td>
                       <td className="payment-value">{formatCents(payment.gross_amount_cents)}</td>
                       <td className="payment-value">
-                        {order?.producer_net_cents == null ? "—" : formatCents(order.producer_net_cents)}
+                        {receivedOf(payment, order) == null ? "—" : formatCents(receivedOf(payment, order))}
                       </td>
                       <td className="payment-date">{generatedDateOf(payment, order) ? formatDate(generatedDateOf(payment, order)!) : "—"}</td>
                       <td className="payment-date">{paymentDateOf(payment, order) ? formatDate(paymentDateOf(payment, order)!) : "—"}</td>
