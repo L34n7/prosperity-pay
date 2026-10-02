@@ -184,19 +184,34 @@ export async function getFinanceView() {
       ] as const),
   );
 
-  const paymentOrderMap = new Map<string, string>(
-    (paymentsResult.data ?? [])
-      .filter((payment) => Boolean(payment.id) && Boolean(payment.order_id))
-      .map((payment) => [String(payment.id), String(payment.order_id)] as const),
-  );
+  type OutgoingCommissionRow = {
+    payment_id: string;
+    status: string;
+    commission_type: string;
+    amount_cents: number | string | null;
+  };
+
+  type PaymentOrderRow = {
+    id: string;
+    order_id: string;
+  };
+
+  const paymentOrderMap = new Map<string, string>();
+  for (const payment of (paymentsResult.data ?? []) as PaymentOrderRow[]) {
+    if (payment.id && payment.order_id) {
+      paymentOrderMap.set(payment.id, payment.order_id);
+    }
+  }
+
   const partnerCommissionByOrder = new Map<
     string,
     { affiliate: number; accredited: number; coproducer: number }
   >();
 
-  for (const commission of outgoingCommissionsResult.data ?? []) {
+  for (const commission of (outgoingCommissionsResult.data ?? []) as OutgoingCommissionRow[]) {
     if (commission.status === "cancelled" || commission.status === "reversed") continue;
-    const orderId = paymentOrderMap.get(String(commission.payment_id));
+
+    const orderId = paymentOrderMap.get(commission.payment_id);
     if (!orderId) continue;
 
     const current = partnerCommissionByOrder.get(orderId) ?? {
