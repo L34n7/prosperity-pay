@@ -139,6 +139,52 @@ function checkoutStatusFromOrder(status: string) {
   return "pending";
 }
 
+class MercadoPagoRequestError<T = unknown> extends HttpError {
+  constructor(
+    public readonly providerStatus: number,
+    public readonly providerBody: T,
+    message: string,
+  ) {
+    super(providerStatus >= 500 ? 502 : 422, message);
+  }
+}
+
+function mercadoPagoErrorMessage(body: Record<string, unknown>, status: number) {
+  const directMessage =
+    typeof body.message === "string" && body.message.trim()
+      ? body.message.trim()
+      : typeof body.error === "string" && body.error.trim()
+        ? body.error.trim()
+        : "";
+
+  const errors = Array.isArray(body.errors) ? body.errors : [];
+  const details = errors
+    .map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return "";
+      const record = item as Record<string, unknown>;
+      return [record.message, record.code, record.cause]
+        .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+        .join(" · ");
+    })
+    .filter(Boolean);
+
+  const transaction =
+    body.transactions &&
+    typeof body.transactions === "object" &&
+    !Array.isArray(body.transactions)
+      ? (body.transactions as { payments?: Array<{ status_detail?: string }> }).payments?.[0]
+      : undefined;
+  const statusDetail =
+    transaction?.status_detail ??
+    (typeof body.status_detail === "string" ? body.status_detail : undefined);
+
+  if (statusDetail === "processing_error") {
+    return "O Mercado Pago não conseguiu processar este PIX. Confira os dados do pagador e tente gerar um novo PIX.";
+  }
+
+  return directMessage || details.join(" | ") || `Mercado Pago respondeu HTTP ${status}.`;
+}
+
 async function mpRequest<T>(token: string, path: string, init?: RequestInit, idempotencyKey?: string) {
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
@@ -150,12 +196,33 @@ async function mpRequest<T>(token: string, path: string, init?: RequestInit, ide
     },
     cache: "no-store",
   });
-  const body = await response.json() as T & { message?: string; error?: string; status?: number };
+  const body = await response.json() as T & Record<string, unknown>;
   if (!response.ok) {
-    console.error("[mercadopago] request rejected", { path, status: response.status, error: body.error, message: body.message });
-    throw new HttpError(502, body.message || body.error || `Mercado Pago respondeu HTTP ${response.status}.`);
+    const payments =
+      body.transactions &&
+      typeof body.transactions === "object" &&
+      !Array.isArray(body.transactions)
+        ? (body.transactions as { payments?: Array<{ id?: string; status?: string; status_detail?: string }> }).payments
+        : undefined;
+
+    console.error("[mercadopago] request rejected", {
+      path,
+      status: response.status,
+      providerOrderId: typeof body.id === "string" ? body.id : undefined,
+      orderStatus: typeof body.status === "string" ? body.status : undefined,
+      orderStatusDetail: typeof body.status_detail === "string" ? body.status_detail : undefined,
+      paymentStatus: payments?.[0]?.status,
+      paymentStatusDetail: payments?.[0]?.status_detail,
+      errors: Array.isArray(body.errors) ? body.errors : undefined,
+    });
+
+    throw new MercadoPagoRequestError(
+      response.status,
+      body,
+      mercadoPagoErrorMessage(body, response.status),
+    );
   }
-  return body;
+  return body as T;
 }
 
 async function selectCentralConnection(admin: AdminClient, product: Product) {
@@ -997,8 +1064,52 @@ export async function createTransparentCheckout(input: TransparentCheckoutInput)
       }),
     }, input.idempotencyKey);
   } catch (error) {
-    await admin.from("orders").update({ status: "cancelled", cancelled_at: new Date().toISOString() }).eq("id", internal.order.id);
-    await admin.from("payments").update({ status: "rejected", status_detail: error instanceof Error ? error.message.slice(0, 500) : "provider_error" }).eq("id", internal.payment.id);
+    if (error instanceof MercadoPagoRequestError) {
+      const providerOrder = error.providerBody as MercadoPagoOrder;
+      if (providerOrder?.id) {
+        const { error: checkoutLinkError } = await admin.from("payment_provider_checkouts").update({
+          external_checkout_id: providerOrder.id,
+        }).eq("order_id", internal.order.id);
+        if (checkoutLinkError) throw checkoutLinkError;
+
+        try {
+          await syncTransparentOrder({
+            admin,
+            internalOrderId: internal.order.id,
+            mpOrder: providerOrder,
+          });
+        } catch (syncError) {
+          console.error("[transparent-checkout] Falha ao sincronizar order rejeitada.", {
+            orderId: internal.order.id,
+            providerOrderId: providerOrder.id,
+            error: syncError instanceof Error ? syncError.message : String(syncError),
+          });
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+    await Promise.all([
+      admin.from("orders").update({
+        status: "cancelled",
+        cancelled_at: now,
+      }).eq("id", internal.order.id).neq("status", "paid"),
+      admin.from("payments").update({
+        status: "rejected",
+        status_detail: error instanceof Error ? error.message.slice(0, 500) : "provider_error",
+        raw_provider_data:
+          error instanceof MercadoPagoRequestError
+            ? (error.providerBody as never)
+            : undefined,
+      }).eq("id", internal.payment.id).neq("status", "approved"),
+      internal.subscriptionId
+        ? admin.from("subscriptions").update({
+            status: "cancelled",
+            cancelled_at: now,
+          }).eq("id", internal.subscriptionId).eq("status", "pending")
+        : Promise.resolve({ error: null }),
+    ]);
+
     throw error;
   }
 
