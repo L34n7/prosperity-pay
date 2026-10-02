@@ -74,6 +74,7 @@ type Report = {
     amount_cents: number;
     paid_at: string | null;
     affiliate_sale: boolean;
+    partner_type: "affiliate" | "accredited" | null;
   }>;
   offers: Array<{
     id: string;
@@ -97,8 +98,10 @@ type Report = {
     user_id: string;
     name: string;
     code: string;
+    partner_type: "affiliate" | "accredited";
     sales_count: number;
     total_sales_cents: number;
+    commissionable_sales_cents: number;
     commission_cents: number;
   }>;
   coproducers: Array<{
@@ -226,7 +229,7 @@ export function ProductOverviewReport({ product, offers }: { product: Product; o
           <Kpi icon={<ShoppingBag size={18}/>} label="Vendas concluídas" value={number(report.summary.completed_sales)} hint="Pedidos pagos"/>
           <Kpi icon={<ReceiptText size={18}/>} label="Ticket médio" value={formatCents(report.summary.average_ticket_cents)} hint="Por venda concluída"/>
           <Kpi icon={<Tags size={18}/>} label="Ofertas ativas" value={`${report.summary.active_offer_count}/${report.summary.offer_count}`} hint="Ativas / total"/>
-          <Kpi icon={<UsersRound size={18}/>} label="Afiliados" value={number(report.summary.affiliate_count)} hint="Ativos no produto"/>
+          <Kpi icon={<UsersRound size={18}/>} label="Afiliados / Credenciados" value={number(report.summary.affiliate_count)} hint="Parceiros ativos no produto"/>
           <Kpi icon={<Handshake size={18}/>} label="Coprodutores" value={number(report.summary.coproducer_count)} hint="Participações ativas"/>
           <Kpi icon={<QrCode size={18}/>} label="Vendas PIX" value={number(report.summary.pix_sales)} hint={formatCents(report.summary.pix_sales_cents)}/>
           <Kpi icon={<CreditCard size={18}/>} label="Vendas cartão" value={number(report.summary.card_sales)} hint={formatCents(report.summary.card_sales_cents)}/>
@@ -263,7 +266,7 @@ export function ProductOverviewReport({ product, offers }: { product: Product; o
               <strong key="plan">{sale.plan_name}</strong>,
               <strong key="amount">{formatCents(sale.amount_cents)}</strong>,
               saleDate(sale.paid_at),
-              sale.affiliate_sale ? "Afiliado" : "Direta",
+              sale.affiliate_sale ? (sale.partner_type === "accredited" ? "Credenciado" : "Afiliado") : "Direta",
             ],
           }))}
         />
@@ -272,7 +275,7 @@ export function ProductOverviewReport({ product, offers }: { product: Product; o
           eyebrow="Ofertas"
           title="Desempenho por oferta"
           description="Quantidade e faturamento concluído, com separação por meio de pagamento e origem da venda."
-          columns={["Oferta", "Vendas", "Faturamento", "PIX", "Cartão", "Afiliado / Direto"]}
+          columns={["Oferta", "Vendas", "Faturamento", "PIX", "Cartão", "Parceiro / Direto"]}
           empty="Nenhuma oferta disponível."
           rows={report.offers.map(offer => ({
             key: offer.id,
@@ -291,16 +294,19 @@ export function ProductOverviewReport({ product, offers }: { product: Product; o
           <ReportTable
             compact
             eyebrow="Parceiros"
-            title="Afiliados"
-            description="Vendas atribuídas e comissão financeira registrada para cada afiliado ativo."
-            columns={["Afiliado", "Vendas", "Gerado", "Comissão"]}
-            empty="Nenhum afiliado ativo neste produto."
+            title="Afiliados / Credenciados"
+            description="Vendas atribuídas, base comissionável e comissão financeira registrada para cada parceiro ativo."
+            columns={["Parceiro", "Vendas", "Gerado", "Comissão"]}
+            empty="Nenhum afiliado ou credenciado ativo neste produto."
             rows={report.affiliates.map(affiliate => ({
               key: affiliate.id,
               cells: [
-                <div className={styles.primaryCell} key="affiliate"><strong>{affiliate.name}</strong><small>Ref. {affiliate.code}</small></div>,
+                <div className={styles.primaryCell} key="affiliate">
+                  <strong>{affiliate.name}</strong>
+                  <small>{affiliate.partner_type === "accredited" ? "Credenciado" : "Afiliado"} · Ref. {affiliate.code}</small>
+                </div>,
                 number(affiliate.sales_count),
-                formatCents(affiliate.total_sales_cents),
+                formatCents(affiliate.commissionable_sales_cents),
                 <strong key="commission">{formatCents(affiliate.commission_cents)}</strong>,
               ],
             }))}
