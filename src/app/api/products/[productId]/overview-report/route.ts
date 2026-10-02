@@ -80,7 +80,7 @@ export async function GET(_: Request, context: Context) {
     const customerIds = Array.from(new Set(orders.map(order => order.customer_id).filter(Boolean)));
 
     const membersResult = programResult.data
-      ? await admin.from("affiliate_memberships").select("id,user_id,code,status").eq("program_id", programResult.data.id)
+      ? await admin.from("affiliate_memberships").select("id,user_id,code,status,partner_type").eq("program_id", programResult.data.id)
       : { data: [], error: null };
     if (membersResult.error) throw membersResult.error;
     const members = membersResult.data ?? [];
@@ -103,7 +103,7 @@ export async function GET(_: Request, context: Context) {
 
     const [paymentsResult, customersResult] = await Promise.all([
       orderIds.length
-        ? admin.from("payments").select("order_id,raw_provider_data,created_at").eq("status", "approved").in("order_id", orderIds).order("created_at", { ascending: false })
+        ? admin.from("payments").select("id,order_id,raw_provider_data,created_at").eq("status", "approved").in("order_id", orderIds).order("created_at", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
       customerIds.length
         ? admin.from("customers").select("id,name,email").in("id", customerIds)
@@ -115,10 +115,14 @@ export async function GET(_: Request, context: Context) {
 
     const paymentByOrder = new Map<string, PaymentMethod>();
     const paymentRawByOrder = new Map<string, unknown>();
+    const paymentIdByOrder = new Map<string, string>();
+    const orderByPaymentId = new Map<string, string>();
     for (const payment of paymentsResult.data ?? []) {
       if (!paymentByOrder.has(payment.order_id)) {
         paymentByOrder.set(payment.order_id, mercadoPagoPaymentMetadata(payment.raw_provider_data).method);
         paymentRawByOrder.set(payment.order_id, payment.raw_provider_data);
+        paymentIdByOrder.set(payment.order_id, payment.id);
+        orderByPaymentId.set(payment.id, payment.order_id);
       }
     }
     const customers = new Map((customersResult.data ?? []).map(customer => [customer.id, customer]));
@@ -142,11 +146,39 @@ export async function GET(_: Request, context: Context) {
 
     const allocationsResult = snapshotIds.length
       ? await admin.from("financial_allocations")
-        .select("snapshot_id,allocation_type,beneficiary_user_id,amount_cents")
+        .select("id,snapshot_id,allocation_type,beneficiary_user_id,amount_cents,rule_snapshot")
         .in("snapshot_id", snapshotIds)
         .in("allocation_type", ["affiliate", "coproducer"])
       : { data: [], error: null };
     if (allocationsResult.error) throw allocationsResult.error;
+
+    const paymentIds = Array.from(paymentIdByOrder.values());
+    const [orderItemsResult, commissionsResult] = await Promise.all([
+      orderIds.length
+        ? admin.from("order_items")
+          .select("order_id,commissionable_amount_cents")
+          .in("order_id", orderIds)
+        : Promise.resolve({ data: [], error: null }),
+      paymentIds.length
+        ? admin.from("commissions")
+          .select("payment_id,beneficiary_user_id,commission_type,status,amount_cents,allocation_id")
+          .in("payment_id", paymentIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (orderItemsResult.error || commissionsResult.error) {
+      throw orderItemsResult.error ?? commissionsResult.error;
+    }
+
+    const orderItemsPresent = new Set<string>();
+    const commissionableItemsByOrder = new Map<string, number>();
+    for (const item of orderItemsResult.data ?? []) {
+      orderItemsPresent.add(item.order_id);
+      commissionableItemsByOrder.set(
+        item.order_id,
+        (commissionableItemsByOrder.get(item.order_id) ?? 0) +
+          Number(item.commissionable_amount_cents ?? 0),
+      );
+    }
 
     const ordersById = new Map(orders.map(order => [order.id, order]));
     const offersById = new Map(offers.map(offer => [offer.id, offer]));
@@ -168,6 +200,7 @@ export async function GET(_: Request, context: Context) {
     const affiliatePerformance = new Map(members.map(member => [member.id, {
       sales_count: 0,
       total_sales_cents: 0,
+      commissionable_sales_cents: 0,
       commission_cents: 0,
       order_ids: new Set<string>(),
     }]));
@@ -194,6 +227,9 @@ export async function GET(_: Request, context: Context) {
     }
 
     const userToMembership = new Map(members.map(member => [member.user_id, member.id]));
+    const membershipToUser = new Map(members.map(member => [member.id, member.user_id]));
+    const affiliateRuleByOrderAndUser = new Map<string, unknown>();
+
     for (const allocation of allocationsResult.data ?? []) {
       if (!allocation.beneficiary_user_id) continue;
       const orderId = snapshotToOrder.get(allocation.snapshot_id);
@@ -203,9 +239,10 @@ export async function GET(_: Request, context: Context) {
       const amount = Number(allocation.amount_cents ?? 0);
 
       if (allocation.allocation_type === "affiliate") {
-        const membershipId = userToMembership.get(allocation.beneficiary_user_id);
-        const performance = membershipId ? affiliatePerformance.get(membershipId) : undefined;
-        if (performance) performance.commission_cents += amount;
+        affiliateRuleByOrderAndUser.set(
+          `${orderId}:${allocation.beneficiary_user_id}`,
+          allocation.rule_snapshot,
+        );
       }
 
       if (allocation.allocation_type === "coproducer") {
@@ -218,6 +255,67 @@ export async function GET(_: Request, context: Context) {
           performance.total_sales_cents += Number(order.gross_amount_cents ?? 0);
         }
       }
+    }
+
+    const affiliateCommissionByOrderAndUser = new Map<string, number>();
+    for (const commission of commissionsResult.data ?? []) {
+      if (
+        commission.commission_type !== "affiliate" ||
+        commission.status === "cancelled" ||
+        commission.status === "reversed"
+      ) continue;
+
+      const orderId = orderByPaymentId.get(commission.payment_id);
+      if (!orderId) continue;
+
+      const membershipId = userToMembership.get(commission.beneficiary_user_id);
+      const performance = membershipId ? affiliatePerformance.get(membershipId) : undefined;
+      if (!performance) continue;
+
+      const amount = Number(commission.amount_cents ?? 0);
+      performance.commission_cents += amount;
+      affiliateCommissionByOrderAndUser.set(
+        `${orderId}:${commission.beneficiary_user_id}`,
+        amount,
+      );
+    }
+
+    for (const [orderId, membershipId] of attributionByOrder) {
+      const performance = affiliatePerformance.get(membershipId);
+      const order = ordersById.get(orderId);
+      const userId = membershipToUser.get(membershipId);
+      if (!performance || !order || !userId) continue;
+
+      let commissionableCents = 0;
+      if (orderItemsPresent.has(orderId)) {
+        commissionableCents = commissionableItemsByOrder.get(orderId) ?? 0;
+      } else {
+        const commissionCents =
+          affiliateCommissionByOrderAndUser.get(`${orderId}:${userId}`) ?? 0;
+        if (commissionCents > 0) {
+          const rule = affiliateRuleByOrderAndUser.get(`${orderId}:${userId}`);
+          const ruleRecord =
+            rule && typeof rule === "object" && !Array.isArray(rule)
+              ? (rule as Record<string, unknown>)
+              : {};
+          const explicitBase = Number(
+            ruleRecord.commissionBaseCents ?? ruleRecord.commission_base_cents ?? 0,
+          );
+          const basisPoints = Number(
+            ruleRecord.basisPoints ?? ruleRecord.commission_bps ?? 0,
+          );
+
+          if (explicitBase > 0) {
+            commissionableCents = explicitBase;
+          } else if (basisPoints > 0) {
+            commissionableCents = Math.round((commissionCents * 10000) / basisPoints);
+          } else {
+            commissionableCents = Number(order.gross_amount_cents ?? 0);
+          }
+        }
+      }
+
+      performance.commissionable_sales_cents += commissionableCents;
     }
 
     const activeMembers = members.filter(member => member.status === "active");
@@ -255,6 +353,9 @@ export async function GET(_: Request, context: Context) {
           amount_cents: Number(order.gross_amount_cents ?? 0),
           paid_at: order.paid_at,
           affiliate_sale: attributionByOrder.has(order.id),
+          partner_type: attributionByOrder.has(order.id)
+            ? members.find(member => member.id === attributionByOrder.get(order.id))?.partner_type ?? "affiliate"
+            : null,
         };
       }),
       offers: offers.map(offer => ({
@@ -273,11 +374,13 @@ export async function GET(_: Request, context: Context) {
           user_id: member.user_id,
           name: profile?.full_name || profile?.email || "Afiliado",
           code: member.code,
+          partner_type: member.partner_type,
           sales_count: performance?.sales_count ?? 0,
           total_sales_cents: performance?.total_sales_cents ?? 0,
+          commissionable_sales_cents: performance?.commissionable_sales_cents ?? 0,
           commission_cents: performance?.commission_cents ?? 0,
         };
-      }).sort((a, b) => b.total_sales_cents - a.total_sales_cents),
+      }).sort((a, b) => b.commissionable_sales_cents - a.commissionable_sales_cents),
       coproducers: participants.map(participant => {
         const profile = profiles.get(participant.user_id);
         const performance = coproducerPerformance.get(participant.user_id);
