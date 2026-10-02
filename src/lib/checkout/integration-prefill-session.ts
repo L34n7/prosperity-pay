@@ -48,7 +48,7 @@ export async function createCheckoutPrefillSession(input: {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
 
-  const { error } = await admin.from("integration_checkout_prefill_sessions").insert({
+  const { error } = await (admin as any).from("integration_checkout_prefill_sessions").insert({
     integration_key: input.integrationKey,
     token_hash: hashToken(token),
     offer_slug: offer.checkout_slug,
@@ -72,7 +72,7 @@ export async function getCheckoutPrefillSession(input: {
   if (!token || token.length > 256) return null;
 
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await (admin as any)
     .from("integration_checkout_prefill_sessions")
     .select("customer_name,customer_email,affiliate_ref,expires_at")
     .eq("token_hash", hashToken(token))
