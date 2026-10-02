@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { CheckoutFlow } from "@/components/checkout/checkout-flow";
+import { getCheckoutPrefillSession } from "@/lib/checkout/integration-prefill-session";
 import { env } from "@/lib/env";
 import { productImageUrl } from "@/lib/product-images";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -16,8 +17,8 @@ type CheckoutProduct = {
   post_purchase_redirect_url?: string | null;
 };
 
-export default async function Page({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ ref?: string }> }) {
-  const [{ slug }, { ref }] = await Promise.all([params, searchParams]);
+export default async function Page({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ ref?: string; session?: string }> }) {
+  const [{ slug }, { ref, session }] = await Promise.all([params, searchParams]);
   const admin = createAdminClient();
 
   const exact = await admin.from("offers")
@@ -43,6 +44,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!offer) notFound();
 
   const product = offer.products as unknown as CheckoutProduct;
+  const prefill = await getCheckoutPrefillSession({ token: session, offerSlug: offer.checkout_slug });
   const { data: affiliateProgram } = await admin.from("affiliate_programs")
     .select("id,active,cookie_days,attribution_model")
     .eq("product_id", offer.product_id)
@@ -64,12 +66,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       productName: product.name,
       imageUrl: productImageUrl(product.image_path),
     }}
-    affiliate={ref}
+    affiliate={prefill?.affiliateRef ?? ref}
     affiliateAttribution={affiliateProgram?.active ? {
       cookieDays: affiliateProgram.cookie_days,
       attributionModel: affiliateProgram.attribution_model,
     } : undefined}
     mercadoPagoPublicKey={env.mercadoPagoPublicKey}
+    initialBuyer={prefill ? { name: prefill.name, email: prefill.email } : undefined}
     successText={product.post_purchase_message ?? undefined}
     successUrl={product.post_purchase_redirect_url ?? undefined}
     successLabel={product.post_purchase_redirect_url ? "Continuar" : undefined}
