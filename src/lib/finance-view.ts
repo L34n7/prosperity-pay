@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/require-user";
 import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
+import { isHiddenTestPayment } from "@/lib/payments/payment-visibility";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function getFinanceView() {
@@ -258,6 +259,6 @@ export async function getFinanceView() {
       total_received_cents: 0,
     },
     withdrawals: withdrawals ?? [],
-    payments: paymentsResult.data ?? [],
+    payments: (paymentsResult.data ?? []).filter((payment) => !isHiddenTestPayment(payment.raw_provider_data)),
   };
 }
