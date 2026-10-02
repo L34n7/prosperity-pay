@@ -25,10 +25,14 @@ type Order = {
     coproducer_amount_cents: number;
     producer_amount_cents: number;
   } | null;
-  affiliate_commission_cents: number;
-  accredited_commission_cents: number;
-  coproducer_commission_cents: number;
   producer_net_cents: number | null;
+};
+
+type OutgoingCommission = {
+  payment_id: string;
+  commission_type: string;
+  status: string;
+  amount_cents: number;
 };
 
 type Payment = {
@@ -99,9 +103,13 @@ function normalizeSearch(value: string) {
 export function PaymentsView({
   orders,
   payments,
+  outgoingCommissions,
+  outgoingPartnerTypes,
 }: {
   orders: Order[];
   payments: Payment[];
+  outgoingCommissions: OutgoingCommission[];
+  outgoingPartnerTypes: Record<string, string>;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -116,6 +124,61 @@ export function PaymentsView({
   const [sortDirection, setSortDirection] = useState<1 | -1>(-1);
 
   const orderMap = new Map(orders.map((order) => [order.id, order]));
+  const paymentOrderMap = new Map(payments.map((payment) => [payment.id, payment.order_id]));
+  const commissionByOrder = new Map<
+    string,
+    { affiliate: number; accredited: number; coproducer: number }
+  >();
+
+  for (const commission of outgoingCommissions) {
+    if (commission.status === "cancelled" || commission.status === "reversed") continue;
+    const orderId = paymentOrderMap.get(commission.payment_id);
+    if (!orderId) continue;
+
+    const current = commissionByOrder.get(orderId) ?? {
+      affiliate: 0,
+      accredited: 0,
+      coproducer: 0,
+    };
+    const amount = Number(commission.amount_cents ?? 0);
+
+    if (commission.commission_type === "coproducer") {
+      current.coproducer += amount;
+    } else if (outgoingPartnerTypes[orderId] === "accredited") {
+      current.accredited += amount;
+    } else {
+      current.affiliate += amount;
+    }
+    commissionByOrder.set(orderId, current);
+  }
+
+  function commissionBreakdownOf(order: Order | undefined) {
+    if (!order) return { affiliate: 0, accredited: 0, coproducer: 0 };
+
+    const current = {
+      ...(commissionByOrder.get(order.id) ?? {
+        affiliate: 0,
+        accredited: 0,
+        coproducer: 0,
+      }),
+    };
+
+    if (current.affiliate === 0 && current.accredited === 0) {
+      const legacyAffiliate = Number(order.financial_snapshots?.affiliate_amount_cents ?? 0);
+      if (outgoingPartnerTypes[order.id] === "accredited") {
+        current.accredited = legacyAffiliate;
+      } else {
+        current.affiliate = legacyAffiliate;
+      }
+    }
+
+    if (current.coproducer === 0) {
+      current.coproducer = Number(order.financial_snapshots?.coproducer_amount_cents ?? 0);
+    }
+
+    return current;
+  }
+
   const chosen = payments.find((payment) => payment.id === selected);
   const detail = chosen ? orderMap.get(chosen.order_id) : undefined;
 
@@ -200,6 +263,7 @@ export function PaymentsView({
   });
 
   const net = chosen ? receivedOf(chosen, detail) ?? 0 : 0;
+  const detailCommissions = commissionBreakdownOf(detail);
 
   return (
     <>
@@ -414,18 +478,15 @@ export function PaymentsView({
                 ],
                 [
                   "Afiliado",
-                  formatCents(detail.affiliate_commission_cents),
+                  formatCents(detailCommissions.affiliate),
                 ],
                 [
                   "Credenciado",
-                  formatCents(detail.accredited_commission_cents),
+                  formatCents(detailCommissions.accredited),
                 ],
                 [
                   "Coprodutor",
-                  formatCents(
-                    detail.coproducer_commission_cents ||
-                      detail.financial_snapshots?.coproducer_amount_cents,
-                  ),
+                  formatCents(detailCommissions.coproducer),
                 ],
                 ["Recebido pelo produtor", formatCents(net)],
                 ["Método", methodOf(chosen)],
