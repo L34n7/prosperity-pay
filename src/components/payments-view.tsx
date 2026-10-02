@@ -25,6 +25,11 @@ type Order = {
     coproducer_amount_cents: number;
     producer_amount_cents: number;
   } | null;
+  affiliate_partner_type: "affiliate" | "accredited" | null;
+  affiliate_commission_cents: number;
+  accredited_commission_cents: number;
+  coproducer_commission_cents: number;
+  producer_net_cents: number | null;
 };
 
 type Payment = {
@@ -167,6 +172,10 @@ export function PaymentsView({
       comparison = a.status.localeCompare(b.status, "pt-BR");
     } else if (sortKey === "value") {
       comparison = Number(a.gross_amount_cents) - Number(b.gross_amount_cents);
+    } else if (sortKey === "received") {
+      comparison =
+        Number(orderA?.producer_net_cents ?? -1) -
+        Number(orderB?.producer_net_cents ?? -1);
     } else if (sortKey === "paid") {
       comparison =
         new Date(paymentDateOf(a, orderA) || 0).getTime() -
@@ -180,12 +189,14 @@ export function PaymentsView({
     return comparison * sortDirection;
   });
 
-  const net = detail?.financial_snapshots
-    ? Number(detail.financial_snapshots.producer_amount_cents) -
-      (detail.settlement_model === "prosperity_balance"
-        ? Number(chosen?.provider_fee_amount_cents ?? 0)
-        : 0)
-    : 0;
+  const net = detail?.producer_net_cents ?? (
+    detail?.financial_snapshots
+      ? Number(detail.financial_snapshots.producer_amount_cents) -
+        (detail.settlement_model === "prosperity_balance"
+          ? Number(chosen?.provider_fee_amount_cents ?? 0)
+          : 0)
+      : 0
+  );
 
   return (
     <>
@@ -307,6 +318,7 @@ export function PaymentsView({
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("method")}>Método <span>{sortMark("method")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("status")}>Status <span>{sortMark("status")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("value")}>Valor <span>{sortMark("value")}</span></button></th>
+                  <th><button type="button" className="payment-sort-button" onClick={() => changeSort("received")}>Recebido <span>{sortMark("received")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("generated")}>Data <span>{sortMark("generated")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("paid")}>Data do pagamento <span>{sortMark("paid")}</span></button></th>
                   <th aria-label="Abrir detalhes" />
@@ -342,6 +354,9 @@ export function PaymentsView({
                         <StatusBadge status={payment.status as PaymentStatus} />
                       </td>
                       <td className="payment-value">{formatCents(payment.gross_amount_cents)}</td>
+                      <td className="payment-value">
+                        {order?.producer_net_cents == null ? "—" : formatCents(order.producer_net_cents)}
+                      </td>
                       <td className="payment-date">{generatedDateOf(payment, order) ? formatDate(generatedDateOf(payment, order)!) : "—"}</td>
                       <td className="payment-date">{paymentDateOf(payment, order) ? formatDate(paymentDateOf(payment, order)!) : "—"}</td>
                       <td className="payment-open-cell">
@@ -396,13 +411,20 @@ export function PaymentsView({
                 ],
                 [
                   "Afiliado",
-                  formatCents(detail.financial_snapshots?.affiliate_amount_cents),
+                  formatCents(detail.affiliate_commission_cents),
+                ],
+                [
+                  "Credenciado",
+                  formatCents(detail.accredited_commission_cents),
                 ],
                 [
                   "Coprodutor",
-                  formatCents(detail.financial_snapshots?.coproducer_amount_cents),
+                  formatCents(
+                    detail.coproducer_commission_cents ||
+                      detail.financial_snapshots?.coproducer_amount_cents,
+                  ),
                 ],
-                ["Produtor após taxa apurada", formatCents(net)],
+                ["Recebido pelo produtor", formatCents(net)],
                 ["Método", methodOf(chosen)],
                 ["Modelo", detail.settlement_model],
                 ["Payment ID", chosen.external_payment_id ?? "Pendente"],
