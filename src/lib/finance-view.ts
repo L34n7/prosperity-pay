@@ -173,64 +173,16 @@ export async function getFinanceView() {
       membership.partner_type,
     ]),
   );
-  const outgoingPartnerTypes: Record<string, string> = Object.fromEntries(
+  const outgoingPartnerTypes = Object.fromEntries(
     (attributionsResult.data ?? [])
-      .filter((item) => Boolean(item.order_id))
+      .filter((item) => item.order_id)
       .map((item) => [
-        String(item.order_id),
+        item.order_id as string,
         item.affiliate_membership_id
           ? outgoingMembershipType.get(item.affiliate_membership_id) ?? "affiliate"
           : "affiliate",
-      ] as const),
+      ]),
   );
-
-  type OutgoingCommissionRow = {
-    payment_id: string;
-    status: string;
-    commission_type: string;
-    amount_cents: number | string | null;
-  };
-
-  type PaymentOrderRow = {
-    id: string;
-    order_id: string;
-  };
-
-  const paymentOrderMap = new Map<string, string>();
-  for (const payment of (paymentsResult.data ?? []) as PaymentOrderRow[]) {
-    if (payment.id && payment.order_id) {
-      paymentOrderMap.set(payment.id, payment.order_id);
-    }
-  }
-
-  const partnerCommissionByOrder = new Map<
-    string,
-    { affiliate: number; accredited: number; coproducer: number }
-  >();
-
-  for (const commission of (outgoingCommissionsResult.data ?? []) as OutgoingCommissionRow[]) {
-    if (commission.status === "cancelled" || commission.status === "reversed") continue;
-
-    const orderId = paymentOrderMap.get(commission.payment_id);
-    if (!orderId) continue;
-
-    const current = partnerCommissionByOrder.get(orderId) ?? {
-      affiliate: 0,
-      accredited: 0,
-      coproducer: 0,
-    };
-    const amount = Number(commission.amount_cents ?? 0);
-
-    if (commission.commission_type === "coproducer") {
-      current.coproducer += amount;
-    } else if (outgoingPartnerTypes[orderId] === "accredited") {
-      current.accredited += amount;
-    } else {
-      current.affiliate += amount;
-    }
-
-    partnerCommissionByOrder.set(orderId, current);
-  }
 
   const producerRevenueEntryTypes = new Set([
     "sale_credit",
@@ -262,25 +214,13 @@ export async function getFinanceView() {
   );
 
   return {
-    orders: safeOrders.map((order) => {
-      const partnerCommission = partnerCommissionByOrder.get(order.id) ?? {
-        affiliate: 0,
-        accredited: 0,
-        coproducer: 0,
-      };
-
-      return {
-        ...order,
-        customers: customerMap.get(order.customer_id) ?? null,
-        affiliate_partner_type: outgoingPartnerTypes[order.id] ?? null,
-        affiliate_commission_cents: partnerCommission.affiliate,
-        accredited_commission_cents: partnerCommission.accredited,
-        coproducer_commission_cents: partnerCommission.coproducer,
-        producer_net_cents: ordersWithSaleCredit.has(order.id)
-          ? producerNetByOrder.get(order.id) ?? 0
-          : null,
-      };
-    }),
+    orders: safeOrders.map((order) => ({
+      ...order,
+      customers: customerMap.get(order.customer_id) ?? null,
+      producer_net_cents: ordersWithSaleCredit.has(order.id)
+        ? producerNetByOrder.get(order.id) ?? 0
+        : null,
+    })),
     commissions: commissions ?? [],
     outgoingCommissions: outgoingCommissionsResult.data ?? [],
     outgoingPartnerTypes,
