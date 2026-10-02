@@ -3,6 +3,7 @@ import { jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
 import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
+import { isHiddenTestPayment } from "@/lib/payments/payment-visibility";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ productId: string }> };
@@ -83,7 +84,7 @@ export async function GET(_: Request, context: Context) {
       throw paymentsResult.error ?? customersResult.error ?? snapshotsResult.error;
     }
 
-    const payments = paymentsResult.data ?? [];
+    const payments = (paymentsResult.data ?? []).filter((payment) => !isHiddenTestPayment(payment.raw_provider_data));
     const paymentIds = payments.map((payment) => payment.id);
 
     const transactionsResult = paymentIds.length
