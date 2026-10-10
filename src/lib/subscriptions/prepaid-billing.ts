@@ -597,6 +597,115 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
   };
 }
 
+async function reabrirCheckoutAdicionalPendente(input: {
+  admin: AdminClient;
+  subscription: LoadedSubscription;
+  openChange: {
+    id: string;
+    status: string;
+    payment_order_id: string | null;
+    addon_id: string | null;
+    quantity_delta: number | null;
+    quoted_target_amount_cents: number | null;
+    quote_expires_at: string | null;
+  };
+  action: SubscriptionAction;
+}) {
+  if (
+    input.action.type !== "add_addon" ||
+    input.openChange.status !== "awaiting_payment" ||
+    input.openChange.payment_order_id ||
+    !input.openChange.addon_id
+  ) {
+    return null;
+  }
+
+  const quantidadeSolicitada = positiveQuantity(input.action.quantity);
+  if (Number(input.openChange.quantity_delta || 0) !== quantidadeSolicitada) {
+    return null;
+  }
+
+  const { data: addon, error: addonError } = await input.admin
+    .from("product_addons")
+    .select("id,code")
+    .eq("id", input.openChange.addon_id)
+    .maybeSingle();
+
+  if (addonError) throw addonError;
+  if (
+    !addon ||
+    String(addon.code || "").trim().toLowerCase() !==
+      input.action.addonCode.trim().toLowerCase()
+  ) {
+    return null;
+  }
+
+  const { data: sessaoAnterior, error: sessaoError } = await input.admin
+    .from("subscription_checkout_sessions")
+    .select("amount_cents,currency,metadata,expires_at,consumed_at,order_id")
+    .eq("subscription_change_id", input.openChange.id)
+    .eq("session_type", "subscription_change")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (sessaoError) throw sessaoError;
+  if (
+    !sessaoAnterior ||
+    sessaoAnterior.consumed_at ||
+    sessaoAnterior.order_id
+  ) {
+    return null;
+  }
+
+  const quoteExpiresAt = input.openChange.quote_expires_at
+    ? new Date(input.openChange.quote_expires_at)
+    : null;
+
+  if (
+    !quoteExpiresAt ||
+    !Number.isFinite(quoteExpiresAt.getTime()) ||
+    quoteExpiresAt.getTime() <= Date.now()
+  ) {
+    return null;
+  }
+
+  const agoraIso = new Date().toISOString();
+  const { error: expirarSessoesError } = await input.admin
+    .from("subscription_checkout_sessions")
+    .update({ expires_at: agoraIso })
+    .eq("subscription_change_id", input.openChange.id)
+    .eq("session_type", "subscription_change")
+    .is("consumed_at", null)
+    .is("order_id", null);
+
+  if (expirarSessoesError) throw expirarSessoesError;
+
+  const novaSessao = await newSession({
+    admin: input.admin,
+    subscriptionId: input.subscription.id,
+    changeId: input.openChange.id,
+    sessionType: "subscription_change",
+    amountCents: Number(sessaoAnterior.amount_cents),
+    currency: String(sessaoAnterior.currency || input.subscription.currency),
+    expiresAt: quoteExpiresAt,
+    metadata: sessaoAnterior.metadata as Json,
+  });
+
+  return {
+    status: "awaiting_payment" as const,
+    subscriptionId: input.subscription.id,
+    changeId: input.openChange.id,
+    amountCents: Number(sessaoAnterior.amount_cents),
+    targetAmountCents: Number(
+      input.openChange.quoted_target_amount_cents ||
+        input.subscription.current_amount_cents,
+    ),
+    currency: String(sessaoAnterior.currency || input.subscription.currency),
+    ...novaSessao,
+  };
+}
+
 async function expireAbandonedSubscriptionChanges(
   admin: AdminClient,
   subscriptionId: string,
@@ -662,7 +771,7 @@ export async function createPrepaidSubscriptionIntent(input: {
   }
 
   const { data: openChange, error: openChangeError } = await admin.from("subscription_changes")
-    .select("id,status")
+    .select("id,status,payment_order_id,addon_id,quantity_delta,quoted_target_amount_cents,quote_expires_at")
     .eq("subscription_id", subscription.id)
     .in("status", ["awaiting_payment", "payment_approved", "applying"])
     .order("created_at", { ascending: false })
@@ -670,6 +779,17 @@ export async function createPrepaidSubscriptionIntent(input: {
     .maybeSingle();
   if (openChangeError) throw openChangeError;
   if (openChange) {
+    const checkoutReaberto = await reabrirCheckoutAdicionalPendente({
+      admin,
+      subscription,
+      openChange,
+      action: input.action,
+    });
+
+    if (checkoutReaberto) {
+      return checkoutReaberto;
+    }
+
     throw new HttpError(409, "Já existe uma alteração desta assinatura aguardando conclusão do pagamento.");
   }
 
