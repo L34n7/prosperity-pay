@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jsonError } from "@/lib/api/http";
+import { asObject, jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
 import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
@@ -191,6 +191,68 @@ export async function GET(_: Request, context: Context) {
       offers: offers.map((offer) => ({ id: offer.id, name: offer.name })),
       payments: rows,
     });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
+
+export async function POST(request: Request, context: Context) {
+  try {
+    const { productId } = await context.params;
+    const { supabase, user } = await requireUser();
+
+    const { data: owns, error: ownsError } = await supabase.rpc("owns_product", {
+      target_product_id: productId,
+    });
+    if (ownsError) throw ownsError;
+    if (!owns) {
+      return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+    }
+
+    const body = asObject(await request.json());
+    const customerEmail =
+      typeof body.customerEmail === "string" ? body.customerEmail.trim().toLowerCase() : "";
+    const paymentMethod =
+      body.paymentMethod === "card" ? "card" : "pix";
+    const partnerRef =
+      typeof body.partnerRef === "string" && body.partnerRef.trim()
+        ? body.partnerRef.trim()
+        : null;
+    const paidAtInput =
+      typeof body.paidAt === "string" && body.paidAt.trim()
+        ? body.paidAt.trim()
+        : null;
+
+    if (!customerEmail || !/^\S+@\S+\.\S+$/.test(customerEmail)) {
+      return NextResponse.json({ error: "Informe um e-mail válido." }, { status: 400 });
+    }
+
+    let paidAt: string | null = null;
+    if (paidAtInput) {
+      const parsed = new Date(paidAtInput);
+      if (!Number.isFinite(parsed.getTime())) {
+        return NextResponse.json({ error: "Data do pagamento inválida." }, { status: 400 });
+      }
+      paidAt = parsed.toISOString();
+    }
+
+    const admin = createAdminClient();
+    const { data, error } = await (admin as any).rpc(
+      "register_external_subscription_sale",
+      {
+        target_product_id: productId,
+        customer_email: customerEmail,
+        paid_at_override: paidAt,
+        payment_method: paymentMethod,
+        partner_ref: partnerRef,
+        recorded_by: user.email ?? user.id,
+      },
+    );
+
+    if (error) throw error;
+
+    return NextResponse.json({ sale: data }, { status: 201 });
   } catch (error) {
     return jsonError(error);
   }
