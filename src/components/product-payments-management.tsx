@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CreditCard, Eye, Filter, ReceiptText, WalletCards, X } from "lucide-react";
+import { CreditCard, Eye, Filter, PlusCircle, ReceiptText, WalletCards, X } from "lucide-react";
 import { requestJson } from "@/lib/operational";
 import styles from "./product-payments-management.module.css";
 
@@ -54,6 +54,23 @@ type OfferOption = { id: string; name: string };
 
 type ApiResponse = { offers: OfferOption[]; payments: ProductPayment[] };
 
+type ExternalSaleResult = {
+  ok: boolean;
+  reused: boolean;
+  order_id: string;
+  order_number: number;
+  payment_id: string;
+  subscription_id: string;
+  customer_email: string;
+  gross_amount_cents: number;
+  commissionable_amount_cents?: number;
+  partner_commission_cents?: number;
+  producer_amount_cents?: number;
+  partner_ref?: string | null;
+  partner_type?: string | null;
+  paid_at?: string;
+};
+
 const statusLabels: Record<string, string> = {
   pending: "Pendente",
   processing: "Processando",
@@ -104,6 +121,14 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
   const [selected, setSelected] = useState<ProductPayment | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [externalOpen, setExternalOpen] = useState(false);
+  const [externalEmail, setExternalEmail] = useState("");
+  const [externalDate, setExternalDate] = useState("");
+  const [externalMethod, setExternalMethod] = useState<"pix" | "card">("pix");
+  const [externalPartnerRef, setExternalPartnerRef] = useState("");
+  const [externalSaving, setExternalSaving] = useState(false);
+  const [externalError, setExternalError] = useState("");
+  const [externalResult, setExternalResult] = useState<ExternalSaleResult | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,6 +145,51 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function registerExternalSale(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setExternalSaving(true);
+    setExternalError("");
+    setExternalResult(null);
+
+    try {
+      const paidAt = externalDate
+        ? new Date(`${externalDate}T12:00:00-03:00`).toISOString()
+        : null;
+
+      const response = await requestJson<{ sale: ExternalSaleResult }>(
+        `/api/products/${id}/payments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            customerEmail: externalEmail,
+            paidAt,
+            paymentMethod: externalMethod,
+            partnerRef: externalPartnerRef || null,
+          }),
+        },
+      );
+
+      setExternalResult(response.sale);
+      await load();
+    } catch (cause) {
+      setExternalError(
+        cause instanceof Error ? cause.message : "Não foi possível registrar a venda externa.",
+      );
+    } finally {
+      setExternalSaving(false);
+    }
+  }
+
+  function closeExternalSale() {
+    setExternalOpen(false);
+    setExternalError("");
+    setExternalResult(null);
+    setExternalEmail("");
+    setExternalDate("");
+    setExternalMethod("pix");
+    setExternalPartnerRef("");
+  }
 
   const filtered = useMemo(() => payments.filter(payment => !offerId || payment.offer_id === offerId), [payments, offerId]);
   const approved = filtered.filter(payment => payment.status === "approved");
@@ -143,7 +213,12 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
     <section className={styles.card}>
       <div className={styles.toolbar}>
         <div><h3>Histórico de pagamentos</h3><p>Os registros mais recentes aparecem primeiro.</p></div>
-        <label className={styles.filter}><Filter size={15}/><span>Oferta</span><select value={offerId} onChange={event => setOfferId(event.target.value)}><option value="">Todas as ofertas</option>{offers.map(offer => <option value={offer.id} key={offer.id}>{offer.name}</option>)}</select></label>
+        <div className={styles.toolbarActions}>
+          <button type="button" className={styles.externalButton} onClick={() => setExternalOpen(true)}>
+            <PlusCircle size={15}/>Registrar venda externa
+          </button>
+          <label className={styles.filter}><Filter size={15}/><span>Oferta</span><select value={offerId} onChange={event => setOfferId(event.target.value)}><option value="">Todas as ofertas</option>{offers.map(offer => <option value={offer.id} key={offer.id}>{offer.name}</option>)}</select></label>
+        </div>
       </div>
 
       {loading ? <div className={styles.empty}>Carregando pagamentos...</div> : filtered.length ? <div className={styles.tableWrap}>
@@ -162,6 +237,84 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
         </table>
       </div> : <div className={styles.empty}>Nenhum pagamento encontrado para esta seleção.</div>}
     </section>
+
+    {externalOpen && <div className={styles.overlay} onMouseDown={event => { if (event.target === event.currentTarget) closeExternalSale(); }}>
+      <section className={styles.modal} role="dialog" aria-modal="true" aria-label="Registrar venda externa">
+        <header className={styles.modalHeader}>
+          <div><small>Venda externa</small><h3>Registrar pagamento feito por fora</h3><p>Usa a assinatura ativa do cliente e aplica automaticamente as regras de parceiro e comissão.</p></div>
+          <button type="button" className={styles.close} onClick={closeExternalSale} aria-label="Fechar"><X size={18}/></button>
+        </header>
+
+        <form onSubmit={registerExternalSale}>
+          <div className={styles.modalBody}>
+            {externalError && <p className={styles.error} role="alert">{externalError}</p>}
+            {externalResult && <div className={styles.success}>
+              <strong>{externalResult.reused ? "Venda já registrada." : "Venda registrada com sucesso."}</strong>
+              <span>Pedido #{externalResult.order_number} · {money(externalResult.gross_amount_cents)}</span>
+              {externalResult.partner_commission_cents != null && externalResult.partner_commission_cents > 0 &&
+                <span>Comissão do parceiro: {money(externalResult.partner_commission_cents)}</span>}
+            </div>}
+
+            <div className={styles.formGrid}>
+              <label className={styles.formField}>
+                <span>E-mail do cliente</span>
+                <input
+                  type="email"
+                  required
+                  value={externalEmail}
+                  onChange={event => setExternalEmail(event.target.value)}
+                  placeholder="cliente@empresa.com.br"
+                  disabled={externalSaving || Boolean(externalResult)}
+                />
+              </label>
+
+              <label className={styles.formField}>
+                <span>Data do pagamento</span>
+                <input
+                  type="date"
+                  value={externalDate}
+                  onChange={event => setExternalDate(event.target.value)}
+                  disabled={externalSaving || Boolean(externalResult)}
+                />
+                <small>Se ficar vazio, será usado o início do ciclo atual da assinatura.</small>
+              </label>
+
+              <label className={styles.formField}>
+                <span>Forma de pagamento</span>
+                <select
+                  value={externalMethod}
+                  onChange={event => setExternalMethod(event.target.value === "card" ? "card" : "pix")}
+                  disabled={externalSaving || Boolean(externalResult)}
+                >
+                  <option value="pix">PIX</option>
+                  <option value="card">Cartão</option>
+                </select>
+              </label>
+
+              <label className={styles.formField}>
+                <span>Referência do parceiro <small>(opcional)</small></span>
+                <input
+                  value={externalPartnerRef}
+                  onChange={event => setExternalPartnerRef(event.target.value)}
+                  placeholder="Usa o parceiro da assinatura se vazio"
+                  disabled={externalSaving || Boolean(externalResult)}
+                />
+              </label>
+            </div>
+
+            <p className={styles.formHint}>
+              O valor, plano, adicionais e base comissionável são obtidos da assinatura ativa. O processo é idempotente para evitar venda duplicada.
+            </p>
+          </div>
+          <footer className={styles.modalFooter}>
+            <button type="button" onClick={closeExternalSale}>{externalResult ? "Fechar" : "Cancelar"}</button>
+            {!externalResult && <button type="submit" className={styles.primaryButton} disabled={externalSaving}>
+              {externalSaving ? "Registrando..." : "Registrar venda"}
+            </button>}
+          </footer>
+        </form>
+      </section>
+    </div>}
 
     {selected && <div className={styles.overlay} onMouseDown={event => { if (event.target === event.currentTarget) setSelected(null); }}>
       <section className={styles.modal} role="dialog" aria-modal="true" aria-label="Detalhes do pagamento">
