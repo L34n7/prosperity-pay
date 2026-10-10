@@ -597,7 +597,7 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
   };
 }
 
-async function reabrirCheckoutAdicionalPendente(input: {
+async function reabrirCheckoutAlteracaoPendente(input: {
   admin: AdminClient;
   subscription: LoadedSubscription;
   openChange: {
@@ -605,6 +605,7 @@ async function reabrirCheckoutAdicionalPendente(input: {
     status: string;
     payment_order_id: string | null;
     addon_id: string | null;
+    to_offer_id: string | null;
     quantity_delta: number | null;
     quoted_target_amount_cents: number | null;
     quote_expires_at: string | null;
@@ -612,37 +613,57 @@ async function reabrirCheckoutAdicionalPendente(input: {
   action: SubscriptionAction;
 }) {
   if (
-    input.action.type !== "add_addon" ||
     input.openChange.status !== "awaiting_payment" ||
-    input.openChange.payment_order_id ||
-    !input.openChange.addon_id
+    input.openChange.payment_order_id
   ) {
     return null;
   }
 
-  const quantidadeSolicitada = positiveQuantity(input.action.quantity);
-  if (Number(input.openChange.quantity_delta || 0) !== quantidadeSolicitada) {
-    return null;
+  let mesmaAlteracao = false;
+
+  if (input.action.type === "add_addon" && input.openChange.addon_id) {
+    const quantidadeSolicitada = positiveQuantity(input.action.quantity);
+
+    if (
+      Number(input.openChange.quantity_delta || 0) === quantidadeSolicitada
+    ) {
+      const { data: addon, error: addonError } = await input.admin
+        .from("product_addons")
+        .select("id,code")
+        .eq("id", input.openChange.addon_id)
+        .maybeSingle();
+
+      if (addonError) throw addonError;
+
+      mesmaAlteracao =
+        Boolean(addon) &&
+        String(addon?.code || "").trim().toLowerCase() ===
+          input.action.addonCode.trim().toLowerCase();
+    }
   }
 
-  const { data: addon, error: addonError } = await input.admin
-    .from("product_addons")
-    .select("id,code")
-    .eq("id", input.openChange.addon_id)
-    .maybeSingle();
+  if (input.action.type === "change_plan" && input.openChange.to_offer_id) {
+    const { data: targetOffer, error: targetOfferError } = await input.admin
+      .from("offers")
+      .select("id,checkout_slug")
+      .eq("product_id", input.subscription.product_id)
+      .eq("checkout_slug", input.action.offerReference.trim().toLowerCase())
+      .maybeSingle();
 
-  if (addonError) throw addonError;
-  if (
-    !addon ||
-    String(addon.code || "").trim().toLowerCase() !==
-      input.action.addonCode.trim().toLowerCase()
-  ) {
+    if (targetOfferError) throw targetOfferError;
+
+    mesmaAlteracao =
+      Boolean(targetOffer) &&
+      targetOffer?.id === input.openChange.to_offer_id;
+  }
+
+  if (!mesmaAlteracao) {
     return null;
   }
 
   const { data: sessaoAnterior, error: sessaoError } = await input.admin
     .from("subscription_checkout_sessions")
-    .select("amount_cents,currency,metadata,expires_at,consumed_at,order_id")
+    .select("amount_cents,currency,metadata,consumed_at,order_id")
     .eq("subscription_change_id", input.openChange.id)
     .eq("session_type", "subscription_change")
     .order("created_at", { ascending: false })
@@ -650,6 +671,7 @@ async function reabrirCheckoutAdicionalPendente(input: {
     .maybeSingle();
 
   if (sessaoError) throw sessaoError;
+
   if (
     !sessaoAnterior ||
     sessaoAnterior.consumed_at ||
@@ -671,6 +693,7 @@ async function reabrirCheckoutAdicionalPendente(input: {
   }
 
   const agoraIso = new Date().toISOString();
+
   const { error: expirarSessoesError } = await input.admin
     .from("subscription_checkout_sessions")
     .update({ expires_at: agoraIso })
@@ -771,7 +794,7 @@ export async function createPrepaidSubscriptionIntent(input: {
   }
 
   const { data: openChange, error: openChangeError } = await admin.from("subscription_changes")
-    .select("id,status,payment_order_id,addon_id,quantity_delta,quoted_target_amount_cents,quote_expires_at")
+    .select("id,status,payment_order_id,addon_id,to_offer_id,quantity_delta,quoted_target_amount_cents,quote_expires_at")
     .eq("subscription_id", subscription.id)
     .in("status", ["awaiting_payment", "payment_approved", "applying"])
     .order("created_at", { ascending: false })
@@ -779,7 +802,7 @@ export async function createPrepaidSubscriptionIntent(input: {
     .maybeSingle();
   if (openChangeError) throw openChangeError;
   if (openChange) {
-    const checkoutReaberto = await reabrirCheckoutAdicionalPendente({
+    const checkoutReaberto = await reabrirCheckoutAlteracaoPendente({
       admin,
       subscription,
       openChange,
