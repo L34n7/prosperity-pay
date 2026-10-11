@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asObject, jsonError, optionalString, requiredString } from "@/lib/api/http";
 import { requireFinanceAdmin } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyUserFinancialReviewDecision } from "@/lib/email/financial-review";
 
 type Context = { params: Promise<{ verificationId: string }> };
 
@@ -32,10 +33,25 @@ export async function PATCH(request: Request, context: Context) {
       reviewer_id: user.id,
       review_note: reviewNote,
       reviewed_at: new Date().toISOString(),
-    }).eq("id", verificationId).eq("status", "under_review").select("id, status, reviewed_at").single();
+    }).eq("id", verificationId).eq("status", "under_review").select("id,user_id,status,reviewed_at").single();
     if (error) throw error;
     const audit = await admin.from("audit_events").insert({ actor_user_id: user.id, action: `identity_verification.${status}`, entity_type: "identity_verification", entity_id: verificationId, metadata: { reviewNote } });
     if (audit.error) console.error("Falha ao registrar auditoria da identidade", audit.error);
+
+    const statusLabel =
+      status === "approved"
+        ? "Aprovada"
+        : status === "resubmission_required"
+          ? "Reenvio necessário"
+          : "Rejeitada";
+
+    await notifyUserFinancialReviewDecision({
+      userId: data.user_id,
+      kind: "identity",
+      statusLabel,
+      observation: reviewNote,
+    });
+
     return NextResponse.json({ verification: data });
   } catch (error) { return jsonError(error); }
 }
