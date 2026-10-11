@@ -5,8 +5,6 @@ import { useState } from "react";
 import {
   AlertTriangle,
   BadgeCheck,
-  Eye,
-  EyeOff,
   ExternalLink,
   FileCheck2,
   Fingerprint,
@@ -17,7 +15,6 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatCents, formatDate, requestJson } from "@/lib/operational";
-import { formatTaxId } from "@/lib/validation/br-documents";
 import styles from "./admin-view.module.css";
 
 type Row = {
@@ -115,7 +112,6 @@ export function AdminView({
   const [tab, setTab] = useState("Identidade");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [visibleTaxIds, setVisibleTaxIds] = useState<Set<string>>(() => new Set());
 
   const groups: Record<string, Row[]> = {
     Identidade: identity,
@@ -127,15 +123,6 @@ export function AdminView({
     Usuários: users,
     Auditoria: audit,
   };
-
-  function toggleTaxId(rowId: string) {
-    setVisibleTaxIds((current) => {
-      const next = new Set(current);
-      if (next.has(rowId)) next.delete(rowId);
-      else next.add(rowId);
-      return next;
-    });
-  }
 
   async function act(path: string, status: string, identityReview = false) {
     if (!confirm(`Confirmar a alteração para ${STATUS_LABELS[status] ?? status}?`)) {
@@ -260,14 +247,7 @@ export function AdminView({
                         </div>
                         <div className={styles.detail}>
                           <span>{row.person_type === "business" ? "CNPJ" : "CPF"}</span>
-                          <strong>
-                            {row.tax_id_value
-                              ? formatTaxId(
-                                  row.tax_id_value,
-                                  row.person_type === "business" ? "business" : "individual",
-                                )
-                              : `•••• ${row.tax_id_last4 ?? "—"}`}
-                          </strong>
+                          <strong>{maskedTaxId(row.person_type, row.tax_id_last4)}</strong>
                         </div>
                         <div className={styles.detail}>
                           <span>
