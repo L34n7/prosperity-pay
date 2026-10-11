@@ -32,7 +32,7 @@ export async function GET() {
     const { data, error } = await admin
       .from("payout_accounts")
       .select(
-        "id,key_type,key_last4,encrypted_key,holder_name,holder_tax_id_last4,status,is_primary,created_at,updated_at",
+        "id,key_type,key_last4,encrypted_key,holder_name,holder_tax_id_last4,holder_tax_id_encrypted,status,is_primary,created_at,updated_at",
       )
       .eq("user_id", user.id)
       .neq("status", "disabled")
@@ -47,6 +47,9 @@ export async function GET() {
       key_value: decryptSecret(item.encrypted_key),
       holder_name: item.holder_name,
       holder_tax_id_last4: item.holder_tax_id_last4,
+      holder_tax_id_value: item.holder_tax_id_encrypted
+        ? decryptSecret(item.holder_tax_id_encrypted)
+        : null,
       status: item.status,
       is_primary: item.is_primary,
       created_at: item.created_at,
@@ -131,6 +134,7 @@ export async function POST(request: Request) {
         encrypted_key: encryptSecret(normalizedKey),
         holder_name: holderName,
         holder_tax_id_last4: holderTaxId.slice(-4),
+        holder_tax_id_encrypted: encryptSecret(holderTaxId),
         is_primary: Boolean(body.isPrimary),
       })
       .select(
