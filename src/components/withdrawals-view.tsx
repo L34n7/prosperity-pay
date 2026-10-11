@@ -279,14 +279,17 @@ export function WithdrawalsView() {
                         </div>
                       </div>
 
-                      {item.note && (
+                      {(item.note || item.status === "rejected") && (
                         <div className={styles.rejectionReason}>
                           <strong>
                             {item.status === "rejected"
                               ? "Motivo da rejeição"
                               : "Observação"}
                           </strong>
-                          <p>{item.note}</p>
+                          <p>
+                            {item.note ||
+                              "Motivo não informado neste registro anterior."}
+                          </p>
                         </div>
                       )}
 
