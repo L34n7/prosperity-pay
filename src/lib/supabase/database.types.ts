@@ -1317,6 +1317,7 @@ export type Database = {
           created_at: string
           encrypted_key: string
           holder_name: string
+          holder_tax_id_encrypted: string | null
           holder_tax_id_last4: string
           id: string
           is_primary: boolean
@@ -1331,6 +1332,7 @@ export type Database = {
           created_at?: string
           encrypted_key: string
           holder_name: string
+          holder_tax_id_encrypted?: string | null
           holder_tax_id_last4: string
           id?: string
           is_primary?: boolean
@@ -1345,6 +1347,7 @@ export type Database = {
           created_at?: string
           encrypted_key?: string
           holder_name?: string
+          holder_tax_id_encrypted?: string | null
           holder_tax_id_last4?: string
           id?: string
           is_primary?: boolean
