@@ -126,19 +126,15 @@ export async function POST(request: Request) {
     }
 
     const document = form.get("document");
-    if (!(document instanceof File) || document.size <= 0) {
-      return NextResponse.json(
-        { error: "Envie uma foto ou PDF do documento com foto." },
-        { status: 400 },
-      );
-    }
-    if (document.size > MAX_DOCUMENT_BYTES) {
+    const hasNewDocument = document instanceof File && document.size > 0;
+
+    if (hasNewDocument && document.size > MAX_DOCUMENT_BYTES) {
       return NextResponse.json(
         { error: "O documento deve ter no máximo 5 MB." },
         { status: 400 },
       );
     }
-    if (!ALLOWED_DOCUMENT_TYPES.has(document.type)) {
+    if (hasNewDocument && !ALLOWED_DOCUMENT_TYPES.has(document.type)) {
       return NextResponse.json(
         { error: "Formato não permitido. Use JPG, PNG, WEBP ou PDF." },
         { status: 400 },
@@ -149,7 +145,7 @@ export async function POST(request: Request) {
 
     const { data: latest, error: latestError } = await admin
       .from("identity_verifications")
-      .select("id,status,document_storage_path")
+      .select("id,status,document_storage_path,document_original_name,document_mime_type,document_uploaded_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -170,17 +166,26 @@ export async function POST(request: Request) {
       );
     }
 
-    const extension = extensionFor(document.type);
-    uploadedPath = `${user.id}/${crypto.randomUUID()}.${extension}`;
-    const bytes = new Uint8Array(await document.arrayBuffer());
-    const { error: uploadError } = await admin.storage
-      .from("identity-documents")
-      .upload(uploadedPath, bytes, {
-        contentType: document.type,
-        cacheControl: "3600",
-        upsert: false,
-      });
-    if (uploadError) throw uploadError;
+    if (!hasNewDocument && !latest?.document_storage_path) {
+      return NextResponse.json(
+        { error: "Envie uma foto ou PDF do documento com foto." },
+        { status: 400 },
+      );
+    }
+
+    if (hasNewDocument) {
+      const extension = extensionFor(document.type);
+      uploadedPath = `${user.id}/${crypto.randomUUID()}.${extension}`;
+      const bytes = new Uint8Array(await document.arrayBuffer());
+      const { error: uploadError } = await admin.storage
+        .from("identity-documents")
+        .upload(uploadedPath, bytes, {
+          contentType: document.type,
+          cacheControl: "3600",
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+    }
 
     const now = new Date().toISOString();
     const verificationPayload = {
@@ -191,10 +196,13 @@ export async function POST(request: Request) {
       tax_id_encrypted: encryptSecret(taxId),
       birth_date: personType === "individual" ? birthDate : null,
       business_name: personType === "business" ? businessName : null,
-      document_storage_path: uploadedPath,
-      document_original_name: document.name.slice(0, 255),
-      document_mime_type: document.type,
-      document_uploaded_at: now,
+      document_storage_path: uploadedPath ?? latest?.document_storage_path ?? null,
+      document_original_name:
+        hasNewDocument ? document.name.slice(0, 255) : latest?.document_original_name ?? null,
+      document_mime_type:
+        hasNewDocument ? document.type : latest?.document_mime_type ?? null,
+      document_uploaded_at:
+        hasNewDocument ? now : latest?.document_uploaded_at ?? now,
       status: "under_review" as const,
       reviewer_id: null,
       review_note: null,
@@ -226,7 +234,7 @@ export async function POST(request: Request) {
       throw result.error;
     }
 
-    if (latest?.document_storage_path && latest.document_storage_path !== uploadedPath) {
+    if (uploadedPath && latest?.document_storage_path && latest.document_storage_path !== uploadedPath) {
       await admin.storage
         .from("identity-documents")
         .remove([latest.document_storage_path])
