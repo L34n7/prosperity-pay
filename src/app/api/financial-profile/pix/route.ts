@@ -1,23 +1,62 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
-import { digits, sha256 } from "@/lib/security/hash";
-import { encryptSecret } from "@/lib/security/secrets";
+import {
+  isValidCnpj,
+  isValidCpf,
+  onlyDigits,
+} from "@/lib/validation/br-documents";
+import { sha256 } from "@/lib/security/hash";
+import { decryptSecret, encryptSecret } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 
 type PixType = Database["public"]["Enums"]["payout_account_type"];
 const PIX_TYPES = new Set<PixType>(["cpf", "cnpj", "email", "phone", "random_key"]);
 
+function validPixKey(type: PixType, value: string) {
+  if (type === "cpf") return isValidCpf(value);
+  if (type === "cnpj") return isValidCnpj(value);
+  if (type === "email") return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  if (type === "phone") {
+    const number = onlyDigits(value);
+    return number.length >= 10 && number.length <= 13;
+  }
+  return value.trim().length >= 20 && value.trim().length <= 180;
+}
+
 export async function GET() {
   try {
-    const { supabase, user } = await requireUser();
-    const { data, error } = await supabase.from("payout_accounts")
-      .select("id, key_type, key_last4, holder_name, holder_tax_id_last4, status, is_primary, created_at")
-      .eq("user_id", user.id).neq("status", "disabled").order("created_at", { ascending: false });
+    const { user } = await requireUser();
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("payout_accounts")
+      .select(
+        "id,key_type,key_last4,encrypted_key,holder_name,holder_tax_id_last4,status,is_primary,created_at,updated_at",
+      )
+      .eq("user_id", user.id)
+      .neq("status", "disabled")
+      .order("created_at", { ascending: false });
+
     if (error) throw error;
-    return NextResponse.json({ payoutAccounts: data });
-  } catch (error) { return jsonError(error); }
+
+    const payoutAccounts = (data ?? []).map((item) => ({
+      id: item.id,
+      key_type: item.key_type,
+      key_last4: item.key_last4,
+      key_value: decryptSecret(item.encrypted_key),
+      holder_name: item.holder_name,
+      holder_tax_id_last4: item.holder_tax_id_last4,
+      status: item.status,
+      is_primary: item.is_primary,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    }));
+
+    return NextResponse.json({ payoutAccounts });
+  } catch (error) {
+    return jsonError(error);
+  }
 }
 
 export async function POST(request: Request) {
@@ -25,25 +64,92 @@ export async function POST(request: Request) {
     const { user } = await requireUser();
     const body = asObject(await request.json());
     const keyType = body.keyType as PixType;
-    if (!PIX_TYPES.has(keyType)) return NextResponse.json({ error: "Tipo de chave Pix invalido." }, { status: 400 });
-    const pixKey = requiredString(body, "pixKey", 180).trim();
-    const holderName = requiredString(body, "holderName", 180);
-    const holderTaxId = digits(requiredString(body, "holderTaxId", 20));
-    if (![11, 14].includes(holderTaxId.length)) return NextResponse.json({ error: "Documento do titular invalido." }, { status: 400 });
 
-    const normalizedKey = ["cpf", "cnpj", "phone"].includes(keyType) ? digits(pixKey) : pixKey.toLowerCase();
+    if (!PIX_TYPES.has(keyType)) {
+      return NextResponse.json({ error: "Tipo de chave Pix inválido." }, { status: 400 });
+    }
+
+    const pixKey = requiredString(body, "pixKey", 180).trim();
+    const holderName = requiredString(body, "holderName", 180).trim();
+    const holderTaxId = onlyDigits(requiredString(body, "holderTaxId", 20));
+
+    if (
+      !(
+        (holderTaxId.length === 11 && isValidCpf(holderTaxId)) ||
+        (holderTaxId.length === 14 && isValidCnpj(holderTaxId))
+      )
+    ) {
+      return NextResponse.json(
+        { error: "CPF/CNPJ do titular inválido." },
+        { status: 400 },
+      );
+    }
+
+    const normalizedKey = ["cpf", "cnpj", "phone"].includes(keyType)
+      ? onlyDigits(pixKey)
+      : pixKey.toLowerCase();
+
+    if (!validPixKey(keyType, normalizedKey)) {
+      const labels: Record<PixType, string> = {
+        cpf: "CPF",
+        cnpj: "CNPJ",
+        email: "e-mail",
+        phone: "telefone",
+        random_key: "chave aleatória",
+      };
+      return NextResponse.json(
+        { error: `${labels[keyType]} informado como chave Pix é inválido.` },
+        { status: 400 },
+      );
+    }
+
     const admin = createAdminClient();
-    const { data, error } = await admin.from("payout_accounts").insert({
-      user_id: user.id,
-      key_type: keyType,
-      key_last4: normalizedKey.slice(-4),
-      key_hash: sha256(normalizedKey),
-      encrypted_key: encryptSecret(normalizedKey),
-      holder_name: holderName,
-      holder_tax_id_last4: holderTaxId.slice(-4),
-      is_primary: Boolean(body.isPrimary),
-    }).select("id, key_type, key_last4, status, is_primary").single();
+
+    const { data: duplicate, error: duplicateError } = await admin
+      .from("payout_accounts")
+      .select("id,status")
+      .eq("user_id", user.id)
+      .eq("key_hash", sha256(normalizedKey))
+      .neq("status", "disabled")
+      .maybeSingle();
+
+    if (duplicateError) throw duplicateError;
+    if (duplicate) {
+      return NextResponse.json(
+        { error: "Essa chave Pix já está cadastrada na sua conta." },
+        { status: 409 },
+      );
+    }
+
+    const { data, error } = await admin
+      .from("payout_accounts")
+      .insert({
+        user_id: user.id,
+        key_type: keyType,
+        key_last4: normalizedKey.slice(-4),
+        key_hash: sha256(normalizedKey),
+        encrypted_key: encryptSecret(normalizedKey),
+        holder_name: holderName,
+        holder_tax_id_last4: holderTaxId.slice(-4),
+        is_primary: Boolean(body.isPrimary),
+      })
+      .select(
+        "id,key_type,key_last4,holder_name,holder_tax_id_last4,status,is_primary,created_at",
+      )
+      .single();
+
     if (error) throw error;
-    return NextResponse.json({ payoutAccount: data }, { status: 201 });
-  } catch (error) { return jsonError(error); }
+
+    return NextResponse.json(
+      {
+        payoutAccount: {
+          ...data,
+          key_value: normalizedKey,
+        },
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    return jsonError(error);
+  }
 }
