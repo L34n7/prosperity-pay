@@ -489,11 +489,6 @@ export function AccountView() {
                             type="button"
                             className={styles.revealButton}
                             onClick={() => setIdentityTaxVisible((visible) => !visible)}
-                            aria-label={
-                              identityTaxVisible
-                                ? "Ocultar CPF/CNPJ"
-                                : "Exibir CPF/CNPJ"
-                            }
                           >
                             {identityTaxVisible ? <EyeOff size={17} /> : <Eye size={17} />}
                             {identityTaxVisible ? "Ocultar" : "Exibir"}
@@ -518,108 +513,47 @@ export function AccountView() {
                     <div className={styles.detailCard}>
                       <span>Documento</span>
                       <strong>{identity.document_original_name || "Documento legado"}</strong>
-                      <small>Arquivo protegido e acessível apenas na análise administrativa.</small>
                     </div>
                   </div>
-                ) : (
-                  <div className={styles.submittedPanel}>
-                    <div className={styles.submittedPanelHead}>
+                ) : identity.status === "under_review" ? (
+                  <div className={styles.analysisSummary}>
+                    <div>
+                      <span>Nome</span>
+                      <strong>{identity.legal_name}</strong>
+                    </div>
+                    <div>
+                      <span>{identity.person_type === "business" ? "CNPJ" : "CPF"}</span>
+                      <strong>{maskedTaxId(identity.person_type, identity.tax_id_last4)}</strong>
+                    </div>
+                    <div>
+                      <span>
+                        {identity.person_type === "business" ? "Razão social" : "Nascimento"}
+                      </span>
+                      <strong>
+                        {identity.person_type === "business"
+                          ? identity.business_name || "—"
+                          : formatDate(identity.birth_date)}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Documento</span>
+                      <strong>{identity.document_original_name || "Documento enviado"}</strong>
+                    </div>
+                    <div className={styles.analysisWaiting}>
+                      <Clock3 size={18} />
                       <div>
-                        <strong>Dados enviados para análise</strong>
-                        <p>Confira abaixo exatamente o que foi informado antes de corrigir ou reenviar.</p>
-                      </div>
-                      <span>Enviado em {formatDate(identity.submitted_at)}</span>
-                    </div>
-
-                    <div className={styles.formGrid}>
-                      <div className={styles.field}>
-                        <span>Tipo de pessoa</span>
-                        <input
-                          readOnly
-                          value={
-                            identity.person_type === "business"
-                              ? "Pessoa jurídica"
-                              : "Pessoa física"
-                          }
-                        />
-                      </div>
-
-                      <div className={styles.field}>
-                        <span>{identity.person_type === "business" ? "CNPJ" : "CPF"}</span>
-                        <div className={styles.sensitiveInput}>
-                          <input
-                            readOnly
-                            value={
-                              identityTaxVisible && identity.tax_id_value
-                                ? formatTaxId(identity.tax_id_value, identity.person_type)
-                                : maskedTaxId(identity.person_type, identity.tax_id_last4)
-                            }
-                          />
-                          {identity.tax_id_value ? (
-                            <button
-                              type="button"
-                              className={styles.revealButton}
-                              onClick={() => setIdentityTaxVisible((visible) => !visible)}
-                              aria-label={
-                                identityTaxVisible
-                                  ? "Ocultar CPF/CNPJ"
-                                  : "Exibir CPF/CNPJ"
-                              }
-                            >
-                              {identityTaxVisible ? <EyeOff size={17} /> : <Eye size={17} />}
-                              {identityTaxVisible ? "Ocultar" : "Exibir"}
-                            </button>
-                          ) : null}
-                        </div>
-                        {!identity.tax_id_value && (
-                          <small>
-                            Este envio antigo só possui os 4 dígitos finais salvos. Ao reenviar, o CPF/CNPJ completo passará a ficar criptografado e poderá ser exibido com segurança.
-                          </small>
-                        )}
-                      </div>
-
-                      <div className={styles.field}>
-                        <span>
-                          {identity.person_type === "business"
-                            ? "Nome do responsável"
-                            : "Nome legal"}
-                        </span>
-                        <input readOnly value={identity.legal_name} />
-                      </div>
-
-                      {identity.person_type === "individual" ? (
-                        <div className={styles.field}>
-                          <span>Data de nascimento</span>
-                          <input readOnly type="date" value={identity.birth_date ?? ""} />
-                        </div>
-                      ) : (
-                        <div className={styles.field}>
-                          <span>Razão social</span>
-                          <input readOnly value={identity.business_name ?? ""} />
-                        </div>
-                      )}
-
-                      <div className={`${styles.field} ${styles.fullSpan}`}>
-                        <span>Documento enviado</span>
-                        <input
-                          readOnly
-                          value={identity.document_original_name || "Documento legado"}
-                        />
-                        <small>O arquivo continua protegido e disponível para a análise administrativa.</small>
+                        <strong>Aguardando análise</strong>
+                        <small>Os campos ficam bloqueados até a decisão do administrador.</small>
                       </div>
                     </div>
                   </div>
-                )}
+                ) : null}
 
-                {!identityEditing && (
+                {identity.status === "approved" && !identityEditing && (
                   <div className={styles.actions}>
                     <button
                       type="button"
-                      className={
-                        identityState.tone === "rejected"
-                          ? styles.primaryAction
-                          : styles.secondaryAction
-                      }
+                      className={styles.secondaryAction}
                       onClick={() => {
                         setPersonType(identity.person_type);
                         setTaxId(
@@ -632,9 +566,7 @@ export function AccountView() {
                       }}
                     >
                       <Pencil size={15} />
-                      {identityState.tone === "rejected"
-                        ? "Corrigir e reenviar"
-                        : "Editar e reenviar para análise"}
+                      Editar dados e reenviar para análise
                     </button>
                   </div>
                 )}
@@ -658,9 +590,17 @@ export function AccountView() {
               >
                 <div className={styles.formPanelHead}>
                   <div>
-                    <h3>{identity ? "Editar e reenviar identidade" : "Enviar identidade"}</h3>
+                    <h3>
+                      {!identity
+                        ? "Enviar identidade"
+                        : ["rejected", "resubmission_required"].includes(identity.status)
+                          ? "Corrigir dados e enviar nova análise"
+                          : "Editar e reenviar identidade"}
+                    </h3>
                     <p>
-                      O novo envio ficará Em análise. Uma aprovação anterior deixa de valer até a nova conferência.
+                      {identity?.status === "rejected" || identity?.status === "resubmission_required"
+                        ? "Corrija os dados apontados na análise. Ao enviar, o status volta para Em análise."
+                        : "O novo envio ficará Em análise até uma nova conferência administrativa."}
                     </p>
                   </div>
                 </div>
@@ -748,16 +688,18 @@ export function AccountView() {
                     <input
                       name="document"
                       type="file"
-                      required
+                      required={!identity?.document_original_name}
                       accept="image/jpeg,image/png,image/webp,application/pdf"
                     />
                     <small>
-                      RG, CNH ou documento equivalente. JPG, PNG, WEBP ou PDF até 5 MB.
+                      {identity?.document_original_name
+                        ? `Documento atual: ${identity.document_original_name}. Deixe vazio para manter ou selecione outro para substituir.`
+                        : "RG, CNH ou documento equivalente. JPG, PNG, WEBP ou PDF até 5 MB."}
                     </small>
                   </div>
 
                   <div className={styles.formActions}>
-                    {identity && (
+                    {identity?.status === "approved" && (
                       <button
                         type="button"
                         className={styles.secondaryAction}
@@ -775,7 +717,11 @@ export function AccountView() {
                       </button>
                     )}
                     <button className={styles.primaryAction} disabled={busy}>
-                      {busy ? "Enviando..." : "Enviar para análise"}
+                      {busy
+                        ? "Enviando..."
+                        : identity && ["rejected", "resubmission_required"].includes(identity.status)
+                          ? "Enviar nova análise"
+                          : "Enviar para análise"}
                     </button>
                   </div>
                 </div>
