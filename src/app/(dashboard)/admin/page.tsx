@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { decryptSecret } from "@/lib/security/secrets";
 import { AdminView } from "@/components/admin-view";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,10 @@ export default async function Page() {
         .limit(100),
       admin
         .from("payout_accounts")
-        .select("id,holder_name,status,key_type,key_last4,created_at")
+        .select(
+          "id,user_id,holder_name,holder_tax_id_last4,status,key_type,key_last4,encrypted_key,is_primary,created_at,updated_at",
+        )
+        .neq("status", "disabled")
         .order("created_at", { ascending: false })
         .limit(100),
       admin
@@ -70,13 +74,19 @@ export default async function Page() {
   if (failed?.error) throw failed.error;
 
   const identityRows = identity.data ?? [];
-  const identityUserIds = [...new Set(identityRows.map((row) => row.user_id))];
+  const pixRows = pix.data ?? [];
+  const relatedUserIds = [
+    ...new Set([
+      ...identityRows.map((row) => row.user_id),
+      ...pixRows.map((row) => row.user_id),
+    ]),
+  ];
 
-  const profiles = identityUserIds.length
+  const profiles = relatedUserIds.length
     ? await admin
         .from("profiles")
         .select("id,email,full_name")
-        .in("id", identityUserIds)
+        .in("id", relatedUserIds)
     : { data: [], error: null };
 
   if (profiles.error) throw profiles.error;
@@ -107,10 +117,37 @@ export default async function Page() {
     }),
   );
 
+  const enrichedPix = pixRows.map((row) => {
+    const profile = profilesById.get(row.user_id);
+    let keyValue: string | null = null;
+
+    try {
+      keyValue = decryptSecret(row.encrypted_key);
+    } catch {
+      keyValue = null;
+    }
+
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      holder_name: row.holder_name,
+      holder_tax_id_last4: row.holder_tax_id_last4,
+      status: row.status,
+      key_type: row.key_type,
+      key_last4: row.key_last4,
+      key_value: keyValue,
+      is_primary: row.is_primary,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      email: profile?.email ?? null,
+      user_full_name: profile?.full_name ?? null,
+    };
+  });
+
   return (
     <AdminView
       identity={enrichedIdentity}
-      pix={pix.data ?? []}
+      pix={enrichedPix}
       withdrawals={withdrawals.data ?? []}
       payments={payments.data ?? []}
       webhooks={webhooks.data ?? []}
