@@ -16,3 +16,21 @@
 .genericRow strong{font-size:.8rem}
 .genericRow span{font-size:.72rem}
 .error{font-size:.76rem}
+
+/* Escala de tipografia ampliada — Admin */
+.tab{font-size:.91rem;min-height:44px;padding:0 16px}
+.count{font-size:.76rem;min-width:23px;height:23px}
+.panelHead h2{font-size:1.18rem}
+.panelHead p{font-size:.88rem;line-height:1.55}
+.personText strong{font-size:1.03rem}
+.personText span{font-size:.86rem;line-height:1.45}
+.statusBadge{font-size:.82rem;padding:8px 12px}
+.detail span{font-size:.76rem}
+.detail strong,.detail code{font-size:.94rem;line-height:1.35}
+.note{font-size:.86rem;line-height:1.55}
+.action,.dangerAction,.approveAction{font-size:.84rem;min-height:42px;padding:0 14px}
+.empty strong{font-size:1rem}
+.empty p{font-size:.84rem;line-height:1.55}
+.genericRow strong{font-size:.94rem}
+.genericRow span{font-size:.84rem;line-height:1.45}
+.error{font-size:.86rem}
