@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   AlertTriangle,
   BadgeCheck,
+  Banknote,
   ExternalLink,
   FileCheck2,
   Fingerprint,
@@ -46,6 +47,17 @@ type Row = {
   key_value?: string | null;
   holder_tax_id_last4?: string;
   is_primary?: boolean;
+  user_id?: string;
+  payout_account_id?: string;
+  payout_key_type?: string;
+  payout_key_last4?: string;
+  payout_holder_name?: string;
+  payout_holder_tax_id_last4?: string;
+  requested_at?: string;
+  processed_at?: string | null;
+  paid_at?: string | null;
+  receipt_reference?: string | null;
+  note?: string | null;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -144,8 +156,21 @@ export function AdminView({
         ) ?? undefined;
     }
 
+    const withdrawalDecision =
+      path.includes("/api/admin/withdrawals/") &&
+      ["rejected", "failed", "cancelled"].includes(status);
+
+    const note = withdrawalDecision
+      ? prompt(
+          status === "rejected"
+            ? "Informe o motivo da rejeição. Este texto ficará visível para o solicitante:"
+            : "Informe o motivo desta decisão. Este texto ficará visível para o solicitante:",
+        ) ?? undefined
+      : undefined;
+
     if (status === "paid" && !reference) return;
     if (identityReview && !reviewNote?.trim()) return;
+    if (withdrawalDecision && !note?.trim()) return;
 
     setBusy(true);
     setError("");
@@ -157,6 +182,7 @@ export function AdminView({
           status,
           receiptReference: reference,
           reviewNote,
+          note,
         }),
       });
       router.refresh();
@@ -429,6 +455,147 @@ export function AdminView({
                   <div>
                     <strong>Nenhuma chave Pix cadastrada</strong>
                     <p>As chaves enviadas pelos usuários aparecerão aqui com os dados para conferência.</p>
+                  </div>
+                </div>
+              )
+            ) : tab === "Saques" ? (
+              withdrawals.length ? (
+                <div className={styles.cards}>
+                  {withdrawals.map((row) => (
+                    <article className={styles.reviewCard} key={row.id}>
+                      <div className={styles.reviewTop}>
+                        <div className={styles.person}>
+                          <span className={styles.avatar}>
+                            <Banknote size={18} />
+                          </span>
+                          <div className={styles.personText}>
+                            <strong>{row.user_full_name ?? "Solicitante"}</strong>
+                            <span>{row.email ?? "E-mail não encontrado"}</span>
+                          </div>
+                        </div>
+                        <span className={badgeClass(row.status)}>
+                          {STATUS_LABELS[row.status ?? ""] ?? row.status ?? "—"}
+                        </span>
+                      </div>
+
+                      <div className={styles.details}>
+                        <div className={styles.detail}>
+                          <span>Valor solicitado</span>
+                          <strong>{formatCents(row.amount_cents ?? 0)}</strong>
+                        </div>
+                        <div className={styles.detail}>
+                          <span>Chave Pix</span>
+                          <code>
+                            {row.key_value ||
+                              `•••• ${row.payout_key_last4 ?? "—"}`}
+                          </code>
+                        </div>
+                        <div className={styles.detail}>
+                          <span>Tipo da chave</span>
+                          <strong>
+                            {PIX_TYPE_LABELS[row.payout_key_type ?? ""] ??
+                              row.payout_key_type ??
+                              "—"}
+                          </strong>
+                        </div>
+                        <div className={styles.detail}>
+                          <span>Titular</span>
+                          <strong>{row.payout_holder_name ?? "—"}</strong>
+                        </div>
+                        <div className={styles.detail}>
+                          <span>CPF/CNPJ do titular</span>
+                          <strong>
+                            •••• {row.payout_holder_tax_id_last4 ?? "—"}
+                          </strong>
+                        </div>
+                        <div className={styles.detail}>
+                          <span>Solicitado em</span>
+                          <strong>
+                            {formatDate(row.requested_at ?? row.created_at)}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {row.note && (
+                        <div className={styles.note}>
+                          <strong>Motivo / observação:</strong> {row.note}
+                        </div>
+                      )}
+
+                      {row.receipt_reference && (
+                        <div className={styles.note}>
+                          <strong>Comprovante / referência:</strong>{" "}
+                          {row.receipt_reference}
+                        </div>
+                      )}
+
+                      {["requested", "processing"].includes(row.status ?? "") && (
+                        <div className={styles.actions}>
+                          {row.status === "requested" ? (
+                            <>
+                              <button
+                                disabled={busy}
+                                className={styles.action}
+                                onClick={() =>
+                                  act(
+                                    `/api/admin/withdrawals/${row.id}`,
+                                    "processing",
+                                  )
+                                }
+                              >
+                                Processar saque
+                              </button>
+                              <button
+                                disabled={busy}
+                                className={styles.dangerAction}
+                                onClick={() =>
+                                  act(
+                                    `/api/admin/withdrawals/${row.id}`,
+                                    "rejected",
+                                  )
+                                }
+                              >
+                                Rejeitar
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                disabled={busy}
+                                className={styles.approveAction}
+                                onClick={() =>
+                                  act(
+                                    `/api/admin/withdrawals/${row.id}`,
+                                    "paid",
+                                  )
+                                }
+                              >
+                                Marcar como pago
+                              </button>
+                              <button
+                                disabled={busy}
+                                className={styles.dangerAction}
+                                onClick={() =>
+                                  act(
+                                    `/api/admin/withdrawals/${row.id}`,
+                                    "failed",
+                                  )
+                                }
+                              >
+                                Marcar como falhou
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.empty}>
+                  <div>
+                    <strong>Nenhum saque solicitado</strong>
+                    <p>As solicitações aparecerão aqui com todos os dados necessários para conferência.</p>
                   </div>
                 </div>
               )
