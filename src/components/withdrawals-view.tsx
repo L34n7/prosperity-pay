@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { WithdrawalConfirmationModal } from "@/components/withdrawal-confirmation-modal";
 import { formatCents, formatDate, requestJson } from "@/lib/operational";
+import styles from "./withdrawals-view.module.css";
 
 type Balance = { available_cents: number };
 type Pix = {
@@ -49,6 +50,7 @@ export function WithdrawalsView() {
         requestJson<{ verification: Identity | null }>("/api/financial-profile/identity"),
         requestJson<{ withdrawals: Withdrawal[] }>("/api/withdrawals"),
       ]);
+
       setBalance(b.balance);
       setPix(p.payoutAccounts);
       setIdentity(i.verification);
@@ -108,6 +110,7 @@ export function WithdrawalsView() {
           payoutAccountId: pending.payoutAccountId,
         }),
       });
+
       setPending(null);
       setMessage("Saque solicitado e enviado para análise.");
       await load();
@@ -128,70 +131,103 @@ export function WithdrawalsView() {
         description="Solicite transferência do saldo disponível por Pix."
       />
 
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {message && <p className="form-success" role="status">{message}</p>}
-
-      <section className="panel operational-panel">
-        <h2>Disponível: {formatCents(balance.available_cents)}</h2>
-
-        {!allowed ? (
-          <p>
-            Para sacar, conclua a verificação de identidade e cadastre uma chave
-            Pix aprovada. <Link href="/conta">Dados financeiros →</Link>
-          </p>
-        ) : (
-          <form onSubmit={submit} className="operational-form form-grid">
-            <label>
-              Chave Pix
-              <select name="pix" required>
-                {verifiedPix.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.key_type.toUpperCase()} · ••••{item.key_last4}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Valor (R$)
-              <input
-                name="amount"
-                type="number"
-                min="5"
-                max={balance.available_cents / 100}
-                step="0.01"
-                placeholder="5,00"
-                required
-              />
-              <small>
-                Mínimo R$ 5,00 · Máximo {formatCents(balance.available_cents)}
-              </small>
-            </label>
-
-            <button
-              className="primary-button"
-              disabled={balance.available_cents < 500}
-            >
-              Solicitar saque
-            </button>
-          </form>
+      <div className={styles.pageStack}>
+        {error && (
+          <div className={`${styles.notice} ${styles.error}`} role="alert">
+            {error}
+          </div>
         )}
-      </section>
+        {message && (
+          <div className={`${styles.notice} ${styles.success}`} role="status">
+            {message}
+          </div>
+        )}
 
-      <section className="panel operational-panel">
-        <h2>Histórico</h2>
-        {items.length ? (
-          items.map((item) => (
-            <div className="record-row" key={item.id}>
-              <strong>{formatCents(item.amount_cents)}</strong>
-              <span>{item.status}</span>
-              <span>{formatDate(item.created_at)}</span>
+        <section className={styles.panel}>
+          <header className={styles.panelHead}>
+            <div>
+              <h2>Solicitar saque</h2>
+              <p>Escolha a chave de destino e informe o valor desejado.</p>
             </div>
-          ))
-        ) : (
-          <p>Nenhum saque solicitado.</p>
-        )}
-      </section>
+            <strong className={styles.balance}>
+              {formatCents(balance.available_cents)}
+            </strong>
+          </header>
+
+          <div className={styles.panelBody}>
+            {!allowed ? (
+              <p className={styles.blocked}>
+                Para sacar, conclua a verificação de identidade e cadastre uma
+                chave Pix aprovada. <Link href="/conta">Dados financeiros →</Link>
+              </p>
+            ) : (
+              <form onSubmit={submit} className={styles.form}>
+                <label className={styles.field}>
+                  <span>Chave Pix</span>
+                  <select name="pix" required>
+                    {verifiedPix.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.key_type.toUpperCase()} · ••••{item.key_last4}
+                      </option>
+                    ))}
+                  </select>
+                  <small>Selecione uma chave Pix verificada.</small>
+                </label>
+
+                <label className={styles.field}>
+                  <span>Valor (R$)</span>
+                  <input
+                    name="amount"
+                    type="number"
+                    min="5"
+                    max={balance.available_cents / 100}
+                    step="0.01"
+                    placeholder="5,00"
+                    required
+                  />
+                  <small>
+                    Mínimo R$ 5,00 · Máximo {formatCents(balance.available_cents)}
+                  </small>
+                </label>
+
+                <div className={styles.actionCell}>
+                  <button
+                    className={styles.submit}
+                    disabled={balance.available_cents < 500}
+                  >
+                    Solicitar saque
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </section>
+
+        <section className={styles.panel}>
+          <header className={styles.panelHead}>
+            <div>
+              <h2>Histórico</h2>
+              <p>Acompanhe as solicitações realizadas.</p>
+            </div>
+          </header>
+
+          <div className={styles.panelBody}>
+            {items.length ? (
+              <div className={styles.history}>
+                {items.map((item) => (
+                  <div className={styles.historyRow} key={item.id}>
+                    <strong>{formatCents(item.amount_cents)}</strong>
+                    <span>{item.status}</span>
+                    <span>{formatDate(item.created_at)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={styles.empty}>Nenhum saque solicitado.</p>
+            )}
+          </div>
+        </section>
+      </div>
 
       <WithdrawalConfirmationModal
         open={Boolean(pending)}
