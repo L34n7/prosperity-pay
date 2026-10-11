@@ -9,6 +9,7 @@ import {
 import { sha256 } from "@/lib/security/hash";
 import { decryptSecret, encryptSecret } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verifyAndConsumePixSecurityChallenge } from "@/lib/security/pix-security";
 import type { Database } from "@/lib/supabase/database.types";
 
 type PixType = Database["public"]["Enums"]["payout_account_type"];
@@ -75,6 +76,8 @@ export async function POST(request: Request) {
     const pixKey = requiredString(body, "pixKey", 180).trim();
     const holderName = requiredString(body, "holderName", 180).trim();
     const holderTaxId = onlyDigits(requiredString(body, "holderTaxId", 20));
+    const securityChallengeId = requiredString(body, "securityChallengeId", 36);
+    const securityCode = requiredString(body, "securityCode", 6);
 
     if (
       !(
@@ -123,6 +126,14 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
+
+    await verifyAndConsumePixSecurityChallenge({
+      userId: user.id,
+      challengeId: securityChallengeId,
+      code: securityCode,
+      action: "create",
+      targetPayoutAccountId: null,
+    });
 
     const { data, error } = await admin
       .from("payout_accounts")
@@ -173,6 +184,8 @@ export async function PATCH(request: Request) {
     const pixKey = requiredString(body, "pixKey", 180).trim();
     const holderName = requiredString(body, "holderName", 180).trim();
     const holderTaxId = onlyDigits(requiredString(body, "holderTaxId", 20));
+    const securityChallengeId = requiredString(body, "securityChallengeId", 36);
+    const securityCode = requiredString(body, "securityCode", 6);
 
     if (
       !(
@@ -230,6 +243,14 @@ export async function PATCH(request: Request) {
         { status: 409 },
       );
     }
+
+    await verifyAndConsumePixSecurityChallenge({
+      userId: user.id,
+      challengeId: securityChallengeId,
+      code: securityCode,
+      action: "update",
+      targetPayoutAccountId: id,
+    });
 
     const { data, error } = await admin
       .from("payout_accounts")
