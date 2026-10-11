@@ -928,6 +928,9 @@ export function AccountView() {
                   setPixKey("");
                   setPixHolderName("");
                   setHolderTaxId("");
+                  setPixPassword("");
+                  setPixSecurityChallenge(null);
+                  setPixSecurityCode("");
                   setPixFormOpen(true);
                 }}
               >
@@ -1076,6 +1079,86 @@ export function AccountView() {
                     />
                   </div>
 
+                  <div className={`${styles.securityPanel} ${styles.fullSpan}`}>
+                    <div className={styles.securityPanelHead}>
+                      <div>
+                        <strong>Confirmação de segurança</strong>
+                        <p>
+                          Para cadastrar ou alterar uma chave Pix, confirme sua senha
+                          e depois o código enviado para o e-mail da conta.
+                        </p>
+                      </div>
+                      <ShieldCheck size={20} />
+                    </div>
+
+                    {!pixSecurityChallenge ? (
+                      <div className={styles.securityGrid}>
+                        <div className={styles.field}>
+                          <span>Senha de login</span>
+                          <input
+                            type="password"
+                            autoComplete="current-password"
+                            value={pixPassword}
+                            onChange={(event) => setPixPassword(event.target.value)}
+                            placeholder="Digite sua senha"
+                            required
+                          />
+                          <small>
+                            A senha é usada apenas para confirmar esta operação.
+                          </small>
+                        </div>
+                        <div className={styles.securityInfo}>
+                          <strong>Etapa 1 de 2</strong>
+                          <span>
+                            Após confirmar a senha, enviaremos um código de 6 dígitos
+                            para o seu e-mail.
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={styles.securityGrid}>
+                        <div className={styles.field}>
+                          <span>Código enviado para {pixSecurityChallenge.email}</span>
+                          <input
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={pixSecurityCode}
+                            maxLength={6}
+                            placeholder="000000"
+                            onChange={(event) =>
+                              setPixSecurityCode(
+                                event.target.value.replace(/\D/g, "").slice(0, 6),
+                              )
+                            }
+                            required
+                          />
+                          <small>
+                            Código válido por {pixSecurityChallenge.expiresInMinutes} minutos.
+                          </small>
+                        </div>
+                        <div className={styles.securityInfo}>
+                          <strong>Etapa 2 de 2</strong>
+                          <span>
+                            A chave Pix só entrará em análise depois da confirmação
+                            deste código.
+                          </span>
+                          <button
+                            type="button"
+                            className={styles.securityReset}
+                            onClick={() => {
+                              setPixSecurityChallenge(null);
+                              setPixSecurityCode("");
+                              setPixPassword("");
+                              setMessage("");
+                            }}
+                          >
+                            Solicitar outro código
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className={styles.formActions}>
                     {pix.length > 0 && (
                       <button
@@ -1090,10 +1173,12 @@ export function AccountView() {
                     )}
                     <button className={styles.primaryAction} disabled={busy}>
                       {busy
-                        ? "Enviando..."
-                        : pixEditingId
-                          ? "Salvar e reenviar para análise"
-                          : "Enviar chave para análise"}
+                        ? "Processando..."
+                        : !pixSecurityChallenge
+                          ? "Confirmar senha e enviar código"
+                          : pixEditingId
+                            ? "Confirmar código e reenviar para análise"
+                            : "Confirmar código e enviar para análise"}
                     </button>
                   </div>
                 </div>
