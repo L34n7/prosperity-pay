@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
-import { formatDate, requestJson } from "@/lib/operational";
+import { formatCents, formatDate, requestJson } from "@/lib/operational";
 import {
   dateInputLimitForAge,
   formatTaxId,
@@ -397,6 +397,9 @@ export function AccountView() {
   const identityState = identity
     ? IDENTITY_STATUS[identity.status] ?? IDENTITY_STATUS.under_review
     : null;
+  const verifiedPix = pix.filter((item) => item.status === "verified");
+  const withdrawalAllowed =
+    identity?.status === "approved" && verifiedPix.length > 0;
 
   return (
     <>
@@ -918,6 +921,79 @@ export function AccountView() {
                           : "Enviar chave para análise"}
                     </button>
                   </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <header className={styles.sectionHead}>
+            <div className={styles.sectionTitle}>
+              <span className={styles.sectionIcon}>
+                <Banknote size={19} />
+              </span>
+              <div>
+                <h2>Solicitar saque</h2>
+                <p>Escolha uma chave Pix verificada e informe quanto deseja sacar.</p>
+              </div>
+            </div>
+            <strong className={styles.balanceValue}>
+              {formatCents(balance.available_cents)}
+            </strong>
+          </header>
+
+          <div className={styles.sectionBody}>
+            {!withdrawalAllowed ? (
+              <div className={styles.withdrawalBlocked}>
+                <AlertTriangle size={19} />
+                <div>
+                  <strong>Saque ainda não liberado</strong>
+                  <p>
+                    {identity?.status !== "approved"
+                      ? "A identidade precisa estar aprovada para solicitar saques."
+                      : "Cadastre e aguarde a aprovação de pelo menos uma chave Pix."}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <form className={styles.withdrawalForm} onSubmit={requestWithdrawal}>
+                <div className={styles.field}>
+                  <span>Receber em</span>
+                  <select name="payoutAccountId" required>
+                    {verifiedPix.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {PIX_TYPE_LABELS[item.key_type]} · {formatPixValue(item.key_type, item.key_value)}
+                        {item.is_primary ? " · Principal" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <span>Valor do saque (R$)</span>
+                  <input
+                    name="amount"
+                    type="number"
+                    min="0.01"
+                    max={balance.available_cents / 100}
+                    step="0.01"
+                    placeholder="0,00"
+                    required
+                  />
+                  <small>
+                    Disponível agora: {formatCents(balance.available_cents)}
+                  </small>
+                </div>
+                <div className={styles.withdrawalActions}>
+                  <Link href="/saques" className={styles.secondaryAction}>
+                    Ver histórico
+                  </Link>
+                  <button
+                    className={styles.primaryAction}
+                    disabled={busy || balance.available_cents <= 0}
+                  >
+                    {busy ? "Enviando..." : "Solicitar saque"}
+                  </button>
                 </div>
               </form>
             )}
