@@ -697,6 +697,159 @@ function financialReviewLabel(kind: FinancialReviewKind) {
   return "Solicitação de saque";
 }
 
+
+function financialReviewDecisionTemplate(params: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  name: string;
+  paragraphs: string[];
+  details: Array<{ label: string; value: string }>;
+  buttonLabel: string;
+  link: string;
+  guidance: string;
+  footer: string;
+  tone: "success" | "warning" | "danger" | "info";
+}) {
+  const name = escapeHtml(params.name || "cliente");
+  const link = escapeHtml(params.link);
+  const palette =
+    params.tone === "danger"
+      ? {
+          header: "linear-gradient(135deg,#18090b 0%,#2b0d13 50%,#7a1f31 100%)",
+          eyebrow: "#ff9ba8",
+          subtitle: "#e5c8cd",
+          accent: "#c73550",
+          button: "linear-gradient(135deg,#e65f76 0%,#b91f39 100%)",
+          buttonText: "#ffffff",
+          softBg: "#fff6f7",
+          softBorder: "#efc8d0",
+          softText: "#7b2132",
+        }
+      : params.tone === "warning"
+        ? {
+            header: "linear-gradient(135deg,#181207 0%,#2c210b 50%,#8a5c14 100%)",
+            eyebrow: "#ffd98e",
+            subtitle: "#e8ddc4",
+            accent: "#b57918",
+            button: "linear-gradient(135deg,#e6ab42 0%,#b87a16 100%)",
+            buttonText: "#251704",
+            softBg: "#fffaf0",
+            softBorder: "#efd9aa",
+            softText: "#795313",
+          }
+        : params.tone === "info"
+          ? {
+              header: "linear-gradient(135deg,#07131a 0%,#0a2230 50%,#14536e 100%)",
+              eyebrow: "#90dcf5",
+              subtitle: "#c7dfe8",
+              accent: "#2589ab",
+              button: "linear-gradient(135deg,#4bc4ea 0%,#2588aa 100%)",
+              buttonText: "#061b24",
+              softBg: "#f2fbfe",
+              softBorder: "#c8e7f1",
+              softText: "#17617a",
+            }
+          : {
+              header: "linear-gradient(135deg,#07130d 0%,#0a1a12 45%,#0d6549 100%)",
+              eyebrow: "#54efb7",
+              subtitle: "#b9cfc5",
+              accent: "#18b982",
+              button: "linear-gradient(135deg,#22e6a1 0%,#18b982 100%)",
+              buttonText: "#042017",
+              softBg: "#f3fbf7",
+              softBorder: "#cfe8dc",
+              softText: "#176a50",
+            };
+
+  const paragraphs = params.paragraphs
+    .map(
+      (paragraph) =>
+        `<p style="margin:0 0 18px;color:#475569;font-size:15px;line-height:1.7;">${paragraph}</p>`,
+    )
+    .join("");
+
+  const details = `
+    <div style="background:#f8faf9;border:1px solid #dde8e2;border-radius:16px;padding:4px 20px;margin:6px 0 22px;">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border-collapse:collapse;">
+        ${params.details
+          .map(
+            (detail, index) => `
+              <tr>
+                <td width="42%" valign="top" style="width:42%;padding:14px 18px 14px 0;${index < params.details.length - 1 ? "border-bottom:1px solid #e6eee9;" : ""}color:#64748b;font-size:13px;line-height:1.45;">
+                  ${escapeHtml(detail.label)}
+                </td>
+                <td width="58%" valign="top" align="right" style="width:58%;padding:14px 0 14px 18px;${index < params.details.length - 1 ? "border-bottom:1px solid #e6eee9;" : ""}color:#0f172a;font-size:13px;line-height:1.45;font-weight:700;text-align:right;word-break:break-word;">
+                  ${escapeHtml(detail.value)}
+                </td>
+              </tr>`,
+          )
+          .join("")}
+      </table>
+    </div>`;
+
+  return `
+  <!DOCTYPE html>
+  <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>${escapeHtml(params.title)}</title>
+    </head>
+    <body style="margin:0;padding:0;background:#eef3f0;font-family:Arial,Helvetica,sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef3f0;padding:40px 16px;">
+        <tr>
+          <td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:620px;background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #dce6e1;box-shadow:0 20px 60px rgba(5,18,12,.13);">
+              <tr>
+                <td style="background:${palette.header};padding:38px 32px;text-align:center;">
+                  <div style="display:inline-block;margin:0 auto 17px;padding:10px 15px;border:1px solid rgba(255,255,255,.16);border-radius:13px;background:rgba(255,255,255,.06);color:#ffffff;font-size:18px;font-weight:800;letter-spacing:-.02em;">
+                    Prosperity <span style="color:#f1cc6a;font-size:12px;letter-spacing:.14em;">PAY</span>
+                  </div>
+                  <div style="margin:0 0 9px;color:${palette.eyebrow};font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;">${escapeHtml(params.eyebrow)}</div>
+                  <h1 style="margin:0;color:#ffffff;font-size:26px;line-height:1.25;font-weight:800;">${escapeHtml(params.title)}</h1>
+                  <p style="margin:10px 0 0;color:${palette.subtitle};font-size:15px;line-height:1.5;">${escapeHtml(params.subtitle)}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:36px 34px 32px;">
+                  <p style="margin:0 0 18px;color:#0f172a;font-size:18px;line-height:1.6;font-weight:800;">Olá, ${name}!</p>
+                  ${paragraphs}
+                  ${details}
+
+                  <div style="background:${palette.softBg};border:1px solid ${palette.softBorder};border-left:4px solid ${palette.accent};border-radius:14px;padding:17px 18px;margin:4px 0 26px;">
+                    <p style="margin:0 0 6px;color:${palette.softText};font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;">O que fazer agora</p>
+                    <p style="margin:0;color:${palette.softText};font-size:14px;line-height:1.65;">${escapeHtml(params.guidance)}</p>
+                  </div>
+
+                  <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                    <tr>
+                      <td align="center" style="padding:4px 0 28px;">
+                        <a href="${link}" style="display:inline-block;background:${palette.button};color:${palette.buttonText};text-decoration:none;padding:16px 30px;border-radius:999px;font-size:15px;font-weight:800;">${escapeHtml(params.buttonLabel)}</a>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <div style="background:#f7faf8;border:1px solid #dce8e1;border-radius:14px;padding:16px 18px;">
+                    <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">Se o botão não funcionar, copie e cole este link no navegador:</p>
+                    <p style="margin:9px 0 0;color:${palette.accent};font-size:12px;line-height:1.6;word-break:break-all;">${link}</p>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="background:#f7faf8;border-top:1px solid #dce8e1;padding:22px 32px;text-align:center;">
+                  <p style="margin:0 0 7px;color:#0f172a;font-size:14px;font-weight:800;">Prosperity Pay</p>
+                  <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.6;">${escapeHtml(params.footer)}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+  </html>`;
+}
+
 export async function sendFinancialReviewRequestedEmail(params: {
   to: string;
   name: string;
@@ -755,43 +908,138 @@ export async function sendFinancialReviewDecisionEmail(params: {
 }) {
   const label = financialReviewLabel(params.kind);
   const observation = params.observation?.trim() || "";
-  const html = prosperityPayTemplate({
-    eyebrow: "Atualização da análise",
+  const normalizedStatus = params.statusLabel.trim().toLowerCase();
+
+  const negative = ["rejeitada", "rejeitado", "falhou", "cancelado", "desativada"].includes(
+    normalizedStatus,
+  );
+  const correction = normalizedStatus === "reenvio necessário";
+  const processing = normalizedStatus === "em processamento";
+  const success = ["aprovada", "verificada", "pago"].includes(normalizedStatus);
+
+  const tone: "success" | "warning" | "danger" | "info" = negative
+    ? "danger"
+    : correction
+      ? "warning"
+      : processing
+        ? "info"
+        : "success";
+
+  let guidance = "";
+  let subtitle = "Sua solicitação recebeu uma atualização no Prosperity Pay";
+  let eyebrow = success ? "Análise concluída" : "Atualização da análise";
+  let buttonLabel =
+    params.kind === "withdrawal" ? "Ver meus saques" : "Ver minha conta";
+
+  if (params.kind === "identity") {
+    if (normalizedStatus === "aprovada") {
+      guidance =
+        "Sua identidade foi validada. Para solicitar saques, mantenha também uma chave Pix verificada.";
+    } else if (correction) {
+      guidance =
+        "Abra sua conta, revise a observação da análise, corrija os dados solicitados e envie um novo documento para uma nova conferência.";
+      subtitle = "Precisamos que você corrija alguns dados antes de concluir a verificação";
+      eyebrow = "Ação necessária";
+      buttonLabel = "Corrigir e reenviar";
+    } else {
+      guidance =
+        "Consulte o motivo informado, corrija os dados necessários e envie uma nova verificação com um novo documento.";
+      subtitle = "A verificação não pôde ser aprovada com os dados enviados";
+      eyebrow = "Verificação não aprovada";
+      buttonLabel = "Revisar meus dados";
+    }
+  } else if (params.kind === "pix") {
+    if (normalizedStatus === "verificada") {
+      guidance =
+        "Sua chave Pix foi verificada e já pode ser selecionada para receber saques.";
+    } else if (normalizedStatus === "desativada") {
+      guidance =
+        "Esta chave não poderá mais ser usada para saques. Cadastre outra chave Pix e conclua novamente a confirmação de segurança.";
+      subtitle = "A chave Pix foi desativada";
+      eyebrow = "Chave indisponível";
+      buttonLabel = "Cadastrar outra chave";
+    } else {
+      guidance =
+        "Abra sua conta, revise os dados da chave e cadastre ou edite a chave novamente. A nova tentativa exigirá sua senha e o código de confirmação enviado por e-mail.";
+      subtitle = "A chave Pix enviada não pôde ser aprovada";
+      eyebrow = "Chave não aprovada";
+      buttonLabel = "Corrigir chave Pix";
+    }
+  } else {
+    if (normalizedStatus === "pago") {
+      guidance =
+        "O saque foi marcado como pago. Consulte o histórico para conferir o valor, a chave de destino e a referência do pagamento quando disponível.";
+    } else if (processing) {
+      guidance =
+        "Seu saque está sendo processado. Não é necessário fazer uma nova solicitação enquanto esta estiver em andamento.";
+      subtitle = "Sua solicitação está sendo processada";
+      eyebrow = "Saque em processamento";
+    } else if (normalizedStatus === "rejeitado") {
+      guidance =
+        "Consulte o motivo da rejeição no histórico. Revise sua chave Pix e os dados financeiros antes de solicitar um novo saque.";
+      subtitle = "Sua solicitação de saque não pôde ser aprovada";
+      eyebrow = "Saque não aprovado";
+      buttonLabel = "Ver motivo da rejeição";
+    } else if (normalizedStatus === "falhou") {
+      guidance =
+        "Consulte a observação da análise e confira se a chave Pix está correta e ativa antes de tentar novamente.";
+      subtitle = "Não foi possível concluir o saque";
+      eyebrow = "Falha no processamento";
+      buttonLabel = "Revisar saque";
+    } else if (normalizedStatus === "cancelado") {
+      guidance =
+        "A solicitação foi cancelada. Consulte o histórico e, se ainda desejar sacar, revise os dados e faça uma nova solicitação.";
+      subtitle = "Sua solicitação de saque foi cancelada";
+      eyebrow = "Saque cancelado";
+      buttonLabel = "Ver histórico";
+    }
+  }
+
+  const paragraphs = [
+    success
+      ? `A análise de <strong>${escapeHtml(label.toLowerCase())}</strong> foi concluída com sucesso.`
+      : processing
+        ? `A solicitação de <strong>${escapeHtml(label.toLowerCase())}</strong> teve uma nova atualização.`
+        : `A análise de <strong>${escapeHtml(label.toLowerCase())}</strong> foi atualizada para <strong>${escapeHtml(params.statusLabel)}</strong>.`,
+    ...(observation
+      ? [`<strong>Motivo / observação:</strong> ${escapeHtml(observation)}`]
+      : []),
+  ];
+
+  const html = financialReviewDecisionTemplate({
+    eyebrow,
     title: `${label}: ${params.statusLabel}`,
-    subtitle: "Sua solicitação recebeu uma atualização no Prosperity Pay",
+    subtitle,
     name: params.name,
-    paragraphs: [
-      `A análise de <strong>${escapeHtml(label.toLowerCase())}</strong> foi atualizada para <strong>${escapeHtml(params.statusLabel)}</strong>.`,
-      ...(observation
-        ? [`Observação da análise: <strong>${escapeHtml(observation)}</strong>`]
-        : []),
-    ],
+    tone,
+    paragraphs,
     details: [
       { label: "Status", value: params.statusLabel },
       ...(params.details ?? []),
     ],
-    buttonLabel:
-      params.kind === "withdrawal" ? "Ver meus saques" : "Ver minha conta",
+    buttonLabel,
     link: params.link,
-    notice:
-      params.kind === "withdrawal"
-        ? "Consulte o histórico para acompanhar os detalhes desta solicitação."
-        : "Se houver solicitação de correção ou rejeição, consulte os detalhes na sua conta antes de reenviar.",
+    guidance,
     footer: `© ${new Date().getFullYear()} Prosperity Pay. Atualização de análise.`,
   });
 
   await sendEmail({
     to: params.to,
-    subject: `${label}: ${params.statusLabel} • Prosperity Pay`,
+    subject:
+      negative || correction
+        ? `Ação necessária · ${label}: ${params.statusLabel} • Prosperity Pay`
+        : `${label}: ${params.statusLabel} • Prosperity Pay`,
     html,
     text: [
       `Olá, ${params.name}!`,
       "",
       `${label}: ${params.statusLabel}.`,
-      ...(observation ? [`Observação: ${observation}`] : []),
+      ...(observation ? [`Motivo / observação: ${observation}`] : []),
+      `O que fazer agora: ${guidance}`,
       ...(params.details ?? []).map((item) => `${item.label}: ${item.value}`),
       "",
       params.link,
     ].join("\n"),
   });
 }
+
