@@ -73,6 +73,12 @@ const PIX_TYPE_LABELS: Record<string, string> = {
   random_key: "Chave aleatória",
 };
 
+function maskedTaxId(personType: string | undefined, last4: string | undefined) {
+  return personType === "business"
+    ? `••.•••.•••/••••-${last4 ?? "••••"}`
+    : `•••.•••.•••-${last4 ?? "••••"}`;
+}
+
 function badgeClass(status?: string) {
   if (["approved", "verified", "paid"].includes(status ?? "")) {
     return `${styles.statusBadge} ${styles.approved}`;
@@ -109,6 +115,7 @@ export function AdminView({
   const [tab, setTab] = useState("Identidade");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [visibleTaxIds, setVisibleTaxIds] = useState<Set<string>>(() => new Set());
 
   const groups: Record<string, Row[]> = {
     Identidade: identity,
@@ -120,6 +127,15 @@ export function AdminView({
     Usuários: users,
     Auditoria: audit,
   };
+
+  function toggleTaxId(rowId: string) {
+    setVisibleTaxIds((current) => {
+      const next = new Set(current);
+      if (next.has(rowId)) next.delete(rowId);
+      else next.add(rowId);
+      return next;
+    });
+  }
 
   async function act(path: string, status: string, identityReview = false) {
     if (!confirm(`Confirmar a alteração para ${STATUS_LABELS[status] ?? status}?`)) {
