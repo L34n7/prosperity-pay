@@ -19,6 +19,15 @@ type Withdrawal = {
   id: string;
   status: string;
   amount_cents: number;
+  payout_key_type: string;
+  payout_key_last4: string;
+  payout_holder_name: string;
+  payout_holder_tax_id_last4: string;
+  note: string | null;
+  receipt_reference: string | null;
+  requested_at: string;
+  processed_at: string | null;
+  paid_at: string | null;
   created_at: string;
 };
 type PendingWithdrawal = {
@@ -26,6 +35,23 @@ type PendingWithdrawal = {
   payoutAccountId: string;
   pixLabel: string;
 };
+
+const WITHDRAWAL_STATUS: Record<string, { label: string; tone: string }> = {
+  requested: { label: "Solicitado", tone: "pending" },
+  processing: { label: "Em processamento", tone: "processing" },
+  paid: { label: "Pago", tone: "approved" },
+  rejected: { label: "Rejeitado", tone: "rejected" },
+  failed: { label: "Falhou", tone: "rejected" },
+  cancelled: { label: "Cancelado", tone: "rejected" },
+};
+
+function withdrawalStatusClass(status: string) {
+  const tone = WITHDRAWAL_STATUS[status]?.tone ?? "pending";
+  if (tone === "approved") return `${styles.statusBadge} ${styles.statusApproved}`;
+  if (tone === "processing") return `${styles.statusBadge} ${styles.statusProcessing}`;
+  if (tone === "rejected") return `${styles.statusBadge} ${styles.statusRejected}`;
+  return `${styles.statusBadge} ${styles.statusPending}`;
+}
 
 export function WithdrawalsView() {
   const [balance, setBalance] = useState<Balance>({ available_cents: 0 });
@@ -213,14 +239,65 @@ export function WithdrawalsView() {
 
           <div className={styles.panelBody}>
             {items.length ? (
-              <div className={styles.history}>
-                {items.map((item) => (
-                  <div className={styles.historyRow} key={item.id}>
-                    <strong>{formatCents(item.amount_cents)}</strong>
-                    <span>{item.status}</span>
-                    <span>{formatDate(item.created_at)}</span>
-                  </div>
-                ))}
+              <div className={styles.historyCards}>
+                {items.map((item) => {
+                  const status = WITHDRAWAL_STATUS[item.status] ?? {
+                    label: item.status,
+                    tone: "pending",
+                  };
+                  return (
+                    <article className={styles.historyCard} key={item.id}>
+                      <div className={styles.historyTop}>
+                        <div>
+                          <span className={styles.historyLabel}>Valor solicitado</span>
+                          <strong>{formatCents(item.amount_cents)}</strong>
+                        </div>
+                        <span className={withdrawalStatusClass(item.status)}>
+                          {status.label}
+                        </span>
+                      </div>
+
+                      <div className={styles.historyDetails}>
+                        <div>
+                          <span>Destino Pix</span>
+                          <strong>
+                            {item.payout_key_type.toUpperCase()} · ••••
+                            {item.payout_key_last4}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Titular</span>
+                          <strong>{item.payout_holder_name}</strong>
+                        </div>
+                        <div>
+                          <span>Solicitado em</span>
+                          <strong>{formatDate(item.requested_at ?? item.created_at)}</strong>
+                        </div>
+                        <div>
+                          <span>CPF/CNPJ do titular</span>
+                          <strong>•••• {item.payout_holder_tax_id_last4}</strong>
+                        </div>
+                      </div>
+
+                      {item.note && (
+                        <div className={styles.rejectionReason}>
+                          <strong>
+                            {item.status === "rejected"
+                              ? "Motivo da rejeição"
+                              : "Observação"}
+                          </strong>
+                          <p>{item.note}</p>
+                        </div>
+                      )}
+
+                      {item.receipt_reference && (
+                        <div className={styles.receipt}>
+                          Comprovante / referência: <strong>{item.receipt_reference}</strong>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             ) : (
               <p className={styles.empty}>Nenhum saque solicitado.</p>
