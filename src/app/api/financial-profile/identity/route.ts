@@ -3,6 +3,7 @@ import { jsonError } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { onlyDigits, isValidTaxId, validateAdultBirthDate } from "@/lib/validation/br-documents";
 import { sha256 } from "@/lib/security/hash";
+import { decryptSecret, encryptSecret } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
@@ -28,18 +29,48 @@ function extensionFor(mimeType: string) {
 
 export async function GET() {
   try {
-    const { supabase, user } = await requireUser();
-    const { data, error } = await supabase
+    const { user } = await requireUser();
+    const admin = createAdminClient();
+    const { data, error } = await admin
       .from("identity_verifications")
       .select(
-        "id, person_type, legal_name, tax_id_last4, birth_date, business_name, status, review_note, submitted_at, reviewed_at, document_original_name, document_uploaded_at",
+        "id,person_type,legal_name,tax_id_last4,tax_id_encrypted,birth_date,business_name,status,review_note,submitted_at,reviewed_at,document_original_name,document_uploaded_at",
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
     if (error) throw error;
-    return NextResponse.json({ verification: data });
+
+    let taxIdValue: string | null = null;
+    if (data?.tax_id_encrypted) {
+      try {
+        taxIdValue = decryptSecret(data.tax_id_encrypted);
+      } catch {
+        taxIdValue = null;
+      }
+    }
+
+    return NextResponse.json({
+      verification: data
+        ? {
+            id: data.id,
+            person_type: data.person_type,
+            legal_name: data.legal_name,
+            tax_id_last4: data.tax_id_last4,
+            tax_id_value: taxIdValue,
+            birth_date: data.birth_date,
+            business_name: data.business_name,
+            status: data.status,
+            review_note: data.review_note,
+            submitted_at: data.submitted_at,
+            reviewed_at: data.reviewed_at,
+            document_original_name: data.document_original_name,
+            document_uploaded_at: data.document_uploaded_at,
+          }
+        : null,
+    });
   } catch (error) {
     return jsonError(error);
   }
@@ -157,6 +188,7 @@ export async function POST(request: Request) {
       legal_name: legalName,
       tax_id_last4: taxId.slice(-4),
       tax_id_hash: sha256(taxId),
+      tax_id_encrypted: encryptSecret(taxId),
       birth_date: personType === "individual" ? birthDate : null,
       business_name: personType === "business" ? businessName : null,
       document_storage_path: uploadedPath,
