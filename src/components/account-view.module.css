@@ -212,3 +212,17 @@
 .securityReset{width:max-content;margin-top:4px;padding:0;border:0;background:transparent;color:var(--primary);cursor:pointer;font-size:.8rem;font-weight:700}
 .securityReset:hover{text-decoration:underline}
 @media(max-width:760px){.securityGrid{grid-template-columns:1fr}}
+
+/* Modal premium de chave Pix */
+.pixModalOverlay{position:fixed;inset:0;z-index:1100;display:grid;place-items:center;padding:24px;background:rgba(1,8,5,.78);backdrop-filter:blur(8px)}
+.pixModal{width:min(780px,100%);max-height:min(88vh,920px);overflow:auto;border:1px solid rgba(65,116,87,.42);border-radius:18px;background:linear-gradient(145deg,#0c1811,#08110c);box-shadow:0 30px 90px rgba(0,0,0,.58)}
+.pixModalHead{position:sticky;top:0;z-index:2;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:22px 24px;border-bottom:1px solid var(--border-soft);background:rgba(8,17,12,.96);backdrop-filter:blur(10px)}
+.pixModalHead small{display:block;margin-bottom:4px;color:var(--primary);font-size:.76rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.pixModalHead h3{margin:0;color:var(--text);font-size:1.24rem}
+.pixModalHead p{max-width:610px;margin:7px 0 0;color:var(--text-muted);font-size:.88rem;line-height:1.5}
+.pixModalClose{display:grid;width:40px;height:40px;flex:0 0 auto;place-items:center;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.018);color:var(--text-muted);cursor:pointer}
+.pixModalClose:hover{border-color:rgba(34,230,161,.24);color:var(--primary)}
+.pixModalBody{padding:20px 24px 24px}
+.pixModalBody .formGrid{gap:14px}
+.pixModalBody .formActions{padding-top:4px}
+@media(max-width:680px){.pixModalOverlay{padding:10px}.pixModal{max-height:94vh;border-radius:14px}.pixModalHead,.pixModalBody{padding:18px}}
