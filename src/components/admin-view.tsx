@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatCents, formatDate, requestJson } from "@/lib/operational";
+import { formatTaxId } from "@/lib/validation/br-documents";
 import styles from "./admin-view.module.css";
 
 type Row = {
@@ -35,6 +36,7 @@ type Row = {
   action?: string;
   person_type?: string;
   tax_id_last4?: string;
+  tax_id_value?: string | null;
   birth_date?: string | null;
   business_name?: string | null;
   review_note?: string | null;
@@ -240,7 +242,14 @@ export function AdminView({
                         </div>
                         <div className={styles.detail}>
                           <span>{row.person_type === "business" ? "CNPJ" : "CPF"}</span>
-                          <strong>•••• {row.tax_id_last4 ?? "—"}</strong>
+                          <strong>
+                            {row.tax_id_value
+                              ? formatTaxId(
+                                  row.tax_id_value,
+                                  row.person_type === "business" ? "business" : "individual",
+                                )
+                              : `•••• ${row.tax_id_last4 ?? "—"}`}
+                          </strong>
                         </div>
                         <div className={styles.detail}>
                           <span>
