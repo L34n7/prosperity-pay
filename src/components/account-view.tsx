@@ -186,6 +186,13 @@ export function AccountView() {
   const [pixKey, setPixKey] = useState("");
   const [holderTaxId, setHolderTaxId] = useState("");
   const [pixHolderName, setPixHolderName] = useState("");
+  const [pixPassword, setPixPassword] = useState("");
+  const [pixSecurityChallenge, setPixSecurityChallenge] = useState<{
+    id: string;
+    email: string;
+    expiresInMinutes: number;
+  } | null>(null);
+  const [pixSecurityCode, setPixSecurityCode] = useState("");
   const [identityTaxVisible, setIdentityTaxVisible] = useState(false);
   const [pendingWithdrawal, setPendingWithdrawal] =
     useState<PendingWithdrawal | null>(null);
@@ -322,6 +329,9 @@ export function AccountView() {
     setPixKey("");
     setPixHolderName("");
     setHolderTaxId("");
+    setPixPassword("");
+    setPixSecurityChallenge(null);
+    setPixSecurityCode("");
     setPixFormOpen(false);
   }
 
@@ -345,6 +355,9 @@ export function AccountView() {
       setHolderTaxId(holderDocument ? formatHolderTaxId(holderDocument) : "");
     }
 
+    setPixPassword("");
+    setPixSecurityChallenge(null);
+    setPixSecurityCode("");
     setPixFormOpen(true);
     setError("");
   }
@@ -357,6 +370,42 @@ export function AccountView() {
     setMessage("");
 
     try {
+      if (!pixSecurityChallenge) {
+        if (!pixPassword) {
+          setError("Informe sua senha de login para continuar.");
+          return;
+        }
+
+        const challenge = await requestJson<{
+          challengeId: string;
+          email: string;
+          expiresInMinutes: number;
+        }>("/api/financial-profile/pix/security/request", {
+          method: "POST",
+          body: JSON.stringify({
+            password: pixPassword,
+            action: pixEditingId ? "update" : "create",
+            payoutAccountId: pixEditingId,
+          }),
+        });
+
+        setPixPassword("");
+        setPixSecurityChallenge({
+          id: challenge.challengeId,
+          email: challenge.email,
+          expiresInMinutes: challenge.expiresInMinutes,
+        });
+        setMessage(
+          `Senha confirmada. Enviamos um código de segurança para ${challenge.email}.`,
+        );
+        return;
+      }
+
+      if (!/^\d{6}$/.test(pixSecurityCode)) {
+        setError("Informe o código de 6 dígitos enviado por e-mail.");
+        return;
+      }
+
       await requestJson("/api/financial-profile/pix", {
         method: pixEditingId ? "PATCH" : "POST",
         body: JSON.stringify({
@@ -366,6 +415,8 @@ export function AccountView() {
           holderName: pixHolderName,
           holderTaxId,
           isPrimary: pix.length === 0,
+          securityChallengeId: pixSecurityChallenge.id,
+          securityCode: pixSecurityCode,
         }),
       });
 
@@ -374,8 +425,8 @@ export function AccountView() {
       await load();
       setMessage(
         edited
-          ? "Chave Pix atualizada e reenviada para análise."
-          : "Chave Pix cadastrada e enviada para análise.",
+          ? "Chave Pix atualizada e enviada para análise."
+          : "Chave Pix confirmada por e-mail e enviada para análise.",
       );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao salvar a chave Pix.");
