@@ -663,6 +663,10 @@ export type Database = {
           birth_date: string | null
           business_name: string | null
           created_at: string
+          document_mime_type: string | null
+          document_original_name: string | null
+          document_storage_path: string | null
+          document_uploaded_at: string | null
           id: string
           legal_name: string
           person_type: string
@@ -680,6 +684,10 @@ export type Database = {
           birth_date?: string | null
           business_name?: string | null
           created_at?: string
+          document_mime_type?: string | null
+          document_original_name?: string | null
+          document_storage_path?: string | null
+          document_uploaded_at?: string | null
           id?: string
           legal_name: string
           person_type: string
@@ -697,6 +705,10 @@ export type Database = {
           birth_date?: string | null
           business_name?: string | null
           created_at?: string
+          document_mime_type?: string | null
+          document_original_name?: string | null
+          document_storage_path?: string | null
+          document_uploaded_at?: string | null
           id?: string
           legal_name?: string
           person_type?: string
