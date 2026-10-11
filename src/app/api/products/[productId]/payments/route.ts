@@ -5,6 +5,7 @@ import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
 import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-metadata";
 import { isHiddenTestPayment } from "@/lib/payments/payment-visibility";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 
 type Context = { params: Promise<{ productId: string }> };
 
@@ -251,6 +252,15 @@ export async function POST(request: Request, context: Context) {
     );
 
     if (error) throw error;
+
+    const sale = data as {
+      reused?: boolean;
+      payment_id?: string;
+    } | null;
+
+    if (sale?.payment_id && sale.reused !== true) {
+      await dispatchPaymentEmailNotificationsSafe(admin, sale.payment_id);
+    }
 
     return NextResponse.json({ sale: data }, { status: 201 });
   } catch (error) {
