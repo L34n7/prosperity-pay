@@ -37,12 +37,23 @@ function prosperityPayTemplate(params: {
     )
     .join("");
   const details = params.details?.length
-    ? `<div style="background:#f7faf8;border:1px solid #dce8e1;border-radius:16px;padding:4px 20px;margin:6px 0 24px;">${params.details
-        .map(
-          (detail) =>
-            `<div style="display:flex;gap:16px;justify-content:space-between;padding:14px 0;border-bottom:1px solid #e6eee9;"><span style="color:#64748b;font-size:13px;">${escapeHtml(detail.label)}</span><strong style="color:#0f172a;font-size:13px;text-align:right;">${escapeHtml(detail.value)}</strong></div>`,
-        )
-        .join("")}</div>`
+    ? `<div style="background:#f7faf8;border:1px solid #dce8e1;border-radius:16px;padding:4px 20px;margin:6px 0 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border-collapse:collapse;">
+          ${params.details
+            .map(
+              (detail, index) =>
+                `<tr>
+                  <td width="42%" valign="top" style="width:42%;padding:14px 18px 14px 0;${index < params.details!.length - 1 ? "border-bottom:1px solid #e6eee9;" : ""}color:#64748b;font-size:13px;line-height:1.45;">
+                    ${escapeHtml(detail.label)}
+                  </td>
+                  <td width="58%" valign="top" align="right" style="width:58%;padding:14px 0 14px 18px;${index < params.details!.length - 1 ? "border-bottom:1px solid #e6eee9;" : ""}color:#0f172a;font-size:13px;line-height:1.45;font-weight:700;text-align:right;word-break:break-word;">
+                    ${escapeHtml(detail.value)}
+                  </td>
+                </tr>`,
+            )
+            .join("")}
+        </table>
+      </div>`
     : "";
   const notice = escapeHtml(
     params.notice ||
