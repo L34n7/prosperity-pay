@@ -676,6 +676,7 @@ export type Database = {
           status: Database["public"]["Enums"]["identity_verification_status"]
           submitted_at: string
           tax_id_hash: string
+          tax_id_encrypted: string | null
           tax_id_last4: string
           updated_at: string
           user_id: string
@@ -697,6 +698,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["identity_verification_status"]
           submitted_at?: string
           tax_id_hash: string
+          tax_id_encrypted?: string | null
           tax_id_last4: string
           updated_at?: string
           user_id: string
@@ -718,6 +720,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["identity_verification_status"]
           submitted_at?: string
           tax_id_hash?: string
+          tax_id_encrypted?: string | null
           tax_id_last4?: string
           updated_at?: string
           user_id?: string
