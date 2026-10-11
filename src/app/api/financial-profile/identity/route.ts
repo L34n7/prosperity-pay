@@ -229,8 +229,10 @@ export async function POST(request: Request) {
           .single();
 
     if (result.error) {
-      await admin.storage.from("identity-documents").remove([uploadedPath]);
-      uploadedPath = null;
+      if (uploadedPath) {
+        await admin.storage.from("identity-documents").remove([uploadedPath]);
+        uploadedPath = null;
+      }
       throw result.error;
     }
 
