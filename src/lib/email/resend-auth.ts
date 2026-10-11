@@ -625,7 +625,7 @@ export async function sendPixSecurityCodeEmail(params: {
       ? "alterar uma chave Pix"
       : "cadastrar uma nova chave Pix";
 
-  const html = \`
+  const html = `
     <div style="margin:0;padding:32px 16px;background:#edf4f0;font-family:Arial,Helvetica,sans-serif">
       <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
         <tr><td align="center">
@@ -636,17 +636,17 @@ export async function sendPixSecurityCodeEmail(params: {
                   Prosperity <span style="color:#f1cc6a;font-size:12px;letter-spacing:.14em">PAY</span>
                 </div>
                 <div style="margin-bottom:8px;color:#54efb7;font-size:11px;font-weight:800;letter-spacing:.13em;text-transform:uppercase">Segurança financeira</div>
-                <h1 style="margin:0;font-size:25px;line-height:1.3">\${escapeHtml(title)}</h1>
+                <h1 style="margin:0;font-size:25px;line-height:1.3">${escapeHtml(title)}</h1>
               </td>
             </tr>
             <tr>
               <td style="padding:34px 32px;color:#475569;font-size:15px;line-height:1.7">
-                <p style="margin:0 0 16px;color:#0f172a;font-size:18px;font-weight:800">Olá, \${escapeHtml(params.name || "cliente")}!</p>
-                <p style="margin:0 0 18px">Sua senha foi confirmada. Para concluir a operação de <strong>\${escapeHtml(actionLabel)}</strong>, informe no Prosperity Pay o código abaixo:</p>
+                <p style="margin:0 0 16px;color:#0f172a;font-size:18px;font-weight:800">Olá, ${escapeHtml(params.name || "cliente")}!</p>
+                <p style="margin:0 0 18px">Sua senha foi confirmada. Para concluir a operação de <strong>${escapeHtml(actionLabel)}</strong>, informe no Prosperity Pay o código abaixo:</p>
                 <div style="margin:24px 0;padding:22px;border:1px solid #cfe5da;border-radius:16px;background:#f6fbf8;text-align:center">
                   <div style="color:#64748b;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em">Código de confirmação</div>
-                  <div style="margin-top:8px;color:#0c8f62;font-size:34px;font-weight:900;letter-spacing:.22em">\${escapeHtml(params.code)}</div>
-                  <div style="margin-top:10px;color:#64748b;font-size:13px">Válido por \${params.expiresInMinutes} minutos.</div>
+                  <div style="margin-top:8px;color:#0c8f62;font-size:34px;font-weight:900;letter-spacing:.22em">${escapeHtml(params.code)}</div>
+                  <div style="margin-top:10px;color:#64748b;font-size:13px">Válido por ${params.expiresInMinutes} minutos.</div>
                 </div>
                 <p style="margin:0;color:#64748b;font-size:13px">Se você não solicitou esta operação, não informe o código e altere sua senha.</p>
               </td>
@@ -659,20 +659,20 @@ export async function sendPixSecurityCodeEmail(params: {
           </table>
         </td></tr>
       </table>
-    </div>\`;
+    </div>`;
 
   await sendEmail({
     to: params.to,
-    subject: \`\${title} • Prosperity Pay\`,
+    subject: `${title} • Prosperity Pay`,
     html,
     text: [
-      \`Olá, \${params.name}!\`,
+      `Olá, ${params.name}!`,
       "",
-      \`Para \${actionLabel}, use o código abaixo:\`,
+      `Para ${actionLabel}, use o código abaixo:`,
       params.code,
       "",
-      \`O código é válido por \${params.expiresInMinutes} minutos.\`,
+      `O código é válido por ${params.expiresInMinutes} minutos.`,
       "Se você não solicitou esta operação, ignore este e-mail e altere sua senha.",
-    ].join("\\n"),
+    ].join("\n"),
   });
 }
