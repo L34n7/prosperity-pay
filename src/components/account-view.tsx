@@ -518,7 +518,7 @@ export function AccountView() {
                       <strong>{identity.document_original_name || "Documento legado"}</strong>
                     </div>
                   </div>
-                ) : identity.status === "under_review" ? (
+                ) : identity.status === "under_review" && !identityEditing ? (
                   <div className={styles.analysisSummary}>
                     <div>
                       <span>Nome</span>
@@ -546,8 +546,27 @@ export function AccountView() {
                       <Clock3 size={18} />
                       <div>
                         <strong>Aguardando análise</strong>
-                        <small>Os campos ficam bloqueados até a decisão do administrador.</small>
+                        <small>
+                          Você pode corrigir os dados enquanto aguarda. Ao salvar, este envio será substituído e a análise reiniciada.
+                        </small>
                       </div>
+                      <button
+                        type="button"
+                        className={styles.secondaryAction}
+                        onClick={() => {
+                          setPersonType(identity.person_type);
+                          setTaxId(
+                            identity.tax_id_value
+                              ? formatTaxId(identity.tax_id_value, identity.person_type)
+                              : "",
+                          );
+                          setIdentityEditing(true);
+                          setError("");
+                        }}
+                      >
+                        <Pencil size={15} />
+                        Editar dados enviados
+                      </button>
                     </div>
                   </div>
                 ) : null}
@@ -702,7 +721,7 @@ export function AccountView() {
                   </div>
 
                   <div className={styles.formActions}>
-                    {identity?.status === "approved" && (
+                    {identity && !["rejected", "resubmission_required"].includes(identity.status) && (
                       <button
                         type="button"
                         className={styles.secondaryAction}
@@ -722,9 +741,11 @@ export function AccountView() {
                     <button className={styles.primaryAction} disabled={busy}>
                       {busy
                         ? "Enviando..."
-                        : identity && ["rejected", "resubmission_required"].includes(identity.status)
-                          ? "Enviar nova análise"
-                          : "Enviar para análise"}
+                        : identity?.status === "under_review"
+                          ? "Salvar e reenviar para análise"
+                          : identity && ["rejected", "resubmission_required"].includes(identity.status)
+                            ? "Enviar nova análise"
+                            : "Enviar para análise"}
                     </button>
                   </div>
                 </div>
