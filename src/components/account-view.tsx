@@ -746,7 +746,14 @@ export function AccountView() {
               <button
                 type="button"
                 className={styles.secondaryAction}
-                onClick={() => setPixFormOpen(true)}
+                onClick={() => {
+                  setPixEditingId(null);
+                  setPixKeyType("cpf");
+                  setPixKey("");
+                  setPixHolderName("");
+                  setHolderTaxId("");
+                  setPixFormOpen(true);
+                }}
               >
                 <Plus size={15} />
                 Nova chave
@@ -786,6 +793,16 @@ export function AccountView() {
                         <span className={statusClass(state.tone)}>{state.label}</span>
                         <small>{state.description}</small>
                         <small>Cadastrada em {formatDate(item.created_at)}</small>
+                        {["pending", "rejected"].includes(item.status) && (
+                          <button
+                            type="button"
+                            className={styles.secondaryAction}
+                            onClick={() => editPix(item)}
+                          >
+                            <Pencil size={15} />
+                            Editar chave
+                          </button>
+                        )}
                       </div>
                     </article>
                   );
@@ -804,8 +821,12 @@ export function AccountView() {
               <form className={styles.formPanel} onSubmit={sendPix}>
                 <div className={styles.formPanelHead}>
                   <div>
-                    <h3>Cadastrar chave Pix</h3>
-                    <p>Após o envio, a chave ficará Em análise até a conferência administrativa.</p>
+                    <h3>{pixEditingId ? "Editar chave Pix" : "Cadastrar chave Pix"}</h3>
+                    <p>
+                      {pixEditingId
+                        ? "Salve as alterações para reenviar a chave e manter o status Em análise."
+                        : "Após o envio, a chave ficará Em análise até a conferência administrativa."}
+                    </p>
                   </div>
                 </div>
 
@@ -853,7 +874,13 @@ export function AccountView() {
 
                   <div className={styles.field}>
                     <span>Nome do titular</span>
-                    <input name="holderName" required maxLength={180} />
+                    <input
+                      name="holderName"
+                      required
+                      maxLength={180}
+                      value={pixHolderName}
+                      onChange={(event) => setPixHolderName(event.target.value)}
+                    />
                   </div>
 
                   <div className={styles.field}>
@@ -877,16 +904,18 @@ export function AccountView() {
                         type="button"
                         className={styles.secondaryAction}
                         onClick={() => {
-                          setPixFormOpen(false);
-                          setPixKey("");
-                          setHolderTaxId("");
+                          resetPixForm();
                         }}
                       >
                         Cancelar
                       </button>
                     )}
                     <button className={styles.primaryAction} disabled={busy}>
-                      {busy ? "Enviando..." : "Enviar chave para análise"}
+                      {busy
+                        ? "Enviando..."
+                        : pixEditingId
+                          ? "Salvar e reenviar para análise"
+                          : "Enviar chave para análise"}
                     </button>
                   </div>
                 </div>
