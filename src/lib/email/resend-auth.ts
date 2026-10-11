@@ -330,12 +330,13 @@ export async function sendCoproducerInvitationEmail(params: {
 }
 
 
-type PaymentNotificationRole = "producer" | "coproducer" | "affiliate";
+type PaymentNotificationRole = "producer" | "coproducer" | "affiliate" | "accredited";
 type PaymentNotificationEvent = "pix_generated" | "payment_approved";
 
 function paymentRoleLabel(role: PaymentNotificationRole) {
   if (role === "producer") return "Produtor";
   if (role === "coproducer") return "Coprodutor";
+  if (role === "accredited") return "Credenciado";
   return "Afiliado";
 }
 
