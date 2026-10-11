@@ -167,13 +167,21 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
   const { data: order, error: orderError } = await admin
     .from("orders")
     .select(
-      "id,order_number,producer_id,customer_id,product_id,offer_id",
+      "id,order_number,producer_id,customer_id,product_id,offer_id,idempotency_key",
     )
     .eq("id", payment.order_id)
     .single();
 
   if (orderError || !order) {
     throw orderError ?? new Error("Pedido não encontrado para notificação.");
+  }
+
+  const automaticDuePix =
+    resolvedEvent.event === "pix_generated" &&
+    String(order.idempotency_key || "").startsWith("automatic-due:");
+
+  if (automaticDuePix) {
+    return null;
   }
 
   const [productResult, offerResult, customerResult, snapshotResult] =
