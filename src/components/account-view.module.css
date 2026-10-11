@@ -135,3 +135,68 @@
   .withdrawalForm{grid-template-columns:1fr}
   .withdrawalActions{grid-column:auto}
 }
+
+/* Correção definitiva do alinhamento do saque */
+.withdrawalField{
+  display:grid;
+  grid-template-rows:22px 48px 24px;
+  gap:7px;
+  align-content:start;
+}
+.withdrawalField>span{display:flex;align-items:flex-end}
+.withdrawalField>select,.withdrawalField>input{
+  grid-row:2;
+  height:48px;
+  min-height:48px;
+}
+.withdrawalField>small{
+  grid-row:3;
+  min-height:24px;
+  margin:0;
+  display:flex;
+  align-items:flex-start;
+}
+.withdrawalActions{
+  display:grid;
+  grid-template-columns:auto auto;
+  grid-template-rows:22px 48px 24px;
+  gap:7px 8px;
+  height:auto;
+  padding:0;
+  align-content:start;
+  align-items:stretch;
+}
+.withdrawalActions::before{
+  content:"";
+  grid-column:1/-1;
+  grid-row:1;
+}
+.withdrawalActions .primaryAction,
+.withdrawalActions .secondaryAction{
+  grid-row:2;
+  height:48px;
+  min-height:48px;
+  margin:0;
+  align-self:stretch;
+  white-space:nowrap;
+}
+@media(max-width:980px){
+  .withdrawalActions{
+    grid-column:1/-1;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:48px;
+    gap:8px;
+  }
+  .withdrawalActions::before{display:none}
+  .withdrawalActions .primaryAction,
+  .withdrawalActions .secondaryAction{grid-row:1}
+}
+@media(max-width:680px){
+  .withdrawalActions{
+    grid-column:auto;
+    grid-template-columns:1fr;
+    grid-template-rows:48px 48px;
+  }
+  .withdrawalActions .secondaryAction{grid-row:1}
+  .withdrawalActions .primaryAction{grid-row:2}
+}
