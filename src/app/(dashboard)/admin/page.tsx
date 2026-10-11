@@ -17,7 +17,7 @@ export default async function Page() {
       admin
         .from("identity_verifications")
         .select(
-          "id,user_id,person_type,legal_name,tax_id_last4,birth_date,business_name,status,review_note,submitted_at,reviewed_at,document_storage_path,document_original_name,document_mime_type",
+          "id,user_id,person_type,legal_name,tax_id_last4,tax_id_encrypted,birth_date,business_name,status,review_note,submitted_at,reviewed_at,document_storage_path,document_original_name,document_mime_type",
         )
         .order("submitted_at", { ascending: false })
         .limit(100),
@@ -108,8 +108,30 @@ export default async function Page() {
 
       const profile = profilesById.get(row.user_id);
 
+      let taxIdValue: string | null = null;
+      if (row.tax_id_encrypted) {
+        try {
+          taxIdValue = decryptSecret(row.tax_id_encrypted);
+        } catch {
+          taxIdValue = null;
+        }
+      }
+
       return {
-        ...row,
+        id: row.id,
+        user_id: row.user_id,
+        person_type: row.person_type,
+        legal_name: row.legal_name,
+        tax_id_last4: row.tax_id_last4,
+        tax_id_value: taxIdValue,
+        birth_date: row.birth_date,
+        business_name: row.business_name,
+        status: row.status,
+        review_note: row.review_note,
+        submitted_at: row.submitted_at,
+        reviewed_at: row.reviewed_at,
+        document_original_name: row.document_original_name,
+        document_mime_type: row.document_mime_type,
         email: profile?.email ?? null,
         user_full_name: profile?.full_name ?? null,
         document_url: documentUrl,
