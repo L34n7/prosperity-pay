@@ -200,3 +200,15 @@
   .withdrawalActions .secondaryAction{grid-row:1}
   .withdrawalActions .primaryAction{grid-row:2}
 }
+
+.securityPanel{padding:15px;border:1px solid rgba(34,230,161,.16);border-radius:12px;background:rgba(34,230,161,.035)}
+.securityPanelHead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px;color:var(--primary)}
+.securityPanelHead strong{display:block;color:var(--text);font-size:1rem}
+.securityPanelHead p{margin:4px 0 0;color:var(--text-muted);font-size:.86rem;line-height:1.5}
+.securityGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.7fr);gap:12px;align-items:stretch}
+.securityInfo{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:12px 13px;border:1px solid var(--border-soft);border-radius:10px;background:rgba(255,255,255,.014)}
+.securityInfo strong{color:var(--text-secondary);font-size:.9rem}
+.securityInfo span{color:var(--text-muted);font-size:.82rem;line-height:1.45}
+.securityReset{width:max-content;margin-top:4px;padding:0;border:0;background:transparent;color:var(--primary);cursor:pointer;font-size:.8rem;font-weight:700}
+.securityReset:hover{text-decoration:underline}
+@media(max-width:760px){.securityGrid{grid-template-columns:1fr}}
