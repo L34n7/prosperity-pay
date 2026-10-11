@@ -6,6 +6,8 @@ import {
   AlertTriangle,
   BadgeCheck,
   Clock3,
+  Eye,
+  EyeOff,
   FileText,
   Fingerprint,
   Landmark,
@@ -142,6 +144,12 @@ function formatHolderTaxId(value: string) {
     : formatTaxId(digits, "individual");
 }
 
+function maskedTaxId(personType: "individual" | "business", last4: string) {
+  return personType === "business"
+    ? `••.•••.•••/••••-${last4}`
+    : `•••.•••.•••-${last4}`;
+}
+
 export function AccountView() {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [pix, setPix] = useState<Pix[]>([]);
@@ -156,6 +164,7 @@ export function AccountView() {
   const [pixKeyType, setPixKeyType] = useState<Pix["key_type"]>("cpf");
   const [pixKey, setPixKey] = useState("");
   const [holderTaxId, setHolderTaxId] = useState("");
+  const [identityTaxVisible, setIdentityTaxVisible] = useState(false);
 
   const minBirthDate = useMemo(() => dateInputLimitForAge(120), []);
   const maxBirthDate = useMemo(() => dateInputLimitForAge(18), []);
@@ -377,11 +386,28 @@ export function AccountView() {
                     </div>
                     <div className={styles.detailCard}>
                       <span>{identity.person_type === "business" ? "CNPJ" : "CPF"}</span>
-                      <strong>
-                        {identity.tax_id_value
-                          ? formatTaxId(identity.tax_id_value, identity.person_type)
-                          : `•••• ${identity.tax_id_last4}`}
-                      </strong>
+                      <div className={styles.sensitiveValue}>
+                        <strong>
+                          {identityTaxVisible && identity.tax_id_value
+                            ? formatTaxId(identity.tax_id_value, identity.person_type)
+                            : maskedTaxId(identity.person_type, identity.tax_id_last4)}
+                        </strong>
+                        {identity.tax_id_value ? (
+                          <button
+                            type="button"
+                            className={styles.revealButton}
+                            onClick={() => setIdentityTaxVisible((visible) => !visible)}
+                            aria-label={
+                              identityTaxVisible
+                                ? "Ocultar CPF/CNPJ"
+                                : "Exibir CPF/CNPJ"
+                            }
+                          >
+                            {identityTaxVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+                            {identityTaxVisible ? "Ocultar" : "Exibir"}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                     <div className={styles.detailCard}>
                       <span>Enviado em</span>
@@ -403,7 +429,7 @@ export function AccountView() {
                       <small>Arquivo protegido e acessível apenas na análise administrativa.</small>
                     </div>
                   </div>
-                ) : !identityEditing ? (
+                ) : (
                   <div className={styles.submittedPanel}>
                     <div className={styles.submittedPanelHead}>
                       <div>
@@ -428,17 +454,34 @@ export function AccountView() {
 
                       <div className={styles.field}>
                         <span>{identity.person_type === "business" ? "CNPJ" : "CPF"}</span>
-                        <input
-                          readOnly
-                          value={
-                            identity.tax_id_value
-                              ? formatTaxId(identity.tax_id_value, identity.person_type)
-                              : `Documento anterior final •••• ${identity.tax_id_last4}`
-                          }
-                        />
+                        <div className={styles.sensitiveInput}>
+                          <input
+                            readOnly
+                            value={
+                              identityTaxVisible && identity.tax_id_value
+                                ? formatTaxId(identity.tax_id_value, identity.person_type)
+                                : maskedTaxId(identity.person_type, identity.tax_id_last4)
+                            }
+                          />
+                          {identity.tax_id_value ? (
+                            <button
+                              type="button"
+                              className={styles.revealButton}
+                              onClick={() => setIdentityTaxVisible((visible) => !visible)}
+                              aria-label={
+                                identityTaxVisible
+                                  ? "Ocultar CPF/CNPJ"
+                                  : "Exibir CPF/CNPJ"
+                              }
+                            >
+                              {identityTaxVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+                              {identityTaxVisible ? "Ocultar" : "Exibir"}
+                            </button>
+                          ) : null}
+                        </div>
                         {!identity.tax_id_value && (
                           <small>
-                            Este envio é anterior ao armazenamento criptografado. Reinforme o documento ao editar.
+                            Este envio antigo só possui os 4 dígitos finais salvos. Ao reenviar, o CPF/CNPJ completo passará a ficar criptografado e poderá ser exibido com segurança.
                           </small>
                         )}
                       </div>
@@ -474,7 +517,7 @@ export function AccountView() {
                       </div>
                     </div>
                   </div>
-                ) : null}
+                )}
 
                 {!identityEditing && (
                   <div className={styles.actions}>
