@@ -13,10 +13,27 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { supabase } = await requireUser();
+    const { supabase, user } = await requireUser();
     const body = asObject(await request.json());
-    const amountCents = requiredInteger(body, "amountCents", 1);
+    const amountCents = requiredInteger(body, "amountCents", 500);
     const payoutAccountId = requiredString(body, "payoutAccountId", 36);
+
+    const { data: balance, error: balanceError } = await supabase
+      .from("user_balance_summary")
+      .select("available_cents")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (balanceError) throw balanceError;
+
+    const availableCents = balance?.available_cents ?? 0;
+    if (amountCents > availableCents) {
+      return NextResponse.json(
+        { error: "O valor solicitado é maior que o saldo disponível." },
+        { status: 400 },
+      );
+    }
+
     const { data, error } = await supabase.rpc("request_withdrawal", {
       requested_amount_cents: amountCents,
       requested_payout_account_id: payoutAccountId,
