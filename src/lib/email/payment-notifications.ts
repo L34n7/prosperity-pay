@@ -4,7 +4,8 @@ import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
-type PaymentNotificationRole = "producer" | "coproducer" | "affiliate" | "accredited";
+type PaymentNotificationRole = "producer" | "coproducer" | "affiliate";
+type PaymentNotificationDisplayRole = PaymentNotificationRole | "accredited";
 type PaymentNotificationEvent = "pix_generated" | "payment_approved";
 type PaymentMethod = "pix" | "card";
 
@@ -13,6 +14,7 @@ type Recipient = {
   email: string;
   name: string;
   role: PaymentNotificationRole;
+  displayRole: PaymentNotificationDisplayRole;
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -239,12 +241,7 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
   for (const allocation of allocations.data ?? []) {
     if (!allocation.beneficiary_user_id) continue;
     if (allocation.allocation_type === "affiliate") {
-      recipientRoles.set(
-        allocation.beneficiary_user_id,
-        allocation.beneficiary_user_id === accreditedPartnerUserId
-          ? "accredited"
-          : "affiliate",
-      );
+      recipientRoles.set(allocation.beneficiary_user_id, "affiliate");
     } else if (allocation.allocation_type === "coproducer") {
       recipientRoles.set(allocation.beneficiary_user_id, "coproducer");
     }
@@ -262,12 +259,19 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
 
   const recipients: Recipient[] = (profiles ?? [])
     .filter((profile) => Boolean(profile.email))
-    .map((profile) => ({
-      userId: profile.id,
-      email: profile.email,
-      name: profile.full_name || profile.email.split("@")[0] || "parceiro",
-      role: recipientRoles.get(profile.id) ?? "producer",
-    }));
+    .map((profile) => {
+      const role = recipientRoles.get(profile.id) ?? "producer";
+      return {
+        userId: profile.id,
+        email: profile.email,
+        name: profile.full_name || profile.email.split("@")[0] || "parceiro",
+        role,
+        displayRole:
+          role === "affiliate" && profile.id === accreditedPartnerUserId
+            ? "accredited"
+            : role,
+      };
+    });
 
   return {
     payment,
@@ -326,7 +330,7 @@ export async function dispatchPaymentEmailNotifications(
           to: recipient.email,
           name: recipient.name,
           event: hydrated.event,
-          role: recipient.role,
+          role: recipient.displayRole,
           buyerName: hydrated.customer.name || "Comprador",
           buyerEmail: hydrated.customer.email,
           productName: hydrated.product.name,
