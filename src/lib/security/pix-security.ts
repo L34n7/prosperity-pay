@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { HttpError } from "@/lib/api/http";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sha256 } from "@/lib/security/hash";
 
@@ -28,7 +29,7 @@ export async function verifyAndConsumePixSecurityChallenge(params: {
 }) {
   const code = params.code.trim();
   if (!/^\d{6}$/.test(code)) {
-    throw new Error("Código de confirmação inválido.");
+    throw new HttpError(400, "Código de confirmação inválido.");
   }
 
   const admin = createAdminClient();
@@ -43,22 +44,22 @@ export async function verifyAndConsumePixSecurityChallenge(params: {
 
   if (error) throw error;
   if (!challenge || challenge.used_at || challenge.invalidated_at) {
-    throw new Error("Confirmação de segurança inválida ou já utilizada.");
+    throw new HttpError(400, "Confirmação de segurança inválida ou já utilizada.");
   }
   if (challenge.action !== params.action) {
-    throw new Error("Confirmação de segurança não corresponde a esta operação.");
+    throw new HttpError(400, "Confirmação de segurança não corresponde a esta operação.");
   }
 
   const expectedTarget = params.targetPayoutAccountId ?? null;
   if ((challenge.target_payout_account_id ?? null) !== expectedTarget) {
-    throw new Error("Confirmação de segurança não corresponde a esta chave Pix.");
+    throw new HttpError(400, "Confirmação de segurança não corresponde a esta chave Pix.");
   }
 
   if (new Date(challenge.expires_at).getTime() <= Date.now()) {
-    throw new Error("O código expirou. Solicite um novo código.");
+    throw new HttpError(400, "O código expirou. Solicite um novo código.");
   }
   if (Number(challenge.attempts) >= Number(challenge.max_attempts)) {
-    throw new Error("Limite de tentativas excedido. Solicite um novo código.");
+    throw new HttpError(429, "Limite de tentativas excedido. Solicite um novo código.");
   }
 
   const expectedHash = pixSecurityCodeHash({
@@ -79,7 +80,8 @@ export async function verifyAndConsumePixSecurityChallenge(params: {
       })
       .eq("id", challenge.id);
 
-    throw new Error(
+    throw new HttpError(
+      attempts >= Number(challenge.max_attempts) ? 429 : 400,
       attempts >= Number(challenge.max_attempts)
         ? "Código incorreto. Limite de tentativas excedido; solicite um novo código."
         : "Código de confirmação incorreto.",
@@ -97,6 +99,6 @@ export async function verifyAndConsumePixSecurityChallenge(params: {
 
   if (consumeError) throw consumeError;
   if (!consumed) {
-    throw new Error("Este código já foi utilizado. Solicite um novo código.");
+    throw new HttpError(400, "Este código já foi utilizado. Solicite um novo código.");
   }
 }
