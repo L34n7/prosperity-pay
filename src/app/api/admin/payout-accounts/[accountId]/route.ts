@@ -3,6 +3,7 @@ import { asObject, jsonError, requiredString } from "@/lib/api/http";
 import { requireFinanceAdmin } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyUserFinancialReviewDecision } from "@/lib/email/financial-review";
+import { pixKeyTypeLabel } from "@/lib/financial/pix-labels";
 
 type Context = { params: Promise<{ accountId: string }> };
 
@@ -32,7 +33,7 @@ export async function PATCH(request: Request, context: Context) {
             ? "Rejeitada"
             : "Desativada",
       details: [
-        { label: "Tipo da chave", value: String(data.key_type).toUpperCase() },
+        { label: "Tipo da chave", value: pixKeyTypeLabel(data.key_type) },
         { label: "Chave", value: `•••• ${data.key_last4}` },
         { label: "Titular", value: data.holder_name },
       ],
