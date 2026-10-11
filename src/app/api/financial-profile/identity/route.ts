@@ -5,6 +5,7 @@ import { onlyDigits, isValidTaxId, validateAdultBirthDate } from "@/lib/validati
 import { sha256 } from "@/lib/security/hash";
 import { decryptSecret, encryptSecret } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyFinanceAdmins } from "@/lib/email/financial-review";
 
 const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_DOCUMENT_TYPES = new Set([
@@ -256,6 +257,29 @@ export async function POST(request: Request) {
         .remove([latest.document_storage_path])
         .catch(() => undefined);
     }
+
+    await notifyFinanceAdmins({
+      requesterUserId: user.id,
+      kind: "identity",
+      details: [
+        {
+          label: "Tipo",
+          value: personType === "business" ? "Pessoa jurídica" : "Pessoa física",
+        },
+        { label: "Nome", value: legalName },
+        {
+          label: personType === "business" ? "CNPJ" : "CPF",
+          value: `•••• ${taxId.slice(-4)}`,
+        },
+        {
+          label: "Documento",
+          value:
+            hasNewDocument && document instanceof File
+              ? document.name.slice(0, 255)
+              : latest?.document_original_name || "Documento enviado",
+        },
+      ],
+    });
 
     return NextResponse.json(
       { verification: result.data },
