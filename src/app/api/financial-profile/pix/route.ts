@@ -9,6 +9,7 @@ import {
 import { sha256 } from "@/lib/security/hash";
 import { decryptSecret, encryptSecret } from "@/lib/security/secrets";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyFinanceAdmins } from "@/lib/email/financial-review";
 import { verifyAndConsumePixSecurityChallenge } from "@/lib/security/pix-security";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -155,6 +156,17 @@ export async function POST(request: Request) {
 
     if (error) throw error;
 
+    await notifyFinanceAdmins({
+      requesterUserId: user.id,
+      kind: "pix",
+      details: [
+        { label: "Tipo da chave", value: keyType.toUpperCase() },
+        { label: "Chave", value: `•••• ${normalizedKey.slice(-4)}` },
+        { label: "Titular", value: holderName },
+        { label: "CPF/CNPJ do titular", value: `•••• ${holderTaxId.slice(-4)}` },
+      ],
+    });
+
     return NextResponse.json(
       {
         payoutAccount: {
@@ -273,6 +285,17 @@ export async function PATCH(request: Request) {
       .single();
 
     if (error) throw error;
+
+    await notifyFinanceAdmins({
+      requesterUserId: user.id,
+      kind: "pix",
+      details: [
+        { label: "Tipo da chave", value: keyType.toUpperCase() },
+        { label: "Chave", value: `•••• ${normalizedKey.slice(-4)}` },
+        { label: "Titular", value: holderName },
+        { label: "CPF/CNPJ do titular", value: `•••• ${holderTaxId.slice(-4)}` },
+      ],
+    });
 
     return NextResponse.json({
       payoutAccount: {
