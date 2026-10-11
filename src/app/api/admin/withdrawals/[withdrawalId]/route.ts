@@ -4,6 +4,7 @@ import { requireFinanceAdmin } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/database.types";
 import { notifyUserFinancialReviewDecision } from "@/lib/email/financial-review";
+import { pixKeyTypeLabel } from "@/lib/financial/pix-labels";
 
 type Status = Database["public"]["Enums"]["withdrawal_status"];
 const ALLOWED = new Set<Status>(["processing", "paid", "rejected", "cancelled", "failed"]);
@@ -76,7 +77,7 @@ export async function PATCH(request: Request, context: Context) {
           },
           {
             label: "Destino Pix",
-            value: `${String(withdrawalRow.payout_key_type).toUpperCase()} · ••••${withdrawalRow.payout_key_last4}`,
+            value: `${pixKeyTypeLabel(withdrawalRow.payout_key_type)} · ••••${withdrawalRow.payout_key_last4}`,
           },
           ...(withdrawalRow.receipt_reference
             ? [
