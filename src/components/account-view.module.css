@@ -58,3 +58,33 @@
 .submittedPanelHead strong{font-size:1rem}
 .submittedPanelHead p{font-size:.86rem;line-height:1.55}
 .submittedPanelHead>span{font-size:.82rem}
+
+/* Escala ampliada final — Conta */
+.sectionTitle h2{font-size:1.34rem}
+.sectionTitle p{font-size:1rem}
+.statusBadge{font-size:.94rem}
+.reviewBanner strong{font-size:1.12rem}
+.reviewBanner p{font-size:1rem}
+.detailCard span{font-size:.86rem}
+.detailCard strong{font-size:1.08rem}
+.detailCard small{font-size:.86rem}
+.primaryAction,.secondaryAction{font-size:1rem;min-height:46px}
+.formPanelHead h3{font-size:1.16rem}
+.formPanelHead p{font-size:.96rem}
+.field label,.field>span{font-size:.95rem}
+.field input,.field select{min-height:48px;font-size:1.04rem}
+.field small{font-size:.86rem}
+.pixPrimary small,.pixMeta small{font-size:.88rem}
+.pixValue{font-size:1.08rem}
+.pixMeta strong{font-size:1rem}
+.pixStatus small{font-size:.86rem}
+.simpleCard strong{font-size:1.05rem}
+.simpleCard small{font-size:.9rem}
+.submittedPanelHead strong{font-size:1.12rem}
+.submittedPanelHead p{font-size:.94rem}
+.submittedPanelHead>span{font-size:.88rem}
+.sensitiveValue{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sensitiveInput{display:flex;align-items:center;gap:8px}
+.sensitiveInput input{flex:1}
+.revealButton{display:inline-flex;min-height:38px;align-items:center;justify-content:center;gap:6px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.018);color:var(--text-secondary);cursor:pointer;font-size:.86rem;font-weight:700;white-space:nowrap}
+.revealButton:hover{border-color:rgba(34,230,161,.28);color:var(--primary)}
