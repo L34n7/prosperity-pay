@@ -294,7 +294,11 @@ async function processOne(
 export async function processAutomaticDueBilling(limit = 100) {
   const admin = createAdminClient();
   const now = new Date();
-  const lowerBound = new Date(now.getTime() - 36 * 60 * 60 * 1000);
+  // Mantém uma janela de recuperação maior para assinaturas legadas
+  // migradas da Atomo que possam ser espelhadas alguns dias após o vencimento.
+  // A tabela subscription_billing_deliveries continua garantindo uma única
+  // cobrança por assinatura + vencimento.
+  const lowerBound = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000);
 
   const { data: subscriptions, error: subscriptionsError } = await admin
     .from("subscriptions")
