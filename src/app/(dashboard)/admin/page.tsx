@@ -31,7 +31,9 @@ export default async function Page() {
         .limit(100),
       admin
         .from("withdrawals")
-        .select("id,amount_cents,status,created_at,payout_key_last4")
+        .select(
+          "id,user_id,payout_account_id,amount_cents,status,currency,payout_key_type,payout_key_last4,payout_holder_name,payout_holder_tax_id_last4,requested_at,processed_at,paid_at,operator_id,receipt_reference,note,created_at,updated_at",
+        )
         .order("created_at", { ascending: false })
         .limit(100),
       admin
@@ -79,6 +81,7 @@ export default async function Page() {
     ...new Set([
       ...identityRows.map((row) => row.user_id),
       ...pixRows.map((row) => row.user_id),
+      ...(withdrawals.data ?? []).map((row) => row.user_id),
     ]),
   ];
 
@@ -156,11 +159,56 @@ export default async function Page() {
     };
   });
 
+
+  const withdrawalRows = withdrawals.data ?? [];
+  const payoutAccountIds = [
+    ...new Set(withdrawalRows.map((row) => row.payout_account_id).filter(Boolean)),
+  ];
+
+  const withdrawalPayouts = payoutAccountIds.length
+    ? await admin
+        .from("payout_accounts")
+        .select("id,key_type,key_last4,encrypted_key,holder_name,holder_tax_id_last4")
+        .in("id", payoutAccountIds)
+    : { data: [], error: null };
+
+  if (withdrawalPayouts.error) throw withdrawalPayouts.error;
+
+  const withdrawalPayoutsById = new Map(
+    (withdrawalPayouts.data ?? []).map((row) => [row.id, row]),
+  );
+
+  const enrichedWithdrawals = withdrawalRows.map((row) => {
+    const profile = profilesById.get(row.user_id);
+    const payout = withdrawalPayoutsById.get(row.payout_account_id);
+
+    let keyValue: string | null = null;
+    if (payout?.encrypted_key) {
+      try {
+        keyValue = decryptSecret(payout.encrypted_key);
+      } catch {
+        keyValue = null;
+      }
+    }
+
+    return {
+      ...row,
+      email: profile?.email ?? null,
+      user_full_name: profile?.full_name ?? null,
+      key_value: keyValue,
+      payout_key_type: payout?.key_type ?? row.payout_key_type,
+      payout_key_last4: payout?.key_last4 ?? row.payout_key_last4,
+      payout_holder_name: payout?.holder_name ?? row.payout_holder_name,
+      payout_holder_tax_id_last4:
+        payout?.holder_tax_id_last4 ?? row.payout_holder_tax_id_last4,
+    };
+  });
+
   return (
     <AdminView
       identity={enrichedIdentity}
       pix={enrichedPix}
-      withdrawals={withdrawals.data ?? []}
+      withdrawals={enrichedWithdrawals}
       payments={payments.data ?? []}
       webhooks={webhooks.data ?? []}
       connections={connections.data ?? []}
