@@ -157,3 +157,112 @@ export async function POST(request: Request) {
     return jsonError(error);
   }
 }
+
+
+export async function PATCH(request: Request) {
+  try {
+    const { user } = await requireUser();
+    const body = asObject(await request.json());
+    const id = requiredString(body, "id", 36);
+    const keyType = body.keyType as PixType;
+
+    if (!PIX_TYPES.has(keyType)) {
+      return NextResponse.json({ error: "Tipo de chave Pix inválido." }, { status: 400 });
+    }
+
+    const pixKey = requiredString(body, "pixKey", 180).trim();
+    const holderName = requiredString(body, "holderName", 180).trim();
+    const holderTaxId = onlyDigits(requiredString(body, "holderTaxId", 20));
+
+    if (
+      !(
+        (holderTaxId.length === 11 && isValidCpf(holderTaxId)) ||
+        (holderTaxId.length === 14 && isValidCnpj(holderTaxId))
+      )
+    ) {
+      return NextResponse.json(
+        { error: "CPF/CNPJ do titular inválido." },
+        { status: 400 },
+      );
+    }
+
+    const normalizedKey = ["cpf", "cnpj", "phone"].includes(keyType)
+      ? onlyDigits(pixKey)
+      : pixKey.toLowerCase();
+
+    if (!validPixKey(keyType, normalizedKey)) {
+      return NextResponse.json({ error: "Chave Pix inválida." }, { status: 400 });
+    }
+
+    const admin = createAdminClient();
+    const { data: existing, error: existingError } = await admin
+      .from("payout_accounts")
+      .select("id,status")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .neq("status", "disabled")
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!existing) {
+      return NextResponse.json({ error: "Chave Pix não encontrada." }, { status: 404 });
+    }
+    if (!["pending", "rejected"].includes(existing.status)) {
+      return NextResponse.json(
+        { error: "Somente chaves em análise ou rejeitadas podem ser editadas." },
+        { status: 409 },
+      );
+    }
+
+    const { data: duplicate, error: duplicateError } = await admin
+      .from("payout_accounts")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("key_hash", sha256(normalizedKey))
+      .neq("id", id)
+      .neq("status", "disabled")
+      .maybeSingle();
+
+    if (duplicateError) throw duplicateError;
+    if (duplicate) {
+      return NextResponse.json(
+        { error: "Essa chave Pix já está cadastrada na sua conta." },
+        { status: 409 },
+      );
+    }
+
+    const { data, error } = await admin
+      .from("payout_accounts")
+      .update({
+        key_type: keyType,
+        key_last4: normalizedKey.slice(-4),
+        key_hash: sha256(normalizedKey),
+        encrypted_key: encryptSecret(normalizedKey),
+        holder_name: holderName,
+        holder_tax_id_last4: holderTaxId.slice(-4),
+        holder_tax_id_encrypted: encryptSecret(holderTaxId),
+        status: "pending",
+        verified_at: null,
+        verified_by: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .select(
+        "id,key_type,key_last4,holder_name,holder_tax_id_last4,status,is_primary,created_at,updated_at",
+      )
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      payoutAccount: {
+        ...data,
+        key_value: normalizedKey,
+        holder_tax_id_value: holderTaxId,
+      },
+    });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
