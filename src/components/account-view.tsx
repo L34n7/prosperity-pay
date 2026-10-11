@@ -252,11 +252,12 @@ export function AccountView() {
     }
 
     const document = form.get("document");
-    if (!(document instanceof File) || document.size <= 0) {
+    const hasNewDocument = document instanceof File && document.size > 0;
+    if (!hasNewDocument && !identity?.document_original_name) {
       setError("Envie uma foto ou PDF do documento com foto.");
       return;
     }
-    if (document.size > 5 * 1024 * 1024) {
+    if (hasNewDocument && document.size > 5 * 1024 * 1024) {
       setError("O documento deve ter no máximo 5 MB.");
       return;
     }
@@ -292,9 +293,33 @@ export function AccountView() {
     }
   }
 
+  function resetPixForm() {
+    setPixEditingId(null);
+    setPixKeyType("cpf");
+    setPixKey("");
+    setPixHolderName("");
+    setHolderTaxId("");
+    setPixFormOpen(false);
+  }
+
+  function editPix(item: Pix) {
+    setPixEditingId(item.id);
+    setPixKeyType(item.key_type);
+    setPixKey(formatPixValue(item.key_type, item.key_value));
+    setPixHolderName(item.holder_name);
+    const holderDocument =
+      item.holder_tax_id_value ??
+      (["cpf", "cnpj"].includes(item.key_type) &&
+      item.key_last4 === item.holder_tax_id_last4
+        ? item.key_value
+        : "");
+    setHolderTaxId(holderDocument ? formatHolderTaxId(holderDocument) : "");
+    setPixFormOpen(true);
+    setError("");
+  }
+
   async function sendPix(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
 
     setBusy(true);
     setError("");
@@ -302,23 +327,68 @@ export function AccountView() {
 
     try {
       await requestJson("/api/financial-profile/pix", {
-        method: "POST",
+        method: pixEditingId ? "PATCH" : "POST",
         body: JSON.stringify({
+          id: pixEditingId,
           keyType: pixKeyType,
           pixKey,
-          holderName: form.get("holderName"),
+          holderName: pixHolderName,
           holderTaxId,
           isPrimary: pix.length === 0,
         }),
       });
 
-      setPixKey("");
-      setHolderTaxId("");
-      setPixFormOpen(false);
+      const edited = Boolean(pixEditingId);
+      resetPixForm();
       await load();
-      setMessage("Chave Pix cadastrada e enviada para análise.");
+      setMessage(
+        edited
+          ? "Chave Pix atualizada e reenviada para análise."
+          : "Chave Pix cadastrada e enviada para análise.",
+      );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao cadastrar a chave Pix.");
+      setError(cause instanceof Error ? cause.message : "Falha ao salvar a chave Pix.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function requestWithdrawal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const amountCents = Math.round(Number(form.get("amount")) * 100);
+    const payoutAccountId = String(form.get("payoutAccountId") ?? "");
+
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      setError("Informe um valor de saque válido.");
+      return;
+    }
+    if (amountCents > balance.available_cents) {
+      setError("O valor solicitado é maior que o saldo disponível.");
+      return;
+    }
+    if (!payoutAccountId) {
+      setError("Escolha uma chave Pix verificada.");
+      return;
+    }
+    if (!confirm(`Solicitar saque de R$ ${(amountCents / 100).toFixed(2).replace(".", ",")}?`)) {
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await requestJson("/api/withdrawals", {
+        method: "POST",
+        body: JSON.stringify({ amountCents, payoutAccountId }),
+      });
+      await load();
+      setMessage("Solicitação de saque enviada para análise.");
+      event.currentTarget.reset();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao solicitar saque.");
     } finally {
       setBusy(false);
     }
