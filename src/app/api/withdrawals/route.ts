@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredInteger, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
 import { notifyFinanceAdmins } from "@/lib/email/financial-review";
+import { pixKeyTypeLabel } from "@/lib/financial/pix-labels";
 
 export async function GET() {
   try {
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
         {
           label: "Chave Pix",
           value: payoutAccount
-            ? `${String(payoutAccount.key_type).toUpperCase()} · ••••${payoutAccount.key_last4}`
+            ? `${pixKeyTypeLabel(payoutAccount.key_type)} · ••••${payoutAccount.key_last4}`
             : "Chave selecionada",
         },
         {
