@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   BadgeCheck,
+  Banknote,
   Clock3,
   Eye,
   EyeOff,
@@ -42,6 +43,12 @@ type Identity = {
   document_original_name?: string | null;
 };
 
+type Balance = {
+  available_cents: number;
+  pending_cents: number;
+  withdrawing_cents: number;
+};
+
 type Pix = {
   id: string;
   key_type: "cpf" | "cnpj" | "email" | "phone" | "random_key";
@@ -49,6 +56,7 @@ type Pix = {
   key_value: string;
   holder_name: string;
   holder_tax_id_last4: string;
+  holder_tax_id_value: string | null;
   status: string;
   is_primary: boolean;
   created_at: string;
@@ -153,17 +161,24 @@ function maskedTaxId(personType: "individual" | "business", last4: string) {
 export function AccountView() {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [pix, setPix] = useState<Pix[]>([]);
+  const [balance, setBalance] = useState<Balance>({
+    available_cents: 0,
+    pending_cents: 0,
+    withdrawing_cents: 0,
+  });
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [identityEditing, setIdentityEditing] = useState(false);
   const [pixFormOpen, setPixFormOpen] = useState(false);
+  const [pixEditingId, setPixEditingId] = useState<string | null>(null);
   const [personType, setPersonType] = useState<"individual" | "business">("individual");
   const [taxId, setTaxId] = useState("");
   const [pixKeyType, setPixKeyType] = useState<Pix["key_type"]>("cpf");
   const [pixKey, setPixKey] = useState("");
   const [holderTaxId, setHolderTaxId] = useState("");
+  const [pixHolderName, setPixHolderName] = useState("");
   const [identityTaxVisible, setIdentityTaxVisible] = useState(false);
 
   const minBirthDate = useMemo(() => dateInputLimitForAge(120), []);
