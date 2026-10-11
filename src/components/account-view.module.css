@@ -226,3 +226,8 @@
 .pixModalBody .formGrid{gap:14px}
 .pixModalBody .formActions{padding-top:4px}
 @media(max-width:680px){.pixModalOverlay{padding:10px}.pixModal{max-height:94vh;border-radius:14px}.pixModalHead,.pixModalBody{padding:18px}}
+
+.pixModalNotice{display:flex;align-items:flex-start;gap:10px;margin:0 0 16px;padding:12px 14px;border:1px solid var(--border-soft);border-radius:10px;font-size:.9rem;line-height:1.5}
+.pixModalNoticeError{border-color:rgba(239,100,100,.24);background:rgba(239,100,100,.075);color:#f09b9b}
+.pixModalNoticeSuccess{border-color:rgba(34,230,161,.22);background:rgba(34,230,161,.06);color:#8ce9c5}
+.pixModalNotice svg{flex:0 0 auto;margin-top:1px}
