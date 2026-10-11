@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredInteger, requiredString } from "@/lib/api/http";
 import { requireUser } from "@/lib/auth/require-user";
+import { notifyFinanceAdmins } from "@/lib/email/financial-review";
 
 export async function GET() {
   try {
@@ -39,6 +40,38 @@ export async function POST(request: Request) {
       requested_payout_account_id: payoutAccountId,
     });
     if (error) throw error;
+
+    const { data: payoutAccount } = await supabase
+      .from("payout_accounts")
+      .select("key_type,key_last4,holder_name")
+      .eq("id", payoutAccountId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    await notifyFinanceAdmins({
+      requesterUserId: user.id,
+      kind: "withdrawal",
+      details: [
+        {
+          label: "Valor",
+          value: new Intl.NumberFormat("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          }).format(amountCents / 100),
+        },
+        {
+          label: "Chave Pix",
+          value: payoutAccount
+            ? `${String(payoutAccount.key_type).toUpperCase()} · ••••${payoutAccount.key_last4}`
+            : "Chave selecionada",
+        },
+        {
+          label: "Titular",
+          value: payoutAccount?.holder_name || "Não informado",
+        },
+      ],
+    });
+
     return NextResponse.json({ withdrawal: data }, { status: 201 });
   } catch (error) { return jsonError(error); }
 }
