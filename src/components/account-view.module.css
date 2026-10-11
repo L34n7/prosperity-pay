@@ -30,3 +30,31 @@
 .submittedPanelHead>span{color:var(--text-subtle);font-size:.7rem;white-space:nowrap}
 .submittedPanel .field input[readonly]{background:rgba(255,255,255,.018);color:var(--text-secondary);cursor:default}
 @media(max-width:680px){.submittedPanelHead{flex-direction:column}.submittedPanelHead>span{white-space:normal}.pixStatus small{text-align:left}}
+
+/* Escala de tipografia ampliada — Conta */
+.notice{font-size:.92rem;line-height:1.5}
+.sectionTitle h2{font-size:1.22rem}
+.sectionTitle p{font-size:.9rem;line-height:1.55}
+.statusBadge{font-size:.84rem;padding:8px 12px}
+.reviewBanner strong{font-size:1rem}
+.reviewBanner p{font-size:.9rem;line-height:1.6}
+.detailCard span{font-size:.78rem}
+.detailCard strong{font-size:.98rem;line-height:1.35}
+.detailCard small{font-size:.78rem;line-height:1.5}
+.primaryAction,.secondaryAction{font-size:.9rem;min-height:43px;padding:0 14px}
+.formPanelHead h3{font-size:1.05rem}
+.formPanelHead p{font-size:.86rem;line-height:1.55}
+.field label,.field>span{font-size:.86rem}
+.field input,.field select{min-height:46px;font-size:.96rem}
+.field small{font-size:.78rem;line-height:1.5}
+.pixPrimary small,.pixMeta small{font-size:.79rem}
+.pixValue{font-size:.98rem}
+.pixMeta strong{font-size:.92rem}
+.pixStatus small{font-size:.78rem;line-height:1.5}
+.emptyState strong{font-size:1rem}
+.emptyState p{font-size:.86rem;line-height:1.55}
+.simpleCard strong{font-size:.96rem}
+.simpleCard small{font-size:.82rem;line-height:1.45}
+.submittedPanelHead strong{font-size:1rem}
+.submittedPanelHead p{font-size:.86rem;line-height:1.55}
+.submittedPanelHead>span{font-size:.82rem}
