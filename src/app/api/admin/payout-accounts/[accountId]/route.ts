@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asObject, jsonError, requiredString } from "@/lib/api/http";
 import { requireFinanceAdmin } from "@/lib/auth/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyUserFinancialReviewDecision } from "@/lib/email/financial-review";
 
 type Context = { params: Promise<{ accountId: string }> };
 
@@ -16,10 +17,27 @@ export async function PATCH(request: Request, context: Context) {
     const admin = createAdminClient();
     const { data, error } = await admin.from("payout_accounts")
       .update({ status }).eq("id", accountId).eq("status", "pending")
-      .select("id, key_type, key_last4, status, is_primary").single();
+      .select("id,user_id,key_type,key_last4,holder_name,status,is_primary").single();
     if (error) throw error;
     const audit = await admin.from("audit_events").insert({ actor_user_id: user.id, action: `payout_account.${status}`, entity_type: "payout_account", entity_id: accountId });
     if (audit.error) console.error("Falha ao registrar auditoria da chave Pix", audit.error);
+
+    await notifyUserFinancialReviewDecision({
+      userId: data.user_id,
+      kind: "pix",
+      statusLabel:
+        status === "verified"
+          ? "Verificada"
+          : status === "rejected"
+            ? "Rejeitada"
+            : "Desativada",
+      details: [
+        { label: "Tipo da chave", value: String(data.key_type).toUpperCase() },
+        { label: "Chave", value: `•••• ${data.key_last4}` },
+        { label: "Titular", value: data.holder_name },
+      ],
+    });
+
     return NextResponse.json({ payoutAccount: data });
   } catch (error) { return jsonError(error); }
 }
