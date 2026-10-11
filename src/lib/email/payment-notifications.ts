@@ -4,7 +4,7 @@ import { mercadoPagoPaymentMetadata } from "@/lib/payments/mercado-pago-payment-
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
-type PaymentNotificationRole = "producer" | "coproducer" | "affiliate";
+type PaymentNotificationRole = "producer" | "coproducer" | "affiliate" | "accredited";
 type PaymentNotificationEvent = "pix_generated" | "payment_approved";
 type PaymentMethod = "pix" | "card";
 
@@ -176,7 +176,7 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
 
   const [productResult, offerResult, customerResult, snapshotResult] =
     await Promise.all([
-      (admin.from("products") as any).select("id,name,partner_payment_emails_enabled").eq("id", order.product_id).single(),
+      admin.from("products").select("id,name").eq("id", order.product_id).single(),
       admin.from("offers").select("id,name").eq("id", order.offer_id).single(),
       admin.from("customers").select("id,name,email").eq("id", order.customer_id).single(),
       admin.from("financial_snapshots").select("id").eq("order_id", order.id).maybeSingle(),
@@ -200,10 +200,6 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
     throw new Error("Dados da venda incompletos para notificação.");
   }
 
-  if (productResult.data.partner_payment_emails_enabled === false) {
-    return null;
-  }
-
   const allocations = snapshotResult.data
     ? await admin
         .from("financial_allocations")
@@ -215,13 +211,40 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
 
   if (allocations.error) throw allocations.error;
 
+  let accreditedPartnerUserId: string | null = null;
+  const { data: attribution, error: attributionError } = await admin
+    .from("affiliate_attributions")
+    .select("affiliate_membership_id")
+    .eq("order_id", order.id)
+    .maybeSingle();
+
+  if (attributionError) throw attributionError;
+
+  if (attribution?.affiliate_membership_id) {
+    const { data: membership, error: membershipError } = await admin
+      .from("affiliate_memberships")
+      .select("user_id,partner_type")
+      .eq("id", attribution.affiliate_membership_id)
+      .maybeSingle();
+
+    if (membershipError) throw membershipError;
+    if (membership?.partner_type === "accredited") {
+      accreditedPartnerUserId = membership.user_id;
+    }
+  }
+
   const recipientRoles = new Map<string, PaymentNotificationRole>();
   recipientRoles.set(order.producer_id, "producer");
 
   for (const allocation of allocations.data ?? []) {
     if (!allocation.beneficiary_user_id) continue;
     if (allocation.allocation_type === "affiliate") {
-      recipientRoles.set(allocation.beneficiary_user_id, "affiliate");
+      recipientRoles.set(
+        allocation.beneficiary_user_id,
+        allocation.beneficiary_user_id === accreditedPartnerUserId
+          ? "accredited"
+          : "affiliate",
+      );
     } else if (allocation.allocation_type === "coproducer") {
       recipientRoles.set(allocation.beneficiary_user_id, "coproducer");
     }
