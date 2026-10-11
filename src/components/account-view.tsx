@@ -186,13 +186,15 @@ export function AccountView() {
 
   const load = useCallback(async () => {
     try {
-      const [identityResponse, pixResponse] = await Promise.all([
+      const [identityResponse, pixResponse, balanceResponse] = await Promise.all([
         requestJson<{ verification: Identity | null }>("/api/financial-profile/identity"),
         requestJson<{ payoutAccounts: Pix[] }>("/api/financial-profile/pix"),
+        requestJson<{ balance: Balance }>("/api/balance"),
       ]);
 
       setIdentity(identityResponse.verification);
       setPix(pixResponse.payoutAccounts);
+      setBalance(balanceResponse.balance);
 
       if (identityResponse.verification) {
         setPersonType(identityResponse.verification.person_type);
@@ -203,6 +205,11 @@ export function AccountView() {
                 identityResponse.verification.person_type,
               )
             : "",
+        );
+        setIdentityEditing(
+          ["rejected", "resubmission_required"].includes(
+            identityResponse.verification.status,
+          ),
         );
       } else {
         setIdentityEditing(true);
