@@ -194,6 +194,8 @@ export function AccountView() {
     expiresInMinutes: number;
   } | null>(null);
   const [pixSecurityCode, setPixSecurityCode] = useState("");
+  const [pixModalError, setPixModalError] = useState("");
+  const [pixModalMessage, setPixModalMessage] = useState("");
   const [identityTaxVisible, setIdentityTaxVisible] = useState(false);
   const [pendingWithdrawal, setPendingWithdrawal] =
     useState<PendingWithdrawal | null>(null);
@@ -329,6 +331,8 @@ export function AccountView() {
     setPixPassword("");
     setPixSecurityChallenge(null);
     setPixSecurityCode("");
+    setPixModalError("");
+    setPixModalMessage("");
     setPixFormOpen(false);
   }
 
@@ -355,6 +359,8 @@ export function AccountView() {
     setPixPassword("");
     setPixSecurityChallenge(null);
     setPixSecurityCode("");
+    setPixModalError("");
+    setPixModalMessage("");
     setPixFormOpen(true);
     setError("");
   }
@@ -363,13 +369,13 @@ export function AccountView() {
     event.preventDefault();
 
     setBusy(true);
-    setError("");
-    setMessage("");
+    setPixModalError("");
+    setPixModalMessage("");
 
     try {
       if (!pixSecurityChallenge) {
         if (!pixPassword) {
-          setError("Informe sua senha de login para continuar.");
+          setPixModalError("Informe sua senha de login para continuar.");
           return;
         }
 
@@ -392,14 +398,14 @@ export function AccountView() {
           email: challenge.email,
           expiresInMinutes: challenge.expiresInMinutes,
         });
-        setMessage(
+        setPixModalMessage(
           `Senha confirmada. Enviamos um código de segurança para ${challenge.email}.`,
         );
         return;
       }
 
       if (!/^\d{6}$/.test(pixSecurityCode)) {
-        setError("Informe o código de 6 dígitos enviado por e-mail.");
+        setPixModalError("Informe o código de 6 dígitos enviado por e-mail.");
         return;
       }
 
@@ -426,7 +432,9 @@ export function AccountView() {
           : "Chave Pix confirmada por e-mail e enviada para análise.",
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao salvar a chave Pix.");
+      setPixModalError(
+        cause instanceof Error ? cause.message : "Falha ao salvar a chave Pix.",
+      );
     } finally {
       setBusy(false);
     }
@@ -928,6 +936,9 @@ export function AccountView() {
                   setPixPassword("");
                   setPixSecurityChallenge(null);
                   setPixSecurityCode("");
+                  setPixModalError("");
+                  setPixModalMessage("");
+                  setError("");
                   setPixFormOpen(true);
                 }}
               >
@@ -1033,6 +1044,25 @@ export function AccountView() {
                   </header>
 
                   <form className={styles.pixModalBody} onSubmit={sendPix}>
+                    {pixModalError && (
+                      <div
+                        className={`${styles.pixModalNotice} ${styles.pixModalNoticeError}`}
+                        role="alert"
+                      >
+                        <AlertTriangle size={18} />
+                        <span>{pixModalError}</span>
+                      </div>
+                    )}
+
+                    {pixModalMessage && (
+                      <div
+                        className={`${styles.pixModalNotice} ${styles.pixModalNoticeSuccess}`}
+                        role="status"
+                      >
+                        <BadgeCheck size={18} />
+                        <span>{pixModalMessage}</span>
+                      </div>
+                    )}
 
                 <div className={styles.formGrid}>
                   <div className={styles.field}>
@@ -1172,7 +1202,8 @@ export function AccountView() {
                               setPixSecurityChallenge(null);
                               setPixSecurityCode("");
                               setPixPassword("");
-                              setMessage("");
+                              setPixModalError("");
+                              setPixModalMessage("");
                             }}
                           >
                             Solicitar outro código
