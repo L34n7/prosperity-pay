@@ -30,6 +30,7 @@ type Identity = {
   legal_name: string;
   person_type: "individual" | "business";
   tax_id_last4: string;
+  tax_id_value: string | null;
   birth_date: string | null;
   business_name: string | null;
   status: string;
@@ -171,6 +172,14 @@ export function AccountView() {
 
       if (identityResponse.verification) {
         setPersonType(identityResponse.verification.person_type);
+        setTaxId(
+          identityResponse.verification.tax_id_value
+            ? formatTaxId(
+                identityResponse.verification.tax_id_value,
+                identityResponse.verification.person_type,
+              )
+            : "",
+        );
       } else {
         setIdentityEditing(true);
       }
@@ -352,41 +361,120 @@ export function AccountView() {
                   {identityState.tone === "rejected" && <AlertTriangle size={19} />}
                 </div>
 
-                <div className={styles.detailsGrid}>
-                  <div className={styles.detailCard}>
-                    <span>Nome / responsável</span>
-                    <strong>{identity.legal_name}</strong>
+                {identity.status === "approved" ? (
+                  <div className={styles.detailsGrid}>
+                    <div className={styles.detailCard}>
+                      <span>Nome / responsável</span>
+                      <strong>{identity.legal_name}</strong>
+                    </div>
+                    <div className={styles.detailCard}>
+                      <span>Tipo</span>
+                      <strong>
+                        {identity.person_type === "business"
+                          ? "Pessoa jurídica"
+                          : "Pessoa física"}
+                      </strong>
+                    </div>
+                    <div className={styles.detailCard}>
+                      <span>{identity.person_type === "business" ? "CNPJ" : "CPF"}</span>
+                      <strong>
+                        {identity.tax_id_value
+                          ? formatTaxId(identity.tax_id_value, identity.person_type)
+                          : `•••• ${identity.tax_id_last4}`}
+                      </strong>
+                    </div>
+                    <div className={styles.detailCard}>
+                      <span>Enviado em</span>
+                      <strong>{formatDate(identity.submitted_at)}</strong>
+                    </div>
+                    <div className={styles.detailCard}>
+                      <span>
+                        {identity.person_type === "business" ? "Razão social" : "Nascimento"}
+                      </span>
+                      <strong>
+                        {identity.person_type === "business"
+                          ? identity.business_name || "—"
+                          : formatDate(identity.birth_date)}
+                      </strong>
+                    </div>
+                    <div className={styles.detailCard}>
+                      <span>Documento</span>
+                      <strong>{identity.document_original_name || "Documento legado"}</strong>
+                      <small>Arquivo protegido e acessível apenas na análise administrativa.</small>
+                    </div>
                   </div>
-                  <div className={styles.detailCard}>
-                    <span>Tipo</span>
-                    <strong>
-                      {identity.person_type === "business" ? "Pessoa jurídica" : "Pessoa física"}
-                    </strong>
+                ) : !identityEditing ? (
+                  <div className={styles.submittedPanel}>
+                    <div className={styles.submittedPanelHead}>
+                      <div>
+                        <strong>Dados enviados para análise</strong>
+                        <p>Confira abaixo exatamente o que foi informado antes de corrigir ou reenviar.</p>
+                      </div>
+                      <span>Enviado em {formatDate(identity.submitted_at)}</span>
+                    </div>
+
+                    <div className={styles.formGrid}>
+                      <div className={styles.field}>
+                        <span>Tipo de pessoa</span>
+                        <input
+                          readOnly
+                          value={
+                            identity.person_type === "business"
+                              ? "Pessoa jurídica"
+                              : "Pessoa física"
+                          }
+                        />
+                      </div>
+
+                      <div className={styles.field}>
+                        <span>{identity.person_type === "business" ? "CNPJ" : "CPF"}</span>
+                        <input
+                          readOnly
+                          value={
+                            identity.tax_id_value
+                              ? formatTaxId(identity.tax_id_value, identity.person_type)
+                              : `Documento anterior final •••• ${identity.tax_id_last4}`
+                          }
+                        />
+                        {!identity.tax_id_value && (
+                          <small>
+                            Este envio é anterior ao armazenamento criptografado. Reinforme o documento ao editar.
+                          </small>
+                        )}
+                      </div>
+
+                      <div className={styles.field}>
+                        <span>
+                          {identity.person_type === "business"
+                            ? "Nome do responsável"
+                            : "Nome legal"}
+                        </span>
+                        <input readOnly value={identity.legal_name} />
+                      </div>
+
+                      {identity.person_type === "individual" ? (
+                        <div className={styles.field}>
+                          <span>Data de nascimento</span>
+                          <input readOnly type="date" value={identity.birth_date ?? ""} />
+                        </div>
+                      ) : (
+                        <div className={styles.field}>
+                          <span>Razão social</span>
+                          <input readOnly value={identity.business_name ?? ""} />
+                        </div>
+                      )}
+
+                      <div className={`${styles.field} ${styles.fullSpan}`}>
+                        <span>Documento enviado</span>
+                        <input
+                          readOnly
+                          value={identity.document_original_name || "Documento legado"}
+                        />
+                        <small>O arquivo continua protegido e disponível para a análise administrativa.</small>
+                      </div>
+                    </div>
                   </div>
-                  <div className={styles.detailCard}>
-                    <span>{identity.person_type === "business" ? "CNPJ" : "CPF"}</span>
-                    <strong>•••• {identity.tax_id_last4}</strong>
-                  </div>
-                  <div className={styles.detailCard}>
-                    <span>Enviado em</span>
-                    <strong>{formatDate(identity.submitted_at)}</strong>
-                  </div>
-                  <div className={styles.detailCard}>
-                    <span>
-                      {identity.person_type === "business" ? "Razão social" : "Nascimento"}
-                    </span>
-                    <strong>
-                      {identity.person_type === "business"
-                        ? identity.business_name || "—"
-                        : formatDate(identity.birth_date)}
-                    </strong>
-                  </div>
-                  <div className={styles.detailCard}>
-                    <span>Documento</span>
-                    <strong>{identity.document_original_name || "Documento legado"}</strong>
-                    <small>Arquivo protegido e acessível apenas na análise administrativa.</small>
-                  </div>
-                </div>
+                ) : null}
 
                 {!identityEditing && (
                   <div className={styles.actions}>
@@ -399,7 +487,11 @@ export function AccountView() {
                       }
                       onClick={() => {
                         setPersonType(identity.person_type);
-                        setTaxId("");
+                        setTaxId(
+                          identity.tax_id_value
+                            ? formatTaxId(identity.tax_id_value, identity.person_type)
+                            : "",
+                        );
                         setIdentityEditing(true);
                         setError("");
                       }}
@@ -536,7 +628,11 @@ export function AccountView() {
                         className={styles.secondaryAction}
                         onClick={() => {
                           setIdentityEditing(false);
-                          setTaxId("");
+                          setTaxId(
+                            identity.tax_id_value
+                              ? formatTaxId(identity.tax_id_value, identity.person_type)
+                              : "",
+                          );
                           setError("");
                         }}
                       >
