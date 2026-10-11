@@ -166,6 +166,20 @@ export async function POST(request: Request) {
       );
     }
 
+    const requiresFreshDocument =
+      latest != null &&
+      ["rejected", "resubmission_required"].includes(latest.status);
+
+    if (requiresFreshDocument && !hasNewDocument) {
+      return NextResponse.json(
+        {
+          error:
+            "A análise anterior solicitou correção. Envie um novo arquivo de documento.",
+        },
+        { status: 400 },
+      );
+    }
+
     if (!hasNewDocument && !latest?.document_storage_path) {
       return NextResponse.json(
         { error: "Envie uma foto ou PDF do documento com foto." },
