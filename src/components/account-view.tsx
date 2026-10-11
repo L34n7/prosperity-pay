@@ -189,6 +189,9 @@ export function AccountView() {
   const [identityTaxVisible, setIdentityTaxVisible] = useState(false);
   const [pendingWithdrawal, setPendingWithdrawal] =
     useState<PendingWithdrawal | null>(null);
+  const [activeTab, setActiveTab] = useState<"identity" | "pix" | "withdrawal">(
+    "identity",
+  );
 
   const minBirthDate = useMemo(() => dateInputLimitForAge(120), []);
   const maxBirthDate = useMemo(() => dateInputLimitForAge(18), []);
@@ -465,7 +468,44 @@ export function AccountView() {
           </div>
         )}
 
-        <section className={styles.section}>
+        <nav className={styles.accountTabs} aria-label="Dados financeiros">
+          <button
+            type="button"
+            className={`${styles.accountTab} ${activeTab === "identity" ? styles.accountTabActive : ""}`}
+            onClick={() => setActiveTab("identity")}
+          >
+            <Fingerprint size={18} />
+            <span>Verificação de identidade</span>
+            {identityState && (
+              <small className={statusClass(identityState.tone)}>
+                {identityState.label}
+              </small>
+            )}
+          </button>
+
+          <button
+            type="button"
+            className={`${styles.accountTab} ${activeTab === "pix" ? styles.accountTabActive : ""}`}
+            onClick={() => setActiveTab("pix")}
+          >
+            <WalletCards size={18} />
+            <span>Chaves Pix</span>
+            <small>{pix.length}</small>
+          </button>
+
+          <button
+            type="button"
+            className={`${styles.accountTab} ${activeTab === "withdrawal" ? styles.accountTabActive : ""}`}
+            onClick={() => setActiveTab("withdrawal")}
+          >
+            <Banknote size={18} />
+            <span>Solicitar saque</span>
+            <small>{formatCents(balance.available_cents)}</small>
+          </button>
+        </nav>
+
+        {activeTab === "identity" && (
+          <section className={styles.section}>
           <header className={styles.sectionHead}>
             <div className={styles.sectionTitle}>
               <span className={styles.sectionIcon}>
@@ -812,8 +852,10 @@ export function AccountView() {
             )}
           </div>
         </section>
+        )}
 
-        <section className={styles.section}>
+        {activeTab === "pix" && (
+          <section className={styles.section}>
           <header className={styles.sectionHead}>
             <div className={styles.sectionTitle}>
               <span className={styles.sectionIcon}>
@@ -1008,8 +1050,10 @@ export function AccountView() {
             )}
           </div>
         </section>
+        )}
 
-        <section className={styles.section}>
+        {activeTab === "withdrawal" && (
+          <section className={styles.section}>
           <header className={styles.sectionHead}>
             <div className={styles.sectionTitle}>
               <span className={styles.sectionIcon}>
@@ -1040,7 +1084,7 @@ export function AccountView() {
               </div>
             ) : (
               <form className={styles.withdrawalForm} onSubmit={requestWithdrawal}>
-                <div className={styles.field}>
+                <div className={`${styles.field} ${styles.withdrawalField}`}>
                   <span>Receber em</span>
                   <select name="payoutAccountId" required>
                     {verifiedPix.map((item) => (
@@ -1050,8 +1094,9 @@ export function AccountView() {
                       </option>
                     ))}
                   </select>
+                  <small>Escolha uma chave Pix verificada para receber o saque.</small>
                 </div>
-                <div className={styles.field}>
+                <div className={`${styles.field} ${styles.withdrawalField}`}>
                   <span>Valor do saque (R$)</span>
                   <input
                     name="amount"
@@ -1081,6 +1126,7 @@ export function AccountView() {
             )}
           </div>
         </section>
+        )}
 
         <WithdrawalConfirmationModal
           open={Boolean(pendingWithdrawal)}
