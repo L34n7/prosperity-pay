@@ -676,3 +676,111 @@ export async function sendPixSecurityCodeEmail(params: {
     ].join("\n"),
   });
 }
+
+
+export type FinancialReviewKind = "identity" | "pix" | "withdrawal";
+
+function financialReviewLabel(kind: FinancialReviewKind) {
+  if (kind === "identity") return "Verificação de identidade";
+  if (kind === "pix") return "Chave Pix";
+  return "Solicitação de saque";
+}
+
+export async function sendFinancialReviewRequestedEmail(params: {
+  to: string;
+  name: string;
+  kind: FinancialReviewKind;
+  requesterName: string;
+  requesterEmail: string;
+  details: Array<{ label: string; value: string }>;
+  link: string;
+}) {
+  const label = financialReviewLabel(params.kind);
+  const html = prosperityPayTemplate({
+    eyebrow: "Nova análise pendente",
+    title: `${label} aguardando análise`,
+    subtitle: "Existe uma nova solicitação financeira para revisar no Prosperity Pay",
+    name: params.name,
+    paragraphs: [
+      `<strong>${escapeHtml(params.requesterName || "Usuário")}</strong> enviou uma nova solicitação de <strong>${escapeHtml(label.toLowerCase())}</strong>.`,
+      "Acesse o módulo Admin para conferir os dados e registrar a decisão.",
+    ],
+    details: [
+      { label: "Solicitante", value: params.requesterName || "Usuário" },
+      { label: "E-mail", value: params.requesterEmail || "Não informado" },
+      ...params.details,
+    ],
+    buttonLabel: "Abrir análise no Admin",
+    link: params.link,
+    notice:
+      "Esta notificação foi enviada porque sua conta possui permissão administrativa para revisar operações financeiras.",
+    footer: `© ${new Date().getFullYear()} Prosperity Pay. Análise administrativa.`,
+  });
+
+  await sendEmail({
+    to: params.to,
+    subject: `${label} aguardando análise • Prosperity Pay`,
+    html,
+    text: [
+      `Olá, ${params.name}!`,
+      "",
+      `${params.requesterName} (${params.requesterEmail}) enviou: ${label}.`,
+      ...params.details.map((item) => `${item.label}: ${item.value}`),
+      "",
+      "Acesse o Admin para analisar:",
+      params.link,
+    ].join("\n"),
+  });
+}
+
+export async function sendFinancialReviewDecisionEmail(params: {
+  to: string;
+  name: string;
+  kind: FinancialReviewKind;
+  statusLabel: string;
+  details?: Array<{ label: string; value: string }>;
+  observation?: string | null;
+  link: string;
+}) {
+  const label = financialReviewLabel(params.kind);
+  const observation = params.observation?.trim() || "";
+  const html = prosperityPayTemplate({
+    eyebrow: "Atualização da análise",
+    title: `${label}: ${params.statusLabel}`,
+    subtitle: "Sua solicitação recebeu uma atualização no Prosperity Pay",
+    name: params.name,
+    paragraphs: [
+      `A análise de <strong>${escapeHtml(label.toLowerCase())}</strong> foi atualizada para <strong>${escapeHtml(params.statusLabel)}</strong>.`,
+      ...(observation
+        ? [`Observação da análise: <strong>${escapeHtml(observation)}</strong>`]
+        : []),
+    ],
+    details: [
+      { label: "Status", value: params.statusLabel },
+      ...(params.details ?? []),
+    ],
+    buttonLabel:
+      params.kind === "withdrawal" ? "Ver meus saques" : "Ver minha conta",
+    link: params.link,
+    notice:
+      params.kind === "withdrawal"
+        ? "Consulte o histórico para acompanhar os detalhes desta solicitação."
+        : "Se houver solicitação de correção ou rejeição, consulte os detalhes na sua conta antes de reenviar.",
+    footer: `© ${new Date().getFullYear()} Prosperity Pay. Atualização de análise.`,
+  });
+
+  await sendEmail({
+    to: params.to,
+    subject: `${label}: ${params.statusLabel} • Prosperity Pay`,
+    html,
+    text: [
+      `Olá, ${params.name}!`,
+      "",
+      `${label}: ${params.statusLabel}.`,
+      ...(observation ? [`Observação: ${observation}`] : []),
+      ...(params.details ?? []).map((item) => `${item.label}: ${item.value}`),
+      "",
+      params.link,
+    ].join("\n"),
+  });
+}
