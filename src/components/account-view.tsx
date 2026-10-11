@@ -16,6 +16,7 @@ import {
   Plus,
   ShieldCheck,
   WalletCards,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
@@ -233,10 +234,6 @@ export function AccountView() {
         setIdentityEditing(requiresCorrection);
       } else {
         setIdentityEditing(true);
-      }
-
-      if (!pixResponse.payoutAccounts.length) {
-        setPixFormOpen(true);
       }
 
       setError("");
@@ -918,7 +915,7 @@ export function AccountView() {
               </div>
             </div>
 
-            {pix.length > 0 && !pixFormOpen && (
+            {!pixFormOpen && (
               <button
                 type="button"
                 className={styles.secondaryAction}
@@ -935,7 +932,7 @@ export function AccountView() {
                 }}
               >
                 <Plus size={15} />
-                Nova chave
+                {pix.length ? "Nova chave" : "Cadastrar chave"}
               </button>
             )}
           </header>
@@ -997,19 +994,45 @@ export function AccountView() {
             )}
 
             {pixFormOpen && (
-              <form className={styles.formPanel} onSubmit={sendPix}>
-                <div className={styles.formPanelHead}>
-                  <div>
-                    <h3>{pixEditingId ? "Editar chave Pix" : "Cadastrar chave Pix"}</h3>
-                    <p>
-                      {pixEditingId
-                        ? pix.find((item) => item.id === pixEditingId)?.status === "rejected"
-                          ? "A chave foi rejeitada. Digite novamente a chave Pix e o CPF/CNPJ do titular antes de reenviar."
-                          : "Salve as alterações para reenviar a chave e manter o status Em análise."
-                        : "Após o envio, a chave ficará Em análise até a conferência administrativa."}
-                    </p>
-                  </div>
-                </div>
+              <div
+                className={styles.pixModalOverlay}
+                role="presentation"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget && !busy) resetPixForm();
+                }}
+              >
+                <section
+                  className={styles.pixModal}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="pix-modal-title"
+                >
+                  <header className={styles.pixModalHead}>
+                    <div>
+                      <small>Segurança financeira</small>
+                      <h3 id="pix-modal-title">
+                        {pixEditingId ? "Editar chave Pix" : "Cadastrar chave Pix"}
+                      </h3>
+                      <p>
+                        {pixEditingId
+                          ? pix.find((item) => item.id === pixEditingId)?.status === "rejected"
+                            ? "A chave foi rejeitada. Digite novamente a chave Pix e o CPF/CNPJ do titular antes de reenviar."
+                            : "Altere os dados e confirme novamente a segurança da operação."
+                          : "Informe os dados da chave e conclua a confirmação de segurança antes de enviar para análise."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.pixModalClose}
+                      onClick={resetPixForm}
+                      disabled={busy}
+                      aria-label="Fechar"
+                    >
+                      <X size={19} />
+                    </button>
+                  </header>
+
+                  <form className={styles.pixModalBody} onSubmit={sendPix}>
 
                 <div className={styles.formGrid}>
                   <div className={styles.field}>
@@ -1183,6 +1206,8 @@ export function AccountView() {
                   </div>
                 </div>
               </form>
+                </section>
+              </div>
             )}
           </div>
         </section>
