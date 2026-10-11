@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/ui/page-header";
+import { WithdrawalConfirmationModal } from "@/components/withdrawal-confirmation-modal";
 import { formatCents, formatDate, requestJson } from "@/lib/operational";
 import {
   dateInputLimitForAge,
@@ -47,6 +48,12 @@ type Balance = {
   available_cents: number;
   pending_cents: number;
   withdrawing_cents: number;
+};
+
+type PendingWithdrawal = {
+  amountCents: number;
+  payoutAccountId: string;
+  pixLabel: string;
 };
 
 type Pix = {
@@ -180,6 +187,8 @@ export function AccountView() {
   const [holderTaxId, setHolderTaxId] = useState("");
   const [pixHolderName, setPixHolderName] = useState("");
   const [identityTaxVisible, setIdentityTaxVisible] = useState(false);
+  const [pendingWithdrawal, setPendingWithdrawal] =
+    useState<PendingWithdrawal | null>(null);
 
   const minBirthDate = useMemo(() => dateInputLimitForAge(120), []);
   const maxBirthDate = useMemo(() => dateInputLimitForAge(18), []);
@@ -372,27 +381,41 @@ export function AccountView() {
     }
   }
 
-  async function requestWithdrawal(event: FormEvent<HTMLFormElement>) {
+  function requestWithdrawal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const amountCents = Math.round(Number(form.get("amount")) * 100);
     const payoutAccountId = String(form.get("payoutAccountId") ?? "");
+    const selectedPix = verifiedPix.find((item) => item.id === payoutAccountId);
 
-    if (!Number.isFinite(amountCents) || amountCents <= 0) {
-      setError("Informe um valor de saque válido.");
+    if (!Number.isFinite(amountCents) || amountCents < 500) {
+      setError("O saque mínimo é de R$ 5,00.");
       return;
     }
     if (amountCents > balance.available_cents) {
       setError("O valor solicitado é maior que o saldo disponível.");
       return;
     }
-    if (!payoutAccountId) {
+    if (!selectedPix) {
       setError("Escolha uma chave Pix verificada.");
       return;
     }
-    if (!confirm(`Solicitar saque de R$ ${(amountCents / 100).toFixed(2).replace(".", ",")}?`)) {
-      return;
-    }
+
+    setError("");
+    setMessage("");
+    setPendingWithdrawal({
+      amountCents,
+      payoutAccountId,
+      pixLabel:
+        `${PIX_TYPE_LABELS[selectedPix.key_type]} · ${formatPixValue(
+          selectedPix.key_type,
+          selectedPix.key_value,
+        )}${selectedPix.is_primary ? " · Principal" : ""}`,
+    });
+  }
+
+  async function confirmWithdrawal() {
+    if (!pendingWithdrawal) return;
 
     setBusy(true);
     setError("");
@@ -401,11 +424,14 @@ export function AccountView() {
     try {
       await requestJson("/api/withdrawals", {
         method: "POST",
-        body: JSON.stringify({ amountCents, payoutAccountId }),
+        body: JSON.stringify({
+          amountCents: pendingWithdrawal.amountCents,
+          payoutAccountId: pendingWithdrawal.payoutAccountId,
+        }),
       });
+      setPendingWithdrawal(null);
       await load();
       setMessage("Solicitação de saque enviada para análise.");
-      event.currentTarget.reset();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Falha ao solicitar saque.");
     } finally {
@@ -1030,14 +1056,14 @@ export function AccountView() {
                   <input
                     name="amount"
                     type="number"
-                    min="0.01"
+                    min="5"
                     max={balance.available_cents / 100}
                     step="0.01"
                     placeholder="0,00"
                     required
                   />
                   <small>
-                    Disponível agora: {formatCents(balance.available_cents)}
+                    Mínimo R$ 5,00 · Máximo {formatCents(balance.available_cents)}
                   </small>
                 </div>
                 <div className={styles.withdrawalActions}>
@@ -1046,7 +1072,7 @@ export function AccountView() {
                   </Link>
                   <button
                     className={styles.primaryAction}
-                    disabled={busy || balance.available_cents <= 0}
+                    disabled={busy || balance.available_cents < 500}
                   >
                     {busy ? "Enviando..." : "Solicitar saque"}
                   </button>
@@ -1055,6 +1081,18 @@ export function AccountView() {
             )}
           </div>
         </section>
+
+        <WithdrawalConfirmationModal
+          open={Boolean(pendingWithdrawal)}
+          amountCents={pendingWithdrawal?.amountCents ?? 0}
+          availableCents={balance.available_cents}
+          pixLabel={pendingWithdrawal?.pixLabel ?? ""}
+          busy={busy}
+          onCancel={() => {
+            if (!busy) setPendingWithdrawal(null);
+          }}
+          onConfirm={confirmWithdrawal}
+        />
 
         <div className={styles.simpleLinks}>
           <Link href="/integracoes" className={styles.simpleCard}>
