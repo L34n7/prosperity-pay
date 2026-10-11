@@ -242,8 +242,6 @@ export async function PATCH(request: Request) {
         holder_tax_id_last4: holderTaxId.slice(-4),
         holder_tax_id_encrypted: encryptSecret(holderTaxId),
         status: "pending",
-        verified_at: null,
-        verified_by: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
