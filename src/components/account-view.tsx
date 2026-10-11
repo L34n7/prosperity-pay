@@ -197,20 +197,21 @@ export function AccountView() {
       setBalance(balanceResponse.balance);
 
       if (identityResponse.verification) {
+        const requiresCorrection = ["rejected", "resubmission_required"].includes(
+          identityResponse.verification.status,
+        );
         setPersonType(identityResponse.verification.person_type);
         setTaxId(
-          identityResponse.verification.tax_id_value
-            ? formatTaxId(
-                identityResponse.verification.tax_id_value,
-                identityResponse.verification.person_type,
-              )
-            : "",
+          requiresCorrection
+            ? ""
+            : identityResponse.verification.tax_id_value
+              ? formatTaxId(
+                  identityResponse.verification.tax_id_value,
+                  identityResponse.verification.person_type,
+                )
+              : "",
         );
-        setIdentityEditing(
-          ["rejected", "resubmission_required"].includes(
-            identityResponse.verification.status,
-          ),
-        );
+        setIdentityEditing(requiresCorrection);
       } else {
         setIdentityEditing(true);
       }
@@ -253,6 +254,16 @@ export function AccountView() {
 
     const document = form.get("document");
     const hasNewDocument = document instanceof File && document.size > 0;
+    const requiresFreshDocument =
+      identity != null &&
+      ["rejected", "resubmission_required"].includes(identity.status);
+
+    if (requiresFreshDocument && !hasNewDocument) {
+      setError(
+        "A análise anterior pediu correção. Envie um novo arquivo de documento para continuar.",
+      );
+      return;
+    }
     if (!hasNewDocument && !identity?.document_original_name) {
       setError("Envie uma foto ou PDF do documento com foto.");
       return;
@@ -303,17 +314,25 @@ export function AccountView() {
   }
 
   function editPix(item: Pix) {
+    const rejected = item.status === "rejected";
+
     setPixEditingId(item.id);
     setPixKeyType(item.key_type);
-    setPixKey(formatPixValue(item.key_type, item.key_value));
+    setPixKey(rejected ? "" : formatPixValue(item.key_type, item.key_value));
     setPixHolderName(item.holder_name);
-    const holderDocument =
-      item.holder_tax_id_value ??
-      (["cpf", "cnpj"].includes(item.key_type) &&
-      item.key_last4 === item.holder_tax_id_last4
-        ? item.key_value
-        : "");
-    setHolderTaxId(holderDocument ? formatHolderTaxId(holderDocument) : "");
+
+    if (rejected) {
+      setHolderTaxId("");
+    } else {
+      const holderDocument =
+        item.holder_tax_id_value ??
+        (["cpf", "cnpj"].includes(item.key_type) &&
+        item.key_last4 === item.holder_tax_id_last4
+          ? item.key_value
+          : "");
+      setHolderTaxId(holderDocument ? formatHolderTaxId(holderDocument) : "");
+    }
+
     setPixFormOpen(true);
     setError("");
   }
@@ -664,7 +683,12 @@ export function AccountView() {
                         setTaxId(formatTaxId(event.target.value, personType))
                       }
                     />
-                    <small>O documento é validado antes de permitir o envio.</small>
+                    <small>
+                        {identity &&
+                        ["rejected", "resubmission_required"].includes(identity.status)
+                          ? "Digite novamente o CPF/CNPJ para confirmar a correção."
+                          : "O documento é validado antes de permitir o envio."}
+                      </small>
                   </div>
 
                   <div className={styles.field}>
@@ -710,13 +734,22 @@ export function AccountView() {
                     <input
                       name="document"
                       type="file"
-                      required={!identity?.document_original_name}
+                      required={
+                        !identity?.document_original_name ||
+                        Boolean(
+                          identity &&
+                            ["rejected", "resubmission_required"].includes(identity.status),
+                        )
+                      }
                       accept="image/jpeg,image/png,image/webp,application/pdf"
                     />
                     <small>
-                      {identity?.document_original_name
-                        ? `Documento atual: ${identity.document_original_name}. Deixe vazio para manter ou selecione outro para substituir.`
-                        : "RG, CNH ou documento equivalente. JPG, PNG, WEBP ou PDF até 5 MB."}
+                      {identity &&
+                      ["rejected", "resubmission_required"].includes(identity.status)
+                        ? "A análise anterior solicitou correção. É obrigatório enviar um novo arquivo de documento."
+                        : identity?.document_original_name
+                          ? `Documento atual: ${identity.document_original_name}. Deixe vazio para manter ou selecione outro para substituir.`
+                          : "RG, CNH ou documento equivalente. JPG, PNG, WEBP ou PDF até 5 MB."}
                     </small>
                   </div>
 
@@ -848,7 +881,9 @@ export function AccountView() {
                     <h3>{pixEditingId ? "Editar chave Pix" : "Cadastrar chave Pix"}</h3>
                     <p>
                       {pixEditingId
-                        ? "Salve as alterações para reenviar a chave e manter o status Em análise."
+                        ? pix.find((item) => item.id === pixEditingId)?.status === "rejected"
+                          ? "A chave foi rejeitada. Digite novamente a chave Pix e o CPF/CNPJ do titular antes de reenviar."
+                          : "Salve as alterações para reenviar a chave e manter o status Em análise."
                         : "Após o envio, a chave ficará Em análise até a conferência administrativa."}
                     </p>
                   </div>
