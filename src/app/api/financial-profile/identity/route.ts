@@ -118,20 +118,22 @@ export async function POST(request: Request) {
 
     const { data: latest, error: latestError } = await admin
       .from("identity_verifications")
-      .select("id,status")
+      .select("id,status,document_storage_path")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (latestError) throw latestError;
-    if (latest && ["under_review", "approved"].includes(latest.status)) {
+
+    const replaceExisting = formString(form, "replaceExisting") === "true";
+    if (latest && ["under_review", "approved"].includes(latest.status) && !replaceExisting) {
       return NextResponse.json(
         {
           error:
             latest.status === "approved"
-              ? "Sua identidade já foi aprovada."
-              : "Já existe uma verificação em análise.",
+              ? "Sua identidade já foi aprovada. Use Editar e reenviar para alterar os dados."
+              : "Já existe uma verificação em análise. Use Editar e reenviar para substituí-la.",
         },
         { status: 409 },
       );
@@ -150,31 +152,59 @@ export async function POST(request: Request) {
     if (uploadError) throw uploadError;
 
     const now = new Date().toISOString();
-    const { data, error } = await admin
-      .from("identity_verifications")
-      .insert({
-        user_id: user.id,
-        person_type: personType,
-        legal_name: legalName,
-        tax_id_last4: taxId.slice(-4),
-        tax_id_hash: sha256(taxId),
-        birth_date: personType === "individual" ? birthDate : null,
-        business_name: personType === "business" ? businessName : null,
-        document_storage_path: uploadedPath,
-        document_original_name: document.name.slice(0, 255),
-        document_mime_type: document.type,
-        document_uploaded_at: now,
-      })
-      .select("id, status, submitted_at")
-      .single();
+    const verificationPayload = {
+      person_type: personType,
+      legal_name: legalName,
+      tax_id_last4: taxId.slice(-4),
+      tax_id_hash: sha256(taxId),
+      birth_date: personType === "individual" ? birthDate : null,
+      business_name: personType === "business" ? businessName : null,
+      document_storage_path: uploadedPath,
+      document_original_name: document.name.slice(0, 255),
+      document_mime_type: document.type,
+      document_uploaded_at: now,
+      status: "under_review" as const,
+      reviewer_id: null,
+      review_note: null,
+      reviewed_at: null,
+      submitted_at: now,
+      updated_at: now,
+    };
 
-    if (error) {
+    const result = latest
+      ? await admin
+          .from("identity_verifications")
+          .update(verificationPayload)
+          .eq("id", latest.id)
+          .eq("user_id", user.id)
+          .select("id,status,submitted_at")
+          .single()
+      : await admin
+          .from("identity_verifications")
+          .insert({
+            user_id: user.id,
+            ...verificationPayload,
+          })
+          .select("id,status,submitted_at")
+          .single();
+
+    if (result.error) {
       await admin.storage.from("identity-documents").remove([uploadedPath]);
       uploadedPath = null;
-      throw error;
+      throw result.error;
     }
 
-    return NextResponse.json({ verification: data }, { status: 201 });
+    if (latest?.document_storage_path && latest.document_storage_path !== uploadedPath) {
+      await admin.storage
+        .from("identity-documents")
+        .remove([latest.document_storage_path])
+        .catch(() => undefined);
+    }
+
+    return NextResponse.json(
+      { verification: result.data },
+      { status: latest ? 200 : 201 },
+    );
   } catch (error) {
     if (uploadedPath) {
       try {
