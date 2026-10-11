@@ -34,3 +34,23 @@
 .genericRow strong{font-size:.94rem}
 .genericRow span{font-size:.84rem;line-height:1.45}
 .error{font-size:.86rem}
+
+/* Escala ampliada final — Admin */
+.tab{font-size:1rem;min-height:46px;padding:0 17px}
+.count{font-size:.84rem;min-width:25px;height:25px}
+.panelHead h2{font-size:1.3rem}
+.panelHead p{font-size:.98rem}
+.personText strong{font-size:1.14rem}
+.personText span{font-size:.96rem}
+.statusBadge{font-size:.92rem}
+.detail span{font-size:.84rem}
+.detail strong,.detail code{font-size:1.04rem}
+.note{font-size:.96rem}
+.action,.dangerAction,.approveAction{font-size:.94rem;min-height:45px}
+.empty strong{font-size:1.1rem}
+.empty p{font-size:.94rem}
+.genericRow strong{font-size:1.04rem}
+.genericRow span{font-size:.94rem}
+.error{font-size:.94rem}
+.sensitiveValue{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.revealButton{display:inline-flex;min-height:38px;align-items:center;justify-content:center;gap:6px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.018);color:var(--text-secondary);cursor:pointer;font-size:.86rem;font-weight:700}
