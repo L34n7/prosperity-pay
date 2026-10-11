@@ -93,8 +93,9 @@ export async function POST(request: Request) {
       );
     }
 
-    await authClient.auth.signOut().catch(() => undefined);
-
+    // O cliente de autenticação acima é efêmero e não persiste sessão.
+    // Não fazemos signOut aqui porque o logout global do Supabase pode
+    // invalidar também a sessão principal que o usuário está usando no navegador.
     const challengeTable = (admin as any).from("payout_security_challenges");
     const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { count, error: countError } = await challengeTable
