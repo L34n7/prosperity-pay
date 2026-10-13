@@ -169,6 +169,9 @@ async function processOne(
       const intent = await createPrepaidSubscriptionIntent({
         subscriptionId: subscription.id,
         action: { type: "renew" },
+        // O link enviado por e-mail precisa continuar utilizável por vários dias.
+        // Mantemos 8 dias, alinhado à janela de recuperação da cobrança automática.
+        renewalSessionTtlHours: 24 * 8,
       });
 
       if (intent.status !== "awaiting_payment" || !intent.checkoutUrl) {
