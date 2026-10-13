@@ -559,7 +559,7 @@ export function CheckoutFlow({
 
           <div className={styles.methodLabel}>Forma de pagamento</div>
           <div className={styles.methods}>
-            {offer.paymentCardEnabled && <button type="button" className={method === "card" ? styles.methodActive : styles.method} onClick={() => { setMethod("card"); setError(""); setResult(null); }}><CreditCard size={20}/><span><strong>Cartão de crédito</strong><small>{recurring ? "Renovação automática" : `Até ${offer.maxInstallments}x`}</small></span></button>}
+            {offer.paymentCardEnabled && <button type="button" className={method === "card" ? styles.methodActive : styles.method} onClick={() => { setMethod("card"); setError(""); setResult(null); }}><CreditCard size={20}/><span><strong>Cartão de crédito</strong><small>{recurring ? "Pagamento desta cobrança" : `Até ${offer.maxInstallments}x`}</small></span></button>}
             {offer.paymentPixEnabled && <button type="button" className={method === "pix" ? styles.methodActive : styles.method} onClick={() => { setMethod("pix"); setError(""); setResult(null); }}><QrCode size={20}/><span><strong>PIX</strong><small>{recurring ? "Pagamento deste período" : "Aprovação rápida"}</small></span></button>}
           </div>
 
@@ -583,7 +583,7 @@ export function CheckoutFlow({
             </div>
             <select id="form-checkout__issuer" className={styles.hiddenControl}/>
 
-            {recurring && <div className={styles.recurrenceInfo}><CreditCard size={18}/><span><strong>Cobrança recorrente</strong><small>Esta primeira cobrança será feita em 1x. O cartão ficará autorizado no Mercado Pago para as próximas mensalidades.</small></span></div>}
+            {recurring && <div className={styles.recurrenceInfo}><CreditCard size={18}/><span><strong>Pagamento sem renovação automática</strong><small>O cartão será usado somente nesta cobrança, em 1x. As próximas renovações serão cobradas separadamente.</small></span></div>}
             {error && method === "card" && <p className={styles.error} role="alert">{error}</p>}
             {cardRetryRequired && <button type="button" className={styles.retry} onClick={handleCardRetry}>Tentar novamente</button>}
             <button id="form-checkout__submit" className={styles.submit} type="submit" onClick={handleCardSubmitClick} disabled={busy || cardRetryRequired || !mercadoPagoPublicKey || !cardReady}>{busy ? "Processando..." : cardRetryRequired ? "Nova tentativa necessária" : cardReady ? `Pagar ${formatCents(initialPrice)}` : "Carregando pagamento seguro..."}</button>

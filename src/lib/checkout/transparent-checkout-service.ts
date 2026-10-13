@@ -81,7 +81,6 @@ type MpPayment = {
     qr_code?: string;
     qr_code_base64?: string;
   };
-  automatic_payments?: { payment_profile_id?: string };
 };
 
 export type MercadoPagoOrder = {
@@ -93,10 +92,6 @@ export type MercadoPagoOrder = {
   transactions?: { payments?: MpPayment[] };
 };
 
-type MercadoPagoCustomer = {
-  id?: string;
-  email?: string;
-};
 
 function rule(type: FeeType, basisPoints: number, fixedCents: number): FeeRule {
   return { type, basisPoints, fixedCents };
@@ -169,6 +164,9 @@ function mercadoPagoErrorMessage(body: Record<string, unknown>, status: number) 
   }
   if (fieldDetails.some((detail) => detail.includes("payer.identification"))) {
     return "CPF inválido. Confira os 11 dígitos do CPF do pagador.";
+  }
+  if (fieldDetails.some((detail) => detail.includes("insufficient_amount"))) {
+    return "Pagamento não aprovado: o cartão não possui limite ou saldo disponível suficiente. Tente outro cartão ou outra forma de pagamento.";
   }
   const details = errors
     .map((item) => {
@@ -890,146 +888,6 @@ export async function fetchMercadoPagoOrder(connectionId: string, externalOrderI
   return mpRequest<MercadoPagoOrder>(token, `/v1/orders/${encodeURIComponent(externalOrderId)}`);
 }
 
-async function ensureMercadoPagoCustomer(input: {
-  admin: AdminClient;
-  token: string;
-  customer: Awaited<ReturnType<typeof resolveCustomer>>;
-}) {
-  const { admin, token, customer } = input;
-  if (customer.external_customer_id) return customer.external_customer_id;
-
-  const normalizedName = (customer.name ?? "").trim();
-  const [firstName, ...lastNameParts] = normalizedName.split(/\s+/).filter(Boolean);
-  const mpCustomer = await mpRequest<MercadoPagoCustomer>(token, "/v1/customers", {
-    method: "POST",
-    body: JSON.stringify({
-      email: customer.email,
-      first_name: firstName || undefined,
-      last_name: lastNameParts.join(" ") || undefined,
-      identification: {
-        type: "CPF",
-        number: customer.document,
-      },
-    }),
-  });
-
-  if (!mpCustomer.id) {
-    throw new HttpError(502, "Mercado Pago não retornou o identificador do cliente.");
-  }
-
-  const { error } = await admin.from("customers").update({
-    external_customer_id: mpCustomer.id,
-  }).eq("id", customer.id);
-  if (error) throw error;
-
-  return mpCustomer.id;
-}
-
-async function createRecurringCardFirstPayment(input: {
-  admin: AdminClient;
-  token: string;
-  internal: Awaited<ReturnType<typeof createInternalOrder>>;
-  checkoutInput: TransparentCheckoutInput;
-  offer: Offer;
-  product: Product;
-}) {
-  const { admin, token, internal, checkoutInput, offer, product } = input;
-  if (!internal.subscriptionId || !checkoutInput.card?.token) {
-    throw new HttpError(500, "Assinatura interna não preparada para cobrança recorrente.");
-  }
-
-  const mercadoPagoCustomerId = await ensureMercadoPagoCustomer({
-    admin,
-    token,
-    customer: internal.customer,
-  });
-
-  let mpOrder: MercadoPagoOrder;
-  try {
-    console.info("[mercadopago] automatic payments first charge", {
-      offerSlug: offer.checkout_slug,
-      deviceIdPresent: Boolean(checkoutInput.deviceId),
-      customerRegistered: true,
-    });
-
-    mpOrder = await mpRequest<MercadoPagoOrder>(token, "/v1/orders", {
-      method: "POST",
-      headers: checkoutInput.deviceId ? { "X-meli-session-id": checkoutInput.deviceId } : undefined,
-      body: JSON.stringify({
-        type: "online",
-        processing_mode: "automatic",
-        total_amount: money(internal.amountCents),
-        external_reference: `prosperity-${internal.order.id}`,
-        description: `${product.name} - ${offer.name}`.slice(0, 150),
-        payer: {
-          customer_id: mercadoPagoCustomerId,
-        },
-        transactions: {
-          payments: [{
-            amount: money(internal.amountCents),
-            payment_method: {
-              id: checkoutInput.card.paymentMethodId,
-              type: "credit_card",
-              token: checkoutInput.card.token,
-              installments: 1,
-            },
-            stored_credential: {
-              store_payment_method: true,
-              payment_initiator: "customer",
-              reason: "recurring",
-              first_payment: true,
-            },
-          }],
-        },
-      }),
-    }, checkoutInput.idempotencyKey);
-  } catch (error) {
-    await Promise.all([
-      admin.from("orders").update({
-        status: "cancelled",
-        cancelled_at: new Date().toISOString(),
-      }).eq("id", internal.order.id),
-      admin.from("payments").update({
-        status: "rejected",
-        status_detail: error instanceof Error ? error.message.slice(0, 500) : "provider_error",
-      }).eq("id", internal.payment.id),
-      admin.from("subscriptions").update({
-        status: "cancelled",
-        cancelled_at: new Date().toISOString(),
-      }).eq("id", internal.subscriptionId),
-    ]);
-    throw error;
-  }
-
-  if (!mpOrder.id) {
-    throw new HttpError(502, "Mercado Pago retornou uma order recorrente incompleta.");
-  }
-
-  const profileId = mpOrder.transactions?.payments?.[0]?.automatic_payments?.payment_profile_id;
-  console.info("[mercadopago] automatic payments first charge result", {
-    orderCreated: true,
-    paymentProfileReturned: Boolean(profileId),
-  });
-
-  const { error: checkoutUpdateError } = await admin.from("payment_provider_checkouts").update({
-    external_checkout_id: mpOrder.id,
-  }).eq("order_id", internal.order.id);
-  if (checkoutUpdateError) throw checkoutUpdateError;
-
-  if (profileId) {
-    const { error: subscriptionUpdateError } = await admin.from("subscriptions").update({
-      payment_profile_id: profileId,
-    }).eq("id", internal.subscriptionId);
-    if (subscriptionUpdateError) throw subscriptionUpdateError;
-  }
-
-  return syncTransparentOrder({
-    admin,
-    internalOrderId: internal.order.id,
-    mpOrder,
-  });
-}
-
 export async function createTransparentCheckout(input: TransparentCheckoutInput) {
   const validationError = buyerValidationError(input.customerEmail, input.customerDocument);
   if (validationError) throw new HttpError(400, validationError);
@@ -1070,7 +928,7 @@ export async function createTransparentCheckout(input: TransparentCheckoutInput)
     throw new HttpError(400, "Device ID obrigatório para validar o cartão.");
   }
   if (input.paymentMethod === "card" && offer.billing_type === "recurring" && Number(input.card?.installments ?? 1) !== 1) {
-    throw new HttpError(400, "Assinaturas pré-pagas devem ser cobradas em 1x por ciclo.");
+    throw new HttpError(400, "Esta cobrança por cartão deve ser feita em 1x.");
   }
   if (input.paymentMethod === "card" && Number(input.card?.installments ?? 1) > Number(offer.max_installments)) {
     throw new HttpError(400, "Quantidade de parcelas acima do limite da oferta.");
