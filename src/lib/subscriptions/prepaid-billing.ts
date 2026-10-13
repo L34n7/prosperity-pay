@@ -431,7 +431,11 @@ async function cancelScheduledPlanChange(
   };
 }
 
-async function createRenewal(admin: AdminClient, subscription: LoadedSubscription) {
+async function createRenewal(
+  admin: AdminClient,
+  subscription: LoadedSubscription,
+  sessionTtlHours = 24,
+) {
   if (!subscription.current_period_end) throw new HttpError(409, "Assinatura sem vencimento definido.");
 
   const now = Date.now();
@@ -570,7 +574,10 @@ async function createRenewal(admin: AdminClient, subscription: LoadedSubscriptio
   const affiliateBaseAmountCents = lines.reduce((sum, line) => sum + line.commissionableAmountCents, 0);
   if (amountCents <= 0) throw new HttpError(409, "Valor de renovação inválido.");
 
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const safeSessionTtlHours = Math.max(1, Math.min(24 * 30, sessionTtlHours));
+  const expiresAt = new Date(
+    Date.now() + safeSessionTtlHours * 60 * 60 * 1000,
+  );
   const session = await newSession({
     admin,
     subscriptionId: subscription.id,
@@ -775,6 +782,7 @@ async function expireAbandonedSubscriptionChanges(
 export async function createPrepaidSubscriptionIntent(input: {
   subscriptionId: string;
   action: SubscriptionAction;
+  renewalSessionTtlHours?: number;
 }) {
   const admin = createAdminClient();
   const subscription = await loadSubscription(admin, input.subscriptionId);
@@ -782,7 +790,11 @@ export async function createPrepaidSubscriptionIntent(input: {
   await expireAbandonedSubscriptionChanges(admin, subscription.id);
 
   if (input.action.type === "renew") {
-    return createRenewal(admin, subscription);
+    return createRenewal(
+      admin,
+      subscription,
+      input.renewalSessionTtlHours ?? 24,
+    );
   }
 
   if (input.action.type === "cancel_scheduled_plan_change") {
