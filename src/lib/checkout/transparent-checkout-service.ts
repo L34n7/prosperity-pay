@@ -832,8 +832,42 @@ export async function syncTransparentOrder(input: {
         renewalDueAt: settledRenewalDueAt,
       });
     }
-  } else if (status === "cancelled") {
-    await admin.from("orders").update({ status: "cancelled", cancelled_at: new Date().toISOString() }).eq("id", internalOrderId);
+  } else if (status === "rejected" || status === "cancelled") {
+    const now = new Date().toISOString();
+
+    const terminalUpdates: Array<PromiseLike<{ error: unknown }>> = [
+      admin
+        .from("orders")
+        .update({
+          status: "cancelled",
+          cancelled_at: now,
+          updated_at: now,
+        })
+        .eq("id", internalOrderId),
+    ];
+
+    // Uma tentativa inicial recusada não pode deixar uma assinatura órfã
+    // em "pending". Renovação recusada NÃO cancela a assinatura ativa.
+    if (
+      billingOrder.billing_reason === "subscription_initial" &&
+      billingOrder.subscription_id
+    ) {
+      terminalUpdates.push(
+        admin
+          .from("subscriptions")
+          .update({
+            status: "cancelled",
+            cancelled_at: now,
+            updated_at: now,
+          })
+          .eq("id", billingOrder.subscription_id)
+          .eq("status", "pending"),
+      );
+    }
+
+    const terminalResults = await Promise.all(terminalUpdates);
+    const terminalError = terminalResults.find((result) => result.error)?.error;
+    if (terminalError) throw terminalError;
   } else if (status === "refunded") {
     await admin.from("orders").update({ status: "refunded" }).eq("id", internalOrderId);
   } else {
