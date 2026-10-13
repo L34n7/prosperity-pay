@@ -18,6 +18,7 @@ export type SubscriptionSessionCheckoutInput = {
   deviceId?: string;
   idempotencyKey: string;
   paymentMethod: PaymentMethod;
+  pixExpirationTime?: string;
   card?: {
     token: string;
     paymentMethodId: string;
@@ -428,7 +429,10 @@ export async function createSubscriptionSessionCheckout(input: SubscriptionSessi
   } : {
     amount: money(amountCents),
     payment_method: { id: "pix", type: "bank_transfer" },
-    expiration_time: session.session_type === "subscription_change" ? "PT30M" : "P1D",
+    expiration_time:
+      session.session_type === "subscription_change"
+        ? "PT30M"
+        : input.pixExpirationTime || "P1D",
   };
 
   let mpOrder: MercadoPagoOrder;
