@@ -187,6 +187,9 @@ async function processOne(
         customerEmail: customer.email,
         idempotencyKey: `automatic-due:${subscription.id}:${subscription.current_period_end}`,
         paymentMethod: "pix",
+        // Mantém o QR Code / Copia e Cola válido durante a mesma janela
+        // do checkout enviado no e-mail de cobrança automática.
+        pixExpirationTime: "P8D",
       });
 
       if (!pixResult.orderId) {
