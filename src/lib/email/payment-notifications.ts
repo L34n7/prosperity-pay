@@ -15,6 +15,7 @@ type Recipient = {
   name: string;
   role: PaymentNotificationRole;
   displayRole: PaymentNotificationDisplayRole;
+  participantAmountCents: number | null;
 };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -244,10 +245,18 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
   }
 
   const recipientRoles = new Map<string, PaymentNotificationRole>();
+  const participantAmounts = new Map<string, number>();
   recipientRoles.set(order.producer_id, "producer");
 
   for (const allocation of allocations.data ?? []) {
     if (!allocation.beneficiary_user_id) continue;
+
+    participantAmounts.set(
+      allocation.beneficiary_user_id,
+      (participantAmounts.get(allocation.beneficiary_user_id) ?? 0) +
+        Number(allocation.amount_cents || 0),
+    );
+
     if (allocation.allocation_type === "affiliate") {
       recipientRoles.set(allocation.beneficiary_user_id, "affiliate");
     } else if (allocation.allocation_type === "coproducer") {
@@ -278,6 +287,10 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
           role === "affiliate" && profile.id === accreditedPartnerUserId
             ? "accredited"
             : role,
+        participantAmountCents:
+          role === "producer"
+            ? null
+            : participantAmounts.get(profile.id) ?? 0,
       };
     });
 
@@ -344,6 +357,7 @@ export async function dispatchPaymentEmailNotifications(
           productName: hydrated.product.name,
           offerName: hydrated.offer.name,
           amountCents: Number(hydrated.payment.gross_amount_cents),
+          participantAmountCents: recipient.participantAmountCents,
           method: hydrated.method,
           orderNumber: hydrated.order.order_number,
           link,
