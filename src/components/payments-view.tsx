@@ -260,6 +260,14 @@ export function PaymentsView({
       comparison = a.status.localeCompare(b.status, "pt-BR");
     } else if (sortKey === "value") {
       comparison = Number(a.gross_amount_cents) - Number(b.gross_amount_cents);
+    } else if (sortKey === "ml") {
+      comparison =
+        Number(a.provider_fee_amount_cents ?? 0) -
+        Number(b.provider_fee_amount_cents ?? 0);
+    } else if (sortKey === "pp") {
+      comparison =
+        Number(orderA?.financial_snapshots?.prosperity_fee_amount_cents ?? 0) -
+        Number(orderB?.financial_snapshots?.prosperity_fee_amount_cents ?? 0);
     } else if (sortKey === "received") {
       comparison =
         Number(receivedOf(a, orderA) ?? -1) -
@@ -400,6 +408,8 @@ export function PaymentsView({
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("method")}>Método <span>{sortMark("method")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("status")}>Status <span>{sortMark("status")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("value")}>Valor <span>{sortMark("value")}</span></button></th>
+                  <th title="Taxa do Mercado Pago"><button type="button" className="payment-sort-button" onClick={() => changeSort("ml")}>ML <span>{sortMark("ml")}</span></button></th>
+                  <th title="Taxa da Prosperity Pay"><button type="button" className="payment-sort-button" onClick={() => changeSort("pp")}>PP <span>{sortMark("pp")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("received")}>Recebido <span>{sortMark("received")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("generated")}>Data <span>{sortMark("generated")}</span></button></th>
                   <th><button type="button" className="payment-sort-button" onClick={() => changeSort("paid")}>Data do pagamento <span>{sortMark("paid")}</span></button></th>
@@ -438,6 +448,16 @@ export function PaymentsView({
                         <StatusBadge status={payment.status as PaymentStatus} />
                       </td>
                       <td className="payment-value">{formatCents(payment.gross_amount_cents)}</td>
+                      <td className="payment-fee-value" title="Taxa do Mercado Pago">
+                        {payment.status === "approved"
+                          ? formatCents(payment.provider_fee_amount_cents ?? 0)
+                          : "—"}
+                      </td>
+                      <td className="payment-fee-value" title="Taxa da Prosperity Pay">
+                        {payment.status === "approved" && order?.financial_snapshots
+                          ? formatCents(order.financial_snapshots.prosperity_fee_amount_cents ?? 0)
+                          : "—"}
+                      </td>
                       <td className="payment-value">
                         {receivedOf(payment, order) == null ? "—" : formatCents(receivedOf(payment, order))}
                       </td>
