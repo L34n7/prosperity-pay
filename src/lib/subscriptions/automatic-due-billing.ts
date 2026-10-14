@@ -5,6 +5,7 @@ import {
 } from "@/lib/checkout/subscription-session-checkout";
 import { createPrepaidSubscriptionIntent } from "@/lib/subscriptions/prepaid-billing";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -185,7 +186,10 @@ async function processOne(
         sessionToken: token,
         customerName: customer.name || undefined,
         customerEmail: customer.email,
-        idempotencyKey: `automatic-due:${subscription.id}:${subscription.current_period_end}`,
+        idempotencyKey: `automatic-due:${subscription.id}:${subscription.current_period_end}:attempt-${Math.max(
+          1,
+          Number(delivery.attempts || 1),
+        )}`,
         paymentMethod: "pix",
         // Mantém o QR Code / Copia e Cola válido durante a mesma janela
         // do checkout enviado no e-mail de cobrança automática.
@@ -295,6 +299,218 @@ async function processOne(
       error: message,
     };
   }
+}
+
+
+async function cancelPendingRenewalAttemptsForResend(
+  admin: AdminClient,
+  subscriptionId: string,
+) {
+  const { data: orders, error: ordersError } = await admin
+    .from("orders")
+    .select(
+      "id,status,payment_provider_checkouts(external_checkout_id),payments(id,status,connection_id)",
+    )
+    .eq("subscription_id", subscriptionId)
+    .eq("billing_reason", "subscription_renewal")
+    .eq("status", "pending_payment");
+
+  if (ordersError) throw ordersError;
+
+  for (const order of orders ?? []) {
+    const checkout = Array.isArray(order.payment_provider_checkouts)
+      ? order.payment_provider_checkouts[0]
+      : order.payment_provider_checkouts;
+    const payment = Array.isArray(order.payments)
+      ? order.payments.find((item) =>
+          ["pending", "processing"].includes(String(item.status)),
+        )
+      : order.payments;
+
+    if (!payment || !["pending", "processing"].includes(String(payment.status))) {
+      continue;
+    }
+
+    const externalOrderId =
+      checkout?.external_checkout_id &&
+      String(checkout.external_checkout_id).startsWith("ORD")
+        ? String(checkout.external_checkout_id)
+        : "";
+
+    if (externalOrderId && payment.connection_id) {
+      const token = await getProviderAccessToken(String(payment.connection_id));
+      const response = await fetch(
+        `https://api.mercadopago.com/v1/orders/${encodeURIComponent(
+          externalOrderId,
+        )}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            "X-Idempotency-Key": `billing-resend-cancel-${order.id}`,
+          },
+          cache: "no-store",
+        },
+      );
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(
+          `Não foi possível cancelar a cobrança anterior no Mercado Pago (HTTP ${response.status}): ${body.slice(
+            0,
+            300,
+          )}`,
+        );
+      }
+    }
+
+    const now = new Date().toISOString();
+    const [{ error: paymentError }, { error: orderError }, { error: sessionError }] =
+      await Promise.all([
+        admin
+          .from("payments")
+          .update({
+            status: "cancelled",
+            status_detail: "superseded_by_billing_resend",
+            updated_at: now,
+          })
+          .eq("id", payment.id)
+          .in("status", ["pending", "processing"]),
+        admin
+          .from("orders")
+          .update({
+            status: "cancelled",
+            cancelled_at: now,
+            updated_at: now,
+          })
+          .eq("id", order.id)
+          .eq("status", "pending_payment"),
+        admin
+          .from("subscription_checkout_sessions")
+          .update({ expires_at: now })
+          .eq("order_id", order.id)
+          .is("consumed_at", null),
+      ]);
+
+    if (paymentError) throw paymentError;
+    if (orderError) throw orderError;
+    if (sessionError) throw sessionError;
+  }
+}
+
+export async function resendAutomaticDueBilling(subscriptionIds: string[]) {
+  const admin = createAdminClient();
+  const uniqueIds = [...new Set(subscriptionIds.filter(Boolean))];
+
+  if (!uniqueIds.length) {
+    return { processed: 0, sent: 0, failed: 0, results: [] };
+  }
+
+  const now = new Date().toISOString();
+  const { data: subscriptions, error: subscriptionsError } = await admin
+    .from("subscriptions")
+    .select("id,product_id,customer_id,current_period_end,status,billing_model")
+    .in("id", uniqueIds)
+    .eq("billing_model", "prepaid")
+    .in("status", ["active", "past_due"])
+    .not("current_period_end", "is", null)
+    .lte("current_period_end", now);
+
+  if (subscriptionsError) throw subscriptionsError;
+
+  const rows = (subscriptions ?? []) as Array<
+    DueSubscription & { billing_model: string }
+  >;
+
+  const productIds = [...new Set(rows.map((item) => item.product_id))];
+  const { data: products, error: productsError } = await (admin as any)
+    .from("products")
+    .select("id,name,status,automatic_due_billing_enabled")
+    .in("id", productIds);
+
+  if (productsError) throw productsError;
+
+  const byProduct = new Map<string, BillingProduct>(
+    (products ?? []).map((product: any) => [
+      String(product.id),
+      {
+        id: String(product.id),
+        name: String(product.name || "Produto"),
+        status: String(product.status || ""),
+        automatic_due_billing_enabled:
+          product.automatic_due_billing_enabled === true,
+      },
+    ]),
+  );
+
+  const results = [];
+
+  for (const subscription of rows) {
+    const product = byProduct.get(subscription.product_id);
+    if (!product?.automatic_due_billing_enabled) {
+      results.push({
+        status: "disabled" as const,
+        subscriptionId: subscription.id,
+      });
+      continue;
+    }
+
+    try {
+      await cancelPendingRenewalAttemptsForResend(admin, subscription.id);
+
+      const { data: existingDelivery, error: deliveryError } = await (admin as any)
+        .from("subscription_billing_deliveries")
+        .select("id")
+        .eq("subscription_id", subscription.id)
+        .eq("due_at", subscription.current_period_end)
+        .maybeSingle();
+
+      if (deliveryError) throw deliveryError;
+
+      if (existingDelivery?.id) {
+        const { error: resetError } = await (admin as any)
+          .from("subscription_billing_deliveries")
+          .update({
+            status: "failed",
+            order_id: null,
+            payment_id: null,
+            checkout_url: null,
+            pix_code: null,
+            pix_ticket_url: null,
+            recipient_email: null,
+            last_error: "manual_resend_requested",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingDelivery.id);
+
+        if (resetError) throw resetError;
+      }
+
+      results.push(await processOne(admin, subscription, product));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000);
+
+      console.error("[AUTOMATIC DUE BILLING] Falha no reenvio manual.", {
+        subscriptionId: subscription.id,
+        error: message,
+      });
+
+      results.push({
+        status: "failed" as const,
+        subscriptionId: subscription.id,
+        error: message,
+      });
+    }
+  }
+
+  return {
+    processed: results.length,
+    sent: results.filter((item) => item.status === "sent").length,
+    failed: results.filter((item) => item.status === "failed").length,
+    results,
+  };
 }
 
 export async function processAutomaticDueBilling(limit = 100) {
