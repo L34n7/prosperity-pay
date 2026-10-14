@@ -98,7 +98,14 @@ function dateTimeParts(value: string | null | undefined) {
 
 function receivedOf(payment: Payment, order: Order | undefined) {
   if (!order) return null;
-  if (order.producer_net_cents != null) return Number(order.producer_net_cents);
+
+  if (order.producer_net_cents != null) {
+    const ledgerNet = Number(order.producer_net_cents);
+    return order.settlement_model === "connected_account"
+      ? ledgerNet - Number(payment.provider_fee_amount_cents ?? 0)
+      : ledgerNet;
+  }
+
   if (!order.financial_snapshots) return null;
 
   return (
@@ -522,9 +529,9 @@ export function PaymentsView({
                 ["Data", generatedDateOf(chosen, detail) ? formatDate(generatedDateOf(chosen, detail)!) : "—"],
                 ["Data do pagamento", paymentDateOf(chosen, detail) ? formatDate(paymentDateOf(chosen, detail)!) : "—"],
                 ["Bruto", formatCents(chosen.gross_amount_cents)],
-                ["Taxa gateway apurada", formatCents(chosen.provider_fee_amount_cents)],
+                ["Taxa ML (Mercado Pago)", formatCents(chosen.provider_fee_amount_cents)],
                 [
-                  "Taxa Prosperity",
+                  "Taxa PP (Prosperity Pay)",
                   formatCents(detail.financial_snapshots?.prosperity_fee_amount_cents),
                 ],
                 [
