@@ -283,6 +283,8 @@ export async function getFinanceView() {
       total_received_cents: 0,
     },
     withdrawals: withdrawals ?? [],
-    payments: paymentRows.filter((payment) => !isHiddenTestPayment(payment.raw_provider_data)),
+    payments: paymentRows
+      .filter((payment) => !isHiddenTestPayment(payment.raw_provider_data))
+      .map(({ connection_id: _connectionId, ...payment }) => payment),
   };
 }
