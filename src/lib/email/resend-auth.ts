@@ -372,6 +372,7 @@ export async function sendPaymentNotificationEmail(params: {
   productName: string;
   offerName: string;
   amountCents: number;
+  participantAmountCents?: number | null;
   method: "pix" | "card";
   orderNumber: number | null;
   link: string;
@@ -382,6 +383,13 @@ export async function sendPaymentNotificationEmail(params: {
   const roleLabel = paymentRoleLabel(params.role);
   const methodLabel = paymentMethodLabel(params.method);
   const orderLabel = params.orderNumber ? `#${params.orderNumber}` : "—";
+  const isPartner = params.role !== "producer";
+  const participantAmountCents =
+    typeof params.participantAmountCents === "number"
+      ? Math.max(0, params.participantAmountCents)
+      : null;
+  const participantAmountLabel =
+    params.role === "coproducer" ? "Sua participação" : "Sua comissão";
 
   const isPixGenerated = params.event === "pix_generated";
   const html = prosperityPayTemplate({
@@ -400,7 +408,13 @@ export async function sendPaymentNotificationEmail(params: {
       : [
           `O pagamento da venda de <strong>${productName}</strong> foi <strong>aprovado</strong>.`,
           `Você está vinculado a esta venda como <strong>${escapeHtml(roleLabel)}</strong>.`,
-          "Os valores e comissões seguem as regras financeiras configuradas para o produto e a oferta.",
+          ...(isPartner && participantAmountCents !== null
+            ? [
+                `${escapeHtml(participantAmountLabel)} nesta venda é de <strong>${escapeHtml(emailMoney(participantAmountCents))}</strong>.`,
+              ]
+            : [
+                "Os valores seguem as regras financeiras configuradas para o produto e a oferta.",
+              ]),
         ],
     details: [
       { label: "Pedido", value: orderLabel },
@@ -409,6 +423,14 @@ export async function sendPaymentNotificationEmail(params: {
       { label: "Produto", value: params.productName },
       { label: "Plano / oferta", value: params.offerName },
       { label: "Valor da venda", value: emailMoney(params.amountCents) },
+      ...(!isPixGenerated && isPartner && participantAmountCents !== null
+        ? [
+            {
+              label: participantAmountLabel,
+              value: emailMoney(participantAmountCents),
+            },
+          ]
+        : []),
       { label: "Forma de pagamento", value: methodLabel },
       { label: "Sua participação", value: roleLabel },
       { label: "Status", value: isPixGenerated ? "Aguardando pagamento" : "Aprovado" },
@@ -417,7 +439,9 @@ export async function sendPaymentNotificationEmail(params: {
     link: params.link,
     notice: isPixGenerated
       ? "Este e-mail é apenas uma notificação. A venda só será considerada confirmada após a aprovação do pagamento."
-      : "Este e-mail confirma a atualização registrada no Prosperity Pay. Consulte o painel para acompanhar saldo, comissões e detalhes financeiros.",
+      : isPartner
+        ? "O valor informado corresponde à sua participação nesta venda conforme a distribuição financeira registrada no Prosperity Pay. A disponibilidade para saque segue as regras e prazos da plataforma."
+        : "Este e-mail confirma a atualização registrada no Prosperity Pay. Consulte o painel para acompanhar saldo e detalhes financeiros.",
     footer: `© ${new Date().getFullYear()} Prosperity Pay. Notificação financeira automática.`,
   });
 
@@ -436,7 +460,10 @@ export async function sendPaymentNotificationEmail(params: {
       `Pedido: ${orderLabel}`,
       `Comprador: ${params.buyerName} (${params.buyerEmail})`,
       `Plano / oferta: ${params.offerName}`,
-      `Valor: ${emailMoney(params.amountCents)}`,
+      `Valor da venda: ${emailMoney(params.amountCents)}`,
+      ...(!isPixGenerated && isPartner && participantAmountCents !== null
+        ? [`${participantAmountLabel}: ${emailMoney(participantAmountCents)}`]
+        : []),
       `Forma: ${methodLabel}`,
       `Participação: ${roleLabel}`,
       "",
