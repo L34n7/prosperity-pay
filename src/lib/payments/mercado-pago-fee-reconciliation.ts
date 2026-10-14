@@ -120,6 +120,20 @@ async function searchMercadoPagoPayment(params: {
   return payment ?? null;
 }
 
+export async function fetchMercadoPagoFeeForOrder(params: {
+  connectionId: string;
+  orderId: string;
+}) {
+  const providerPayment = await searchMercadoPagoPayment(params);
+  if (!providerPayment) return null;
+
+  return {
+    feeCents: feeCentsFromPayment(providerPayment),
+    providerPaymentId:
+      providerPayment.id == null ? null : String(providerPayment.id),
+  };
+}
+
 function mergeReconciliationRaw(raw: unknown, input: {
   checkedAt: string;
   feeCents: number;
@@ -154,19 +168,19 @@ export async function reconcileMercadoPagoPaymentFee(params: {
     return Number(payment.provider_fee_amount_cents ?? 0);
   }
 
-  const providerPayment = await searchMercadoPagoPayment({
+  const providerFee = await fetchMercadoPagoFeeForOrder({
     connectionId: payment.connection_id,
     orderId: payment.order_id,
   });
 
-  if (!providerPayment) return null;
+  if (!providerFee) return null;
 
-  const feeCents = feeCentsFromPayment(providerPayment);
+  const feeCents = providerFee.feeCents;
   const checkedAt = new Date().toISOString();
   const mergedRaw = mergeReconciliationRaw(payment.raw_provider_data, {
     checkedAt,
     feeCents,
-    providerPaymentId: providerPayment.id,
+    providerPaymentId: providerFee.providerPaymentId ?? undefined,
   });
 
   const { error: updateError } = await admin
