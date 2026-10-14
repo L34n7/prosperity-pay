@@ -6,6 +6,7 @@ import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment
 import { dispatchSubscriptionIntegrationEventSafe } from "@/lib/integrations/subscription-events";
 import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
+import { fetchMercadoPagoFeeForOrder } from "@/lib/payments/mercado-pago-fee-reconciliation";
 import { digits, sha256 } from "@/lib/security/hash";
 import { createRecurringSnapshot } from "@/lib/subscriptions/recurring-financials";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -608,9 +609,9 @@ export async function syncTransparentOrder(input: {
   const status = mappedStatus(transaction.status ?? mpOrder.status);
   const amountCents = Math.round(Number(transaction.amount ?? mpOrder.total_amount ?? 0) * 100);
   const paidAmount = transaction.paid_amount == null ? undefined : Math.round(Number(transaction.paid_amount) * 100);
-  const providerFeeCents = paidAmount == null ? 0 : Math.max(0, amountCents - paidAmount);
+  let providerFeeCents = 0;
   const { data: currentPayment, error: currentError } = await admin.from("payments")
-    .select("id,status,gross_amount_cents")
+    .select("id,status,gross_amount_cents,connection_id")
     .eq("order_id", internalOrderId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -625,6 +626,22 @@ export async function syncTransparentOrder(input: {
 
   const becameApproved = status === "approved" && currentPayment.status !== "approved";
   const paidAt = status === "approved" ? mpOrder.last_updated_date ?? new Date().toISOString() : undefined;
+
+  if (status === "approved" && currentPayment.connection_id) {
+    try {
+      const providerFee = await fetchMercadoPagoFeeForOrder({
+        connectionId: currentPayment.connection_id,
+        orderId: internalOrderId,
+      });
+      if (providerFee) providerFeeCents = providerFee.feeCents;
+    } catch (error) {
+      console.error("[transparent-checkout] Falha ao consultar taxa real do Mercado Pago.", {
+        orderId: internalOrderId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const { error: paymentError } = await admin.from("payments").update({
     external_payment_id: transaction.id,
     status,
