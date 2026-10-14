@@ -185,7 +185,7 @@ function ProducerDashboard({
       return (
         sum +
         Number(order.financial_snapshots?.producer_amount_cents ?? 0) -
-        (order.settlement_model === "prosperity_balance"
+        (order.settlement_model === "connected_account"
           ? Number(
               approved.find((payment) => payment.order_id === order.id)
                 ?.provider_fee_amount_cents ?? 0,
