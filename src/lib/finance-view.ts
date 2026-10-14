@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth/require-user";
 import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
 import { isHiddenTestPayment } from "@/lib/payments/payment-visibility";
+import { reconcileMercadoPagoFees } from "@/lib/payments/mercado-pago-fee-reconciliation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function getFinanceView() {
@@ -87,7 +88,7 @@ export async function getFinanceView() {
       ? supabase
           .from("payments")
           .select(
-            "id,order_id,status,external_payment_id,external_reference,gross_amount_cents,provider_fee_amount_cents,created_at,paid_at,raw_provider_data,payment_transactions(transaction_type,status,occurred_at,created_at)",
+            "id,order_id,connection_id,status,external_payment_id,external_reference,gross_amount_cents,provider_fee_amount_cents,created_at,paid_at,raw_provider_data,payment_transactions(transaction_type,status,occurred_at,created_at)",
           )
           .in("order_id", orderIds)
           .order("created_at", { ascending: false })
@@ -130,7 +131,30 @@ export async function getFinanceView() {
     );
   }
 
-  const paymentIds = (paymentsResult.data ?? []).map((payment) => payment.id);
+  const paymentRows = paymentsResult.data ?? [];
+
+  const reconciledFees = await reconcileMercadoPagoFees({
+    admin,
+    payments: paymentRows.map((payment) => ({
+      id: payment.id,
+      order_id: payment.order_id,
+      connection_id: payment.connection_id,
+      status: payment.status,
+      external_payment_id: payment.external_payment_id,
+      provider_fee_amount_cents: Number(payment.provider_fee_amount_cents ?? 0),
+      raw_provider_data: payment.raw_provider_data,
+    })),
+    limit: 8,
+  });
+
+  for (const payment of paymentRows) {
+    const reconciledFee = reconciledFees.get(payment.id);
+    if (reconciledFee != null) {
+      payment.provider_fee_amount_cents = reconciledFee;
+    }
+  }
+
+  const paymentIds = paymentRows.map((payment) => payment.id);
 
   const [outgoingCommissionsResult, attributionsResult] = await Promise.all([
     paymentIds.length
@@ -259,6 +283,6 @@ export async function getFinanceView() {
       total_received_cents: 0,
     },
     withdrawals: withdrawals ?? [],
-    payments: (paymentsResult.data ?? []).filter((payment) => !isHiddenTestPayment(payment.raw_provider_data)),
+    payments: paymentRows.filter((payment) => !isHiddenTestPayment(payment.raw_provider_data)),
   };
 }
