@@ -19,6 +19,7 @@ export type SubscriptionAction =
   | { type: "remove_addon"; addonCode: string; quantity?: number }
   | { type: "cancel_scheduled_plan_change"; changeId?: string }
   | { type: "cancel_scheduled_addon_change"; changeId: string }
+  | { type: "cancel_pending_checkout"; sessionId: string }
   | { type: "renew" };
 
 type LoadedSubscription = {
@@ -128,18 +129,25 @@ async function newSession(input: {
   expiresAt: Date;
 }) {
   const token = randomBytes(32).toString("base64url");
-  const { error } = await input.admin.from("subscription_checkout_sessions").insert({
-    token_hash: sha256(token),
-    subscription_id: input.subscriptionId,
-    subscription_change_id: input.changeId ?? null,
-    session_type: input.sessionType,
-    amount_cents: input.amountCents,
-    currency: input.currency,
-    expires_at: input.expiresAt.toISOString(),
-    metadata: input.metadata,
-  });
-  if (error) throw error;
+  const { data: session, error } = await input.admin
+    .from("subscription_checkout_sessions")
+    .insert({
+      token_hash: sha256(token),
+      subscription_id: input.subscriptionId,
+      subscription_change_id: input.changeId ?? null,
+      session_type: input.sessionType,
+      amount_cents: input.amountCents,
+      currency: input.currency,
+      expires_at: input.expiresAt.toISOString(),
+      metadata: input.metadata,
+    })
+    .select("id")
+    .single();
+  if (error || !session) {
+    throw error ?? new Error("Falha ao criar sessão de checkout da assinatura.");
+  }
   return {
+    sessionId: session.id,
     checkoutUrl: `${PROSPERITY_PAY_ORIGIN}/assinatura/checkout/${token}`,
     expiresAt: input.expiresAt.toISOString(),
   };
@@ -390,6 +398,165 @@ type ProjectedAddon = {
   unitAmountCents: number;
   quantity: number;
 };
+
+function sessionMetadata(value: Json): Record<string, Json | undefined> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, Json | undefined>)
+    : {};
+}
+
+async function cancelPendingSubscriptionCheckout(
+  admin: AdminClient,
+  subscription: LoadedSubscription,
+  sessionId: string,
+) {
+  const { data: anchor, error: anchorError } = await admin
+    .from("subscription_checkout_sessions")
+    .select(
+      "id,subscription_change_id,session_type,order_id,expires_at,consumed_at,metadata",
+    )
+    .eq("id", sessionId)
+    .eq("subscription_id", subscription.id)
+    .maybeSingle();
+
+  if (anchorError) throw anchorError;
+  if (!anchor) {
+    throw new HttpError(
+      409,
+      "O checkout pendente não foi encontrado ou não pertence a esta assinatura.",
+    );
+  }
+
+  const checkoutAnchor = anchor;
+  const anchorMetadata = sessionMetadata(checkoutAnchor.metadata as Json);
+  const renewalDueAt =
+    checkoutAnchor.session_type === "subscription_renewal" &&
+    typeof anchorMetadata.renewalDueAt === "string"
+      ? anchorMetadata.renewalDueAt
+      : null;
+
+  async function loadRelatedSessions() {
+    if (checkoutAnchor.subscription_change_id) {
+      const { data, error } = await admin
+        .from("subscription_checkout_sessions")
+        .select(
+          "id,subscription_change_id,session_type,order_id,expires_at,consumed_at,metadata",
+        )
+        .eq("subscription_id", subscription.id)
+        .eq("subscription_change_id", checkoutAnchor.subscription_change_id);
+
+      if (error) throw error;
+      return data ?? [];
+    }
+
+    if (renewalDueAt) {
+      const { data, error } = await admin
+        .from("subscription_checkout_sessions")
+        .select(
+          "id,subscription_change_id,session_type,order_id,expires_at,consumed_at,metadata",
+        )
+        .eq("subscription_id", subscription.id)
+        .eq("session_type", "subscription_renewal");
+
+      if (error) throw error;
+
+      return (data ?? []).filter((session) => {
+        const metadata = sessionMetadata(session.metadata as Json);
+        return (
+          session.id === checkoutAnchor.id ||
+          metadata.renewalDueAt === renewalDueAt
+        );
+      });
+    }
+
+    return [checkoutAnchor];
+  }
+
+  const nowIso = new Date().toISOString();
+  const processedOrderIds = new Set<string>();
+  let paymentConfirmed = false;
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    const related = await loadRelatedSessions();
+    const sessionIds = Array.from(
+      new Set(related.map((session) => session.id).filter(Boolean)),
+    );
+
+    if (sessionIds.length > 0) {
+      const { error: expireError } = await admin
+        .from("subscription_checkout_sessions")
+        .update({
+          expires_at: nowIso,
+          consumed_at: nowIso,
+          updated_at: nowIso,
+        })
+        .in("id", sessionIds)
+        .is("consumed_at", null);
+
+      if (expireError) throw expireError;
+    }
+
+    const orderIds = Array.from(
+      new Set(
+        related
+          .map((session) => session.order_id)
+          .filter((orderId): orderId is string => Boolean(orderId)),
+      ),
+    );
+
+    for (const orderId of orderIds) {
+      if (processedOrderIds.has(orderId)) continue;
+      processedOrderIds.add(orderId);
+
+      const result = await cancelExpiredSubscriptionPaymentOrder(
+        admin,
+        orderId,
+      );
+
+      if (result === "paid") {
+        paymentConfirmed = true;
+      }
+    }
+  }
+
+  if (paymentConfirmed) {
+    return {
+      status: "payment_confirmed" as const,
+      subscriptionId: subscription.id,
+      changeId: checkoutAnchor.subscription_change_id ?? undefined,
+      amountCents: 0,
+      targetAmountCents: Number(subscription.current_amount_cents),
+      currency: subscription.currency,
+      sessionId: checkoutAnchor.id,
+    };
+  }
+
+  if (checkoutAnchor.subscription_change_id) {
+    const { error: cancelChangeError } = await admin
+      .from("subscription_changes")
+      .update({
+        status: "cancelled",
+        cancelled_at: nowIso,
+        failure_reason: "checkout_cancelled_by_integration",
+        updated_at: nowIso,
+      })
+      .eq("id", checkoutAnchor.subscription_change_id)
+      .eq("subscription_id", subscription.id)
+      .eq("status", "awaiting_payment");
+
+    if (cancelChangeError) throw cancelChangeError;
+  }
+
+  return {
+    status: "cancelled" as const,
+    subscriptionId: subscription.id,
+    changeId: checkoutAnchor.subscription_change_id ?? undefined,
+    amountCents: 0,
+    targetAmountCents: Number(subscription.current_amount_cents),
+    currency: subscription.currency,
+    sessionId: checkoutAnchor.id,
+  };
+}
 
 async function cancelScheduledPlanChange(
   admin: AdminClient,
@@ -1065,6 +1232,14 @@ export async function createPrepaidSubscriptionIntent(input: {
       admin,
       subscription,
       input.renewalSessionTtlHours ?? 24,
+    );
+  }
+
+  if (input.action.type === "cancel_pending_checkout") {
+    return cancelPendingSubscriptionCheckout(
+      admin,
+      subscription,
+      input.action.sessionId,
     );
   }
 

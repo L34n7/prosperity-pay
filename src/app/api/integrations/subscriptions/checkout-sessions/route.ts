@@ -54,6 +54,13 @@ function parseAction(body: Record<string, unknown>): SubscriptionAction {
   const type = requiredString(action, "type", 40);
   if (type === "renew") return { type };
 
+  if (type === "cancel_pending_checkout") {
+    return {
+      type,
+      sessionId: requiredString(action, "sessionId", 80),
+    };
+  }
+
   if (type === "cancel_scheduled_plan_change") {
     const changeId =
       typeof action.changeId === "string" && action.changeId.trim()
@@ -115,7 +122,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, {
       status:
-        result.status === "scheduled" || result.status === "cancelled"
+        result.status === "scheduled" ||
+        result.status === "cancelled" ||
+        result.status === "payment_confirmed"
           ? 200
           : 201,
     });
