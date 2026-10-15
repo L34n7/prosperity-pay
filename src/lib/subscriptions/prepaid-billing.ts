@@ -12,6 +12,7 @@ export type SubscriptionAction =
   | { type: "add_addon"; addonCode: string; quantity?: number }
   | { type: "remove_addon"; addonCode: string; quantity?: number }
   | { type: "cancel_scheduled_plan_change"; changeId?: string }
+  | { type: "cancel_scheduled_addon_change"; changeId: string }
   | { type: "renew" };
 
 type LoadedSubscription = {
@@ -431,6 +432,51 @@ async function cancelScheduledPlanChange(
   };
 }
 
+async function cancelScheduledAddonChange(
+  admin: AdminClient,
+  subscription: LoadedSubscription,
+  changeId: string,
+) {
+  const { data: change, error: changeError } = await admin
+    .from("subscription_changes")
+    .select("id,addon_id,quantity_delta")
+    .eq("id", changeId)
+    .eq("subscription_id", subscription.id)
+    .eq("status", "scheduled")
+    .not("addon_id", "is", null)
+    .maybeSingle();
+
+  if (changeError) throw changeError;
+
+  if (!change || Number(change.quantity_delta || 0) >= 0) {
+    throw new HttpError(
+      409,
+      "Não há cancelamento de adicional agendado para desfazer.",
+    );
+  }
+
+  const { error: cancelError } = await admin
+    .from("subscription_changes")
+    .update({
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+    })
+    .eq("id", change.id)
+    .eq("subscription_id", subscription.id)
+    .eq("status", "scheduled");
+
+  if (cancelError) throw cancelError;
+
+  return {
+    status: "cancelled" as const,
+    subscriptionId: subscription.id,
+    changeId: change.id,
+    amountCents: 0,
+    targetAmountCents: Number(subscription.current_amount_cents),
+    currency: subscription.currency,
+  };
+}
+
 async function createRenewal(
   admin: AdminClient,
   subscription: LoadedSubscription,
@@ -799,6 +845,14 @@ export async function createPrepaidSubscriptionIntent(input: {
 
   if (input.action.type === "cancel_scheduled_plan_change") {
     return cancelScheduledPlanChange(
+      admin,
+      subscription,
+      input.action.changeId,
+    );
+  }
+
+  if (input.action.type === "cancel_scheduled_addon_change") {
+    return cancelScheduledAddonChange(
       admin,
       subscription,
       input.action.changeId,

@@ -62,6 +62,13 @@ function parseAction(body: Record<string, unknown>): SubscriptionAction {
     return { type, changeId };
   }
 
+  if (type === "cancel_scheduled_addon_change") {
+    return {
+      type,
+      changeId: requiredString(action, "changeId", 80),
+    };
+  }
+
   if (type === "change_plan") {
     return {
       type,
