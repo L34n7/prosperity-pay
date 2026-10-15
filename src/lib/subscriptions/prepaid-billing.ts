@@ -725,14 +725,48 @@ async function createRenewal(
     .order("created_at");
   if (scheduledError) throw scheduledError;
 
-  // Reduções/downgrades agendados precisam entrar em vigor somente na virada
-  // real do ciclo. Para não remover recursos antes da data combinada, o
-  // pagamento antecipado fica indisponível enquanto houver mudança agendada.
   if (payingAhead && (scheduled?.length ?? 0) > 0) {
-    throw new HttpError(
-      409,
-      "Há uma alteração agendada para a próxima renovação. O pagamento antecipado ficará disponível quando esse ciclo iniciar.",
+    const scheduledAddonIds = Array.from(
+      new Set(
+        (scheduled ?? [])
+          .map((change) => change.addon_id)
+          .filter((addonId): addonId is string => Boolean(addonId)),
+      ),
     );
+
+    const scheduledAddonCodes = new Map<string, string>();
+    if (scheduledAddonIds.length > 0) {
+      const { data: scheduledCatalog, error: scheduledCatalogError } = await admin
+        .from("product_addons")
+        .select("id,code")
+        .in("id", scheduledAddonIds);
+
+      if (scheduledCatalogError) throw scheduledCatalogError;
+
+      for (const addon of scheduledCatalog ?? []) {
+        scheduledAddonCodes.set(addon.id, addon.code);
+      }
+    }
+
+    const somenteRemocaoNumeroWhatsapp = (scheduled ?? []).every(
+      (change) =>
+        !change.to_offer_id &&
+        Boolean(change.addon_id) &&
+        Number(change.quantity_delta || 0) < 0 &&
+        scheduledAddonCodes.get(String(change.addon_id)) === "whatsapp_number",
+    );
+
+    // O CRM Prosperity mantém a integração WhatsApp ativa até effective_at
+    // mesmo quando a próxima mensalidade é quitada antecipadamente. Por isso,
+    // somente essa redução específica pode entrar na composição do checkout
+    // futuro sem antecipar a desconexão do recurso. Outras reduções/downgrades
+    // continuam bloqueadas até a virada real do ciclo.
+    if (!somenteRemocaoNumeroWhatsapp) {
+      throw new HttpError(
+        409,
+        "Há uma alteração agendada para a próxima renovação. O pagamento antecipado ficará disponível quando esse ciclo iniciar.",
+      );
+    }
   }
 
   for (const change of scheduled ?? []) {
