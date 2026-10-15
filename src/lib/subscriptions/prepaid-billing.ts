@@ -837,7 +837,7 @@ async function cancelExpiredSubscriptionPaymentOrder(
   let synced = await syncSubscriptionPaymentOrder(admin, orderId);
 
   if (synced.order?.status === "paid") {
-    return false;
+    return "paid" as const;
   }
 
   if (
@@ -863,7 +863,7 @@ async function cancelExpiredSubscriptionPaymentOrder(
     synced = await syncSubscriptionPaymentOrder(admin, orderId);
 
     if (synced.order?.status === "paid") {
-      return false;
+      return "paid" as const;
     }
   }
 
@@ -911,7 +911,9 @@ async function cancelExpiredSubscriptionPaymentOrder(
 
   if (finalOrderError) throw finalOrderError;
 
-  return finalOrder?.status !== "paid";
+  return finalOrder?.status === "paid"
+    ? ("paid" as const)
+    : ("expired" as const);
 }
 
 async function expireAbandonedSubscriptionChanges(
@@ -938,13 +940,16 @@ async function expireAbandonedSubscriptionChanges(
     if (!Number.isFinite(expiresAt) || expiresAt > now) continue;
 
     if (change.payment_order_id) {
-      const podeExpirar = await cancelExpiredSubscriptionPaymentOrder(
+      const resultadoPagamento = await cancelExpiredSubscriptionPaymentOrder(
         admin,
         change.payment_order_id,
       );
 
-      if (!podeExpirar) {
-        continue;
+      if (resultadoPagamento === "paid") {
+        throw new HttpError(
+          409,
+          "O pagamento anterior foi confirmado. A assinatura está sendo atualizada; aguarde a atualização antes de fazer outra alteração.",
+        );
       }
     }
 
@@ -992,7 +997,30 @@ async function assertNoOpenSubscriptionChange(
     .maybeSingle();
 
   if (error) throw error;
-  if (!openChange) return;
+
+  if (!openChange) {
+    const doisMinutosAtras = new Date(Date.now() - 2 * 60_000).toISOString();
+    const { data: recentApplied, error: recentAppliedError } = await admin
+      .from("subscription_changes")
+      .select("id,applied_at")
+      .eq("subscription_id", subscriptionId)
+      .eq("status", "applied")
+      .gte("applied_at", doisMinutosAtras)
+      .order("applied_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentAppliedError) throw recentAppliedError;
+
+    if (recentApplied) {
+      throw new HttpError(
+        409,
+        "Um pagamento de alteração da assinatura acabou de ser confirmado. Aguarde a sincronização antes de fazer outra alteração.",
+      );
+    }
+
+    return;
+  }
 
   if (openChange.status === "awaiting_payment") {
     const expiresAt = openChange.quote_expires_at
