@@ -1,6 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { HttpError } from "@/lib/api/http";
 import { PROSPERITY_PAY_ORIGIN } from "@/lib/domain/offer-reference";
+import {
+  fetchMercadoPagoOrder,
+  mpRequest,
+  syncTransparentOrder,
+} from "@/lib/checkout/transparent-checkout-service";
+import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { sha256 } from "@/lib/security/hash";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
@@ -782,11 +788,138 @@ async function reabrirCheckoutAlteracaoPendente(input: {
   };
 }
 
+async function syncSubscriptionPaymentOrder(
+  admin: AdminClient,
+  orderId: string,
+) {
+  const { data: checkout, error: checkoutError } = await admin
+    .from("payment_provider_checkouts")
+    .select("connection_id,external_checkout_id")
+    .eq("order_id", orderId)
+    .maybeSingle();
+
+  if (checkoutError) throw checkoutError;
+
+  if (
+    checkout?.connection_id &&
+    checkout.external_checkout_id?.startsWith("ORD")
+  ) {
+    const mpOrder = await fetchMercadoPagoOrder(
+      checkout.connection_id,
+      checkout.external_checkout_id,
+    );
+
+    await syncTransparentOrder({
+      admin,
+      internalOrderId: orderId,
+      mpOrder,
+    });
+  }
+
+  const { data: order, error: orderError } = await admin
+    .from("orders")
+    .select("id,status")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (orderError) throw orderError;
+
+  return {
+    order,
+    checkout,
+  };
+}
+
+async function cancelExpiredSubscriptionPaymentOrder(
+  admin: AdminClient,
+  orderId: string,
+) {
+  let synced = await syncSubscriptionPaymentOrder(admin, orderId);
+
+  if (synced.order?.status === "paid") {
+    return false;
+  }
+
+  if (
+    synced.checkout?.connection_id &&
+    synced.checkout.external_checkout_id?.startsWith("ORD") &&
+    !["cancelled", "expired", "refunded", "charged_back"].includes(
+      String(synced.order?.status || ""),
+    )
+  ) {
+    const providerToken = await getProviderAccessToken(
+      synced.checkout.connection_id,
+    );
+
+    await mpRequest(
+      providerToken,
+      `/v1/orders/${encodeURIComponent(
+        synced.checkout.external_checkout_id,
+      )}/cancel`,
+      { method: "POST" },
+      `expire-subscription-change-${orderId}`.slice(0, 64),
+    );
+
+    synced = await syncSubscriptionPaymentOrder(admin, orderId);
+
+    if (synced.order?.status === "paid") {
+      return false;
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const [paymentResult, orderResult, sessionResult] = await Promise.all([
+    admin
+      .from("payments")
+      .update({
+        status: "cancelled",
+        status_detail: "subscription_change_checkout_expired",
+        updated_at: nowIso,
+      })
+      .eq("order_id", orderId)
+      .in("status", ["pending", "processing"]),
+    admin
+      .from("orders")
+      .update({
+        status: "cancelled",
+        cancelled_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("id", orderId)
+      .neq("status", "paid"),
+    admin
+      .from("subscription_checkout_sessions")
+      .update({
+        consumed_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("order_id", orderId)
+      .is("consumed_at", null),
+  ]);
+
+  const terminalError =
+    paymentResult.error || orderResult.error || sessionResult.error;
+
+  if (terminalError) throw terminalError;
+
+  const { data: finalOrder, error: finalOrderError } = await admin
+    .from("orders")
+    .select("status")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (finalOrderError) throw finalOrderError;
+
+  return finalOrder?.status !== "paid";
+}
+
 async function expireAbandonedSubscriptionChanges(
   admin: AdminClient,
   subscriptionId: string,
 ) {
-  const nowIso = new Date().toISOString();
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
 
   const { data: candidates, error: candidatesError } = await admin
     .from("subscription_changes")
@@ -796,20 +929,36 @@ async function expireAbandonedSubscriptionChanges(
 
   if (candidatesError) throw candidatesError;
 
-  const staleIds = (candidates ?? [])
-    .filter((change) => {
-      if (change.payment_order_id) return false;
-      if (!change.quote_expires_at) return false;
-      const expiresAt = new Date(change.quote_expires_at).getTime();
-      return Number.isFinite(expiresAt) && expiresAt <= Date.now();
-    })
-    .map((change) => change.id);
+  const staleIds: string[] = [];
+
+  for (const change of candidates ?? []) {
+    if (!change.quote_expires_at) continue;
+
+    const expiresAt = new Date(change.quote_expires_at).getTime();
+    if (!Number.isFinite(expiresAt) || expiresAt > now) continue;
+
+    if (change.payment_order_id) {
+      const podeExpirar = await cancelExpiredSubscriptionPaymentOrder(
+        admin,
+        change.payment_order_id,
+      );
+
+      if (!podeExpirar) {
+        continue;
+      }
+    }
+
+    staleIds.push(change.id);
+  }
 
   if (staleIds.length === 0) return;
 
   const { error: sessionExpireError } = await admin
     .from("subscription_checkout_sessions")
-    .update({ expires_at: nowIso })
+    .update({
+      expires_at: nowIso,
+      updated_at: nowIso,
+    })
     .in("subscription_change_id", staleIds)
     .is("consumed_at", null);
 
@@ -817,12 +966,58 @@ async function expireAbandonedSubscriptionChanges(
 
   const { error: changesExpireError } = await admin
     .from("subscription_changes")
-    .update({ status: "expired" })
+    .update({
+      status: "expired",
+      failure_reason: "checkout_expired_without_payment",
+      updated_at: nowIso,
+    })
     .in("id", staleIds)
     .eq("subscription_id", subscriptionId)
     .eq("status", "awaiting_payment");
 
   if (changesExpireError) throw changesExpireError;
+}
+
+async function assertNoOpenSubscriptionChange(
+  admin: AdminClient,
+  subscriptionId: string,
+) {
+  const { data: openChange, error } = await admin
+    .from("subscription_changes")
+    .select("id,status,quote_expires_at,payment_order_id")
+    .eq("subscription_id", subscriptionId)
+    .in("status", ["awaiting_payment", "payment_approved", "applying"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!openChange) return;
+
+  if (openChange.status === "awaiting_payment") {
+    const expiresAt = openChange.quote_expires_at
+      ? new Date(openChange.quote_expires_at)
+      : null;
+    const remainingMinutes =
+      expiresAt && Number.isFinite(expiresAt.getTime())
+        ? Math.max(
+            1,
+            Math.ceil((expiresAt.getTime() - Date.now()) / 60_000),
+          )
+        : null;
+
+    throw new HttpError(
+      409,
+      remainingMinutes
+        ? `Há um pagamento de alteração da assinatura em andamento. Aguarde cerca de ${remainingMinutes} min ou conclua o pagamento. Após o prazo, o sistema verifica o pagamento antes de liberar uma nova alteração.`
+        : "Há um pagamento de alteração da assinatura em andamento. Conclua o pagamento ou aguarde a expiração antes de alterar novamente.",
+    );
+  }
+
+  throw new HttpError(
+    409,
+    "O pagamento de uma alteração da assinatura já foi confirmado e está sendo aplicado. Aguarde a atualização da assinatura antes de fazer outra alteração.",
+  );
 }
 
 export async function createPrepaidSubscriptionIntent(input: {
@@ -836,6 +1031,8 @@ export async function createPrepaidSubscriptionIntent(input: {
   await expireAbandonedSubscriptionChanges(admin, subscription.id);
 
   if (input.action.type === "renew") {
+    await assertNoOpenSubscriptionChange(admin, subscription.id);
+
     return createRenewal(
       admin,
       subscription,
@@ -844,6 +1041,8 @@ export async function createPrepaidSubscriptionIntent(input: {
   }
 
   if (input.action.type === "cancel_scheduled_plan_change") {
+    await assertNoOpenSubscriptionChange(admin, subscription.id);
+
     return cancelScheduledPlanChange(
       admin,
       subscription,
@@ -852,6 +1051,8 @@ export async function createPrepaidSubscriptionIntent(input: {
   }
 
   if (input.action.type === "cancel_scheduled_addon_change") {
+    await assertNoOpenSubscriptionChange(admin, subscription.id);
+
     return cancelScheduledAddonChange(
       admin,
       subscription,
@@ -879,7 +1080,30 @@ export async function createPrepaidSubscriptionIntent(input: {
       return checkoutReaberto;
     }
 
-    throw new HttpError(409, "Já existe uma alteração desta assinatura aguardando conclusão do pagamento.");
+    if (openChange.status === "awaiting_payment") {
+      const expiresAt = openChange.quote_expires_at
+        ? new Date(openChange.quote_expires_at)
+        : null;
+      const remainingMinutes =
+        expiresAt && Number.isFinite(expiresAt.getTime())
+          ? Math.max(
+              1,
+              Math.ceil((expiresAt.getTime() - Date.now()) / 60_000),
+            )
+          : null;
+
+      throw new HttpError(
+        409,
+        remainingMinutes
+          ? `Há um pagamento de alteração da assinatura em andamento. Aguarde cerca de ${remainingMinutes} min ou conclua o pagamento. Após o prazo, o sistema verifica o pagamento antes de liberar uma nova alteração.`
+          : "Há um pagamento de alteração da assinatura em andamento. Conclua o pagamento ou aguarde a expiração antes de alterar novamente.",
+      );
+    }
+
+    throw new HttpError(
+      409,
+      "O pagamento de uma alteração da assinatura já foi confirmado e está sendo aplicado. Aguarde a atualização da assinatura antes de fazer outra alteração.",
+    );
   }
 
   if (subscription.status !== "active") {
