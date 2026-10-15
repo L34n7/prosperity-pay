@@ -39,6 +39,16 @@ async function ensureIntegrationOwnsSubscriptionRoute(integrationKey: string, su
   }
 }
 
+function parseRenewalSessionTtlHours(body: Record<string, unknown>) {
+  const raw = body.renewalSessionTtlHours;
+  if (raw == null || raw === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1 || value > 24 * 30) {
+    throw new HttpError(400, "Validade do checkout de renovação inválida.");
+  }
+  return value;
+}
+
 function parseAction(body: Record<string, unknown>): SubscriptionAction {
   const action = asObject(body.action);
   const type = requiredString(action, "type", 40);
@@ -93,6 +103,7 @@ export async function POST(request: Request) {
     const result = await createPrepaidSubscriptionIntent({
       subscriptionId,
       action: parseAction(body),
+      renewalSessionTtlHours: parseRenewalSessionTtlHours(body),
     });
 
     return NextResponse.json(result, {
