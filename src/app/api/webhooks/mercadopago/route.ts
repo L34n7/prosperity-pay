@@ -134,6 +134,8 @@ async function applyPaymentState(input: {
     if (orderUpdate.error) throw orderUpdate.error;
     const { error } = await admin.rpc("post_payment_financials", { target_payment_id: storedPayment.id });
     if (error) throw error;
+  }
+
   let subscriptionReversal:
     | Awaited<ReturnType<typeof revertPrepaidSubscriptionAfterPaymentReversal>>
     | null = null;
