@@ -14,13 +14,14 @@ function eventType(reason: string) {
 export async function dispatchSubscriptionIntegrationEvent(
   admin: AdminClient,
   orderId: string,
+  eventTypeOverride?: string,
 ) {
   const { data: order, error: orderError } = await admin.from("orders")
     .select("id,billing_reason,subscription_id,subscription_change_id,offer_id,product_id,customer_id")
     .eq("id", orderId)
     .single();
   if (orderError || !order) throw orderError ?? new Error("Pedido da assinatura não encontrado.");
-  const type = eventType(order.billing_reason);
+  const type = eventTypeOverride || eventType(order.billing_reason);
   if (!type || !order.subscription_id) return { sent: 0, reason: "not_subscription_event" as const };
 
   const [subscriptionResult, offerResult, productResult, customerResult, itemsResult] = await Promise.all([
@@ -115,9 +116,17 @@ export async function dispatchSubscriptionIntegrationEvent(
   return { sent: results.filter(item => item.sent).length, results };
 }
 
-export async function dispatchSubscriptionIntegrationEventSafe(admin: AdminClient, orderId: string) {
+export async function dispatchSubscriptionIntegrationEventSafe(
+  admin: AdminClient,
+  orderId: string,
+  eventTypeOverride?: string,
+) {
   try {
-    return await dispatchSubscriptionIntegrationEvent(admin, orderId);
+    return await dispatchSubscriptionIntegrationEvent(
+      admin,
+      orderId,
+      eventTypeOverride,
+    );
   } catch (error) {
     console.error("[SUBSCRIPTION INTEGRATION WEBHOOK] Falha ao preparar evento", {
       orderId,

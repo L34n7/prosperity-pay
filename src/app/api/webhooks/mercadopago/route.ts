@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { env, requireEnv } from "@/lib/env";
 import { fetchMercadoPagoOrder, syncTransparentOrder } from "@/lib/checkout/transparent-checkout-service";
 import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
+import { dispatchSubscriptionIntegrationEventSafe } from "@/lib/integrations/subscription-events";
+import { revertPrepaidSubscriptionAfterPaymentReversal } from "@/lib/subscriptions/payment-reversal";
 import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 import { getPaymentProvider, type ProviderPayment } from "@/lib/payments";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
@@ -132,18 +134,41 @@ async function applyPaymentState(input: {
     if (orderUpdate.error) throw orderUpdate.error;
     const { error } = await admin.rpc("post_payment_financials", { target_payment_id: storedPayment.id });
     if (error) throw error;
-  } else if (payment.status === "refunded" || payment.status === "charged_back") {
+  let subscriptionReversal:
+    | Awaited<ReturnType<typeof revertPrepaidSubscriptionAfterPaymentReversal>>
+    | null = null;
+
+  if (payment.status === "refunded" || payment.status === "charged_back") {
     await reverseFinancials(admin, storedPayment, payment);
     const updates = await Promise.all([
-      admin.from("orders").update({ status: payment.status === "refunded" ? "refunded" : "charged_back" }).eq("id", storedPayment.order_id),
-      admin.from("commissions").update({ status: "reversed", reversed_at: new Date().toISOString() }).eq("payment_id", storedPayment.id),
+      admin.from("orders").update({
+        status: payment.status === "refunded" ? "refunded" : "charged_back",
+        updated_at: new Date().toISOString(),
+      }).eq("id", storedPayment.order_id),
+      admin.from("commissions").update({
+        status: "reversed",
+        reversed_at: new Date().toISOString(),
+      }).eq("payment_id", storedPayment.id),
     ]);
     for (const update of updates) if (update.error) throw update.error;
+
+    subscriptionReversal =
+      await revertPrepaidSubscriptionAfterPaymentReversal(
+        admin,
+        storedPayment.id,
+      );
   }
 
   await Promise.all([
     dispatchPaymentIntegrationEventsSafe(admin, storedPayment.id),
     dispatchPaymentEmailNotificationsSafe(admin, storedPayment.id),
+    subscriptionReversal?.reverted && subscriptionReversal.orderId
+      ? dispatchSubscriptionIntegrationEventSafe(
+          admin,
+          subscriptionReversal.orderId,
+          "subscription.reverted",
+        )
+      : Promise.resolve({ sent: 0 }),
   ]);
 
   return { storedPayment, becameApproved };

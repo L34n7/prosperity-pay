@@ -4,6 +4,7 @@ import { resolveOfferCommissionOverride } from "@/lib/affiliates/offer-commissio
 import { FinancialDistributionService, type FeeRule } from "@/lib/financial/financial-distribution-service";
 import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
 import { dispatchSubscriptionIntegrationEventSafe } from "@/lib/integrations/subscription-events";
+import { revertPrepaidSubscriptionAfterPaymentReversal } from "@/lib/subscriptions/payment-reversal";
 import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { fetchMercadoPagoFeeForOrder } from "@/lib/payments/mercado-pago-fee-reconciliation";
@@ -117,6 +118,7 @@ function mappedStatus(status?: string) {
     case "canceled":
     case "cancelled": return "cancelled" as const;
     case "refunded": return "refunded" as const;
+    case "charged_back": return "charged_back" as const;
     default: return "pending" as const;
   }
 }
@@ -684,6 +686,8 @@ export async function syncTransparentOrder(input: {
   }
 
   let subscriptionApplied = false;
+  let subscriptionReverted = false;
+  let revertedSubscriptionOrderId: string | null = null;
   let shouldPostFinancials = becameApproved;
   let settledRenewalDueAt: string | null = null;
 
@@ -900,8 +904,22 @@ export async function syncTransparentOrder(input: {
     const terminalResults = await Promise.all(terminalUpdates);
     const terminalError = terminalResults.find((result) => result.error)?.error;
     if (terminalError) throw terminalError;
-  } else if (status === "refunded") {
-    await admin.from("orders").update({ status: "refunded" }).eq("id", internalOrderId);
+  } else if (status === "refunded" || status === "charged_back") {
+    const { error: orderError } = await admin
+      .from("orders")
+      .update({
+        status: status === "refunded" ? "refunded" : "charged_back",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", internalOrderId);
+    if (orderError) throw orderError;
+
+    const reversal = await revertPrepaidSubscriptionAfterPaymentReversal(
+      admin,
+      currentPayment.id,
+    );
+    subscriptionReverted = reversal.reverted;
+    revertedSubscriptionOrderId = reversal.orderId;
   } else {
     await admin.from("orders").update({ status: "pending_payment" }).eq("id", internalOrderId);
   }
@@ -911,7 +929,13 @@ export async function syncTransparentOrder(input: {
     dispatchPaymentEmailNotificationsSafe(admin, currentPayment.id),
     subscriptionApplied && billingOrder.subscription_id
       ? dispatchSubscriptionIntegrationEventSafe(admin, internalOrderId)
-      : Promise.resolve({ sent: 0 }),
+      : subscriptionReverted && revertedSubscriptionOrderId
+        ? dispatchSubscriptionIntegrationEventSafe(
+            admin,
+            revertedSubscriptionOrderId,
+            "subscription.reverted",
+          )
+        : Promise.resolve({ sent: 0 }),
   ]);
 
   return transparentResult(internalOrderId, status, mpOrder);
