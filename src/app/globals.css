@@ -1219,6 +1219,9 @@ a {
 .filter-row select { min-width: 160px; }
 .detail-overlay { position: fixed; inset: 0; z-index: 90; background: #0009; display: flex; justify-content: flex-end; }
 .detail-drawer { width: min(100vw,510px); overflow-y: auto; background: var(--surface); border-left: 1px solid var(--border); padding: 25px; }
+.payment-detail-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.payment-detail-header h2 { margin: 0; font-size: 1.35rem; letter-spacing: -.02em; }
+.payment-detail-header .secondary-button { margin-left: auto; flex: 0 0 auto; }
 .detail-drawer dl { margin: 15px 0 24px; }
 .detail-drawer dt { color: var(--text-secondary); }
 .detail-drawer dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
