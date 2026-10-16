@@ -96,6 +96,32 @@ function dateTimeParts(value: string | null | undefined) {
   };
 }
 
+function formatDateTime(value: string | null | undefined) {
+  const parts = dateTimeParts(value);
+  return parts ? `${parts.date} · ${parts.time}` : "—";
+}
+
+function objectRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function mercadoPagoPaymentCodeOf(payment: Payment) {
+  const raw = objectRecord(payment.raw_provider_data);
+  const reconciliation = objectRecord(raw.prosperity_ml_fee_reconciliation);
+  const providerPaymentId = reconciliation.provider_payment_id;
+
+  if (
+    (typeof providerPaymentId === "string" && providerPaymentId.trim()) ||
+    typeof providerPaymentId === "number"
+  ) {
+    return String(providerPaymentId);
+  }
+
+  return payment.external_payment_id ?? "Pendente";
+}
+
 function receivedOf(payment: Payment, order: Order | undefined) {
   if (!order) return null;
 
@@ -507,11 +533,12 @@ export function PaymentsView({
             aria-label="Detalhes do pagamento"
             onClick={(event) => event.stopPropagation()}
           >
-            <button className="secondary-button" onClick={() => setSelected(null)}>
-              Fechar
-            </button>
-
-            <h2>Pagamento</h2>
+            <div className="payment-detail-header">
+              <h2>Detalhes pagamento</h2>
+              <button className="secondary-button" onClick={() => setSelected(null)}>
+                Fechar
+              </button>
+            </div>
 
             <p>
               {detail.customers?.name || "Comprador"} ·{" "}
@@ -526,8 +553,8 @@ export function PaymentsView({
                 ["Comprador", detail.customers?.name || "—"],
                 ["E-mail", detail.customers?.email || "—"],
                 ["Plano", planOf(chosen, detail)],
-                ["Data", generatedDateOf(chosen, detail) ? formatDate(generatedDateOf(chosen, detail)!) : "—"],
-                ["Data do pagamento", paymentDateOf(chosen, detail) ? formatDate(paymentDateOf(chosen, detail)!) : "—"],
+                ["Data", formatDateTime(generatedDateOf(chosen, detail))],
+                ["Data do pagamento", formatDateTime(paymentDateOf(chosen, detail))],
                 ["Bruto", formatCents(chosen.gross_amount_cents)],
                 ["Taxa ML (Mercado Pago)", formatCents(chosen.provider_fee_amount_cents)],
                 [
@@ -549,7 +576,8 @@ export function PaymentsView({
                 ["Recebido pelo produtor", formatCents(net)],
                 ["Método", methodOf(chosen)],
                 ["Modelo", detail.settlement_model],
-                ["Payment ID", chosen.external_payment_id ?? "Pendente"],
+                ["Código pagamento ML", mercadoPagoPaymentCodeOf(chosen)],
+                ["ID transação ML", chosen.external_payment_id ?? "Pendente"],
                 ["Referência", chosen.external_reference],
                 ["Status", chosen.status],
               ].map(([key, value]) => (
@@ -564,7 +592,7 @@ export function PaymentsView({
             {chosen.payment_transactions.length ? (
               chosen.payment_transactions.map((event, index) => (
                 <p key={index}>
-                  {formatDate(event.occurred_at ?? event.created_at)} ·{" "}
+                  {formatDateTime(event.occurred_at ?? event.created_at)} ·{" "}
                   {event.transaction_type} · {event.status}
                 </p>
               ))
