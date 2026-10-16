@@ -161,7 +161,7 @@ async function repararRenovacaoAprovadaPendente(
 
     if (billingReason !== "subscription_renewal" || !dueAt) continue;
 
-    const { data: existingClaim, error: claimLookupError } = await admin
+    const { data: existingClaim, error: claimLookupError } = await (admin as any)
       .from("subscription_renewal_payment_claims")
       .select("payment_id")
       .eq("subscription_id", subscription.id)
