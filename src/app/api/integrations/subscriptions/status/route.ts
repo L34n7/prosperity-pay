@@ -6,7 +6,35 @@ import {
   requiredString,
 } from "@/lib/api/http";
 import { requireSignedIntegrationRequest } from "@/lib/integrations/inbound-auth";
+import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
+import { dispatchSubscriptionIntegrationEventSafe } from "@/lib/integrations/subscription-events";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function periodEnd(
+  start: Date,
+  offer: { billing_interval: string | null; billing_interval_count: number | null },
+) {
+  const end = new Date(start);
+  const count = Math.max(1, Number(offer.billing_interval_count || 1));
+
+  if (offer.billing_interval === "week") {
+    end.setUTCDate(end.getUTCDate() + count * 7);
+  } else if (offer.billing_interval === "year") {
+    end.setUTCFullYear(end.getUTCFullYear() + count);
+  } else {
+    end.setUTCMonth(end.getUTCMonth() + count);
+  }
+
+  return end;
+}
 
 async function ensureIntegrationOwnsProduct(
   integrationKey: string,
@@ -50,6 +78,175 @@ async function ensureIntegrationOwnsProduct(
   }
 }
 
+async function repararRenovacaoAprovadaPendente(
+  admin: AdminClient,
+  subscription: {
+    id: string;
+    current_period_end: string | null;
+  },
+) {
+  const currentEndMs = subscription.current_period_end
+    ? new Date(subscription.current_period_end).getTime()
+    : Number.NaN;
+  if (!Number.isFinite(currentEndMs)) {
+    return { repaired: false as const };
+  }
+
+  const { data: orders, error: ordersError } = await admin
+    .from("orders")
+    .select("id,billing_reason,status,paid_at,offer_id,created_at")
+    .eq("subscription_id", subscription.id)
+    .eq("status", "paid")
+    .order("paid_at", { ascending: false, nullsFirst: false })
+    .limit(8);
+
+  if (ordersError) throw ordersError;
+
+  for (const order of orders ?? []) {
+    const { data: payment, error: paymentError } = await admin
+      .from("payments")
+      .select("id,status,paid_at,raw_provider_data")
+      .eq("order_id", order.id)
+      .eq("status", "approved")
+      .order("paid_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (paymentError) throw paymentError;
+    if (!payment?.id || !payment.paid_at) continue;
+
+    const paidAtMs = new Date(payment.paid_at).getTime();
+    if (!Number.isFinite(paidAtMs)) continue;
+
+    let dueAt = subscription.current_period_end;
+    let billingReason = String(order.billing_reason || "");
+    const raw = objectValue(payment.raw_provider_data);
+    const manualExternal = String(raw.source || "") === "manual_external_sale";
+
+    if (billingReason === "subscription_renewal") {
+      const { data: session, error: sessionError } = await admin
+        .from("subscription_checkout_sessions")
+        .select("metadata")
+        .eq("order_id", order.id)
+        .maybeSingle();
+
+      if (sessionError) throw sessionError;
+      const metadata = objectValue(session?.metadata);
+      if (typeof metadata.renewalDueAt === "string" && metadata.renewalDueAt) {
+        dueAt = metadata.renewalDueAt;
+      }
+
+      const dueAtMs = dueAt ? new Date(dueAt).getTime() : Number.NaN;
+      if (
+        Number.isFinite(dueAtMs) &&
+        currentEndMs > dueAtMs + 60_000
+      ) {
+        continue;
+      }
+    } else if (manualExternal && paidAtMs >= currentEndMs - 60_000) {
+      const { error: orderUpdateError } = await admin
+        .from("orders")
+        .update({
+          billing_reason: "subscription_renewal",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id)
+        .eq("subscription_id", subscription.id);
+
+      if (orderUpdateError) throw orderUpdateError;
+      billingReason = "subscription_renewal";
+    } else {
+      continue;
+    }
+
+    if (billingReason !== "subscription_renewal" || !dueAt) continue;
+
+    const { data: existingClaim, error: claimLookupError } = await admin
+      .from("subscription_renewal_payment_claims")
+      .select("payment_id")
+      .eq("subscription_id", subscription.id)
+      .eq("due_at", dueAt)
+      .maybeSingle();
+
+    if (claimLookupError) throw claimLookupError;
+
+    if (
+      existingClaim?.payment_id &&
+      String(existingClaim.payment_id) !== String(payment.id)
+    ) {
+      continue;
+    }
+
+    if (!existingClaim) {
+      const { data: claimed, error: claimError } = await admin.rpc(
+        "claim_prepaid_subscription_renewal_payment",
+        {
+          target_subscription_id: subscription.id,
+          target_payment_id: payment.id,
+          target_due_at: dueAt,
+        },
+      );
+
+      if (claimError) throw claimError;
+      if (claimed !== true) continue;
+    }
+
+    const { data: offer, error: offerError } = await admin
+      .from("offers")
+      .select("billing_interval,billing_interval_count")
+      .eq("id", order.offer_id)
+      .single();
+
+    if (offerError || !offer) {
+      throw offerError ?? new Error("Oferta da renovação não encontrada.");
+    }
+
+    const start = new Date(Math.max(currentEndMs, paidAtMs));
+    const end = periodEnd(start, offer);
+
+    const { error: applyError } = await admin.rpc(
+      "apply_prepaid_subscription_renewal",
+      {
+        target_subscription_id: subscription.id,
+        target_payment_id: payment.id,
+        target_period_start: start.toISOString(),
+        target_period_end: end.toISOString(),
+      },
+    );
+
+    if (applyError) throw applyError;
+
+    await Promise.all([
+      dispatchPaymentIntegrationEventsSafe(admin, payment.id),
+      dispatchSubscriptionIntegrationEventSafe(admin, order.id),
+    ]);
+
+    return {
+      repaired: true as const,
+      orderId: order.id,
+      paymentId: payment.id,
+    };
+  }
+
+  return { repaired: false as const };
+}
+
+async function loadSubscription(admin: AdminClient, subscriptionId: string) {
+  const { data, error } = await admin
+    .from("subscriptions")
+    .select(
+      "id,product_id,customer_id,offer_id,status,billing_model,base_amount_cents,current_amount_cents,currency,current_period_start,current_period_end,next_due_at,cycle_number",
+    )
+    .eq("id", subscriptionId)
+    .single();
+
+  if (error || !data) {
+    throw error ?? new HttpError(404, "Assinatura não encontrada.");
+  }
+
+  return data;
+}
+
 export async function POST(request: Request) {
   try {
     const rawBody = await request.text();
@@ -69,19 +266,13 @@ export async function POST(request: Request) {
     const subscriptionId = requiredString(body, "subscriptionId", 80);
     const admin = createAdminClient();
 
-    const { data: subscription, error: subscriptionError } = await admin
-      .from("subscriptions")
-      .select(
-        "id,product_id,customer_id,offer_id,status,billing_model,base_amount_cents,current_amount_cents,currency,current_period_start,current_period_end,next_due_at,cycle_number",
-      )
-      .eq("id", subscriptionId)
-      .single();
-
-    if (subscriptionError || !subscription) {
-      throw subscriptionError ?? new HttpError(404, "Assinatura não encontrada.");
-    }
-
+    let subscription = await loadSubscription(admin, subscriptionId);
     await ensureIntegrationOwnsProduct(integrationKey, subscription.product_id);
+
+    const repair = await repararRenovacaoAprovadaPendente(admin, subscription);
+    if (repair.repaired) {
+      subscription = await loadSubscription(admin, subscriptionId);
+    }
 
     const [offerResult, customerResult, itemsResult] = await Promise.all([
       admin
@@ -114,6 +305,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
+      repaired: repair.repaired,
       subscription: {
         id: subscription.id,
         status: subscription.status,
