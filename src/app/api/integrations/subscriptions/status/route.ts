@@ -178,7 +178,7 @@ async function repararRenovacaoAprovadaPendente(
     }
 
     if (!existingClaim) {
-      const { data: claimed, error: claimError } = await admin.rpc(
+      const { data: claimed, error: claimError } = await (admin as any).rpc(
         "claim_prepaid_subscription_renewal_payment",
         {
           target_subscription_id: subscription.id,
@@ -204,7 +204,7 @@ async function repararRenovacaoAprovadaPendente(
     const start = new Date(Math.max(currentEndMs, paidAtMs));
     const end = periodEnd(start, offer);
 
-    const { error: applyError } = await admin.rpc(
+    const { error: applyError } = await (admin as any).rpc(
       "apply_prepaid_subscription_renewal",
       {
         target_subscription_id: subscription.id,
