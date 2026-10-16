@@ -610,6 +610,7 @@ export async function syncTransparentOrder(input: {
   const amountCents = Math.round(Number(transaction.amount ?? mpOrder.total_amount ?? 0) * 100);
   const paidAmount = transaction.paid_amount == null ? undefined : Math.round(Number(transaction.paid_amount) * 100);
   let providerFeeCents = 0;
+  let providerPaymentId: string | null = null;
   const { data: currentPayment, error: currentError } = await admin.from("payments")
     .select("id,status,gross_amount_cents,connection_id")
     .eq("order_id", internalOrderId)
@@ -633,7 +634,10 @@ export async function syncTransparentOrder(input: {
         connectionId: currentPayment.connection_id,
         orderId: internalOrderId,
       });
-      if (providerFee) providerFeeCents = providerFee.feeCents;
+      if (providerFee) {
+        providerFeeCents = providerFee.feeCents;
+        providerPaymentId = providerFee.providerPaymentId;
+      }
     } catch (error) {
       console.error("[transparent-checkout] Falha ao consultar taxa real do Mercado Pago.", {
         orderId: internalOrderId,
@@ -642,6 +646,19 @@ export async function syncTransparentOrder(input: {
     }
   }
 
+  const rawProviderData =
+    status === "approved" && providerPaymentId
+      ? {
+          ...mpOrder,
+          prosperity_ml_fee_reconciliation: {
+            checked_at: new Date().toISOString(),
+            source: "mercadopago_payments_search",
+            fee_cents: providerFeeCents,
+            provider_payment_id: providerPaymentId,
+          },
+        }
+      : mpOrder;
+
   const { error: paymentError } = await admin.from("payments").update({
     external_payment_id: transaction.id,
     status,
@@ -649,7 +666,7 @@ export async function syncTransparentOrder(input: {
     provider_fee_amount_cents: providerFeeCents,
     paid_at: paidAt,
     refunded_at: status === "refunded" ? new Date().toISOString() : undefined,
-    raw_provider_data: mpOrder as never,
+    raw_provider_data: rawProviderData as never,
   }).eq("id", currentPayment.id);
   if (paymentError) throw paymentError;
 
