@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
 import { isHiddenTestPayment } from "@/lib/payments/payment-visibility";
 import { reconcileMercadoPagoFees } from "@/lib/payments/mercado-pago-fee-reconciliation";
+import { reconcileMercadoPagoOperationIds } from "@/lib/payments/mercado-pago-operation-reconciliation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function getFinanceView() {
@@ -153,6 +154,12 @@ export async function getFinanceView() {
       payment.provider_fee_amount_cents = reconciledFee;
     }
   }
+
+  await reconcileMercadoPagoOperationIds({
+    admin,
+    payments: paymentRows,
+    groupLimit: 2,
+  });
 
   const paymentIds = paymentRows.map((payment) => payment.id);
 

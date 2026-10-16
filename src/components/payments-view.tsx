@@ -107,19 +107,14 @@ function objectRecord(value: unknown) {
     : {};
 }
 
-function mercadoPagoPaymentCodeOf(payment: Payment) {
+function mercadoPagoOperationIdOf(payment: Payment) {
   const raw = objectRecord(payment.raw_provider_data);
-  const reconciliation = objectRecord(raw.prosperity_ml_fee_reconciliation);
-  const providerPaymentId = reconciliation.provider_payment_id;
+  const reconciliation = objectRecord(raw.prosperity_ml_operation_reconciliation);
+  const operationId = reconciliation.operation_id;
 
-  if (
-    (typeof providerPaymentId === "string" && providerPaymentId.trim()) ||
-    typeof providerPaymentId === "number"
-  ) {
-    return String(providerPaymentId);
-  }
-
-  return payment.external_payment_id ?? "Pendente";
+  return typeof operationId === "string" && operationId.trim()
+    ? operationId.trim()
+    : "Aguardando conciliação";
 }
 
 function receivedOf(payment: Payment, order: Order | undefined) {
@@ -576,8 +571,8 @@ export function PaymentsView({
                 ["Recebido pelo produtor", formatCents(net)],
                 ["Método", methodOf(chosen)],
                 ["Modelo", detail.settlement_model],
-                ["Código pagamento ML", mercadoPagoPaymentCodeOf(chosen)],
-                ["ID transação ML", chosen.external_payment_id ?? "Pendente"],
+                ["Nº transação ML", mercadoPagoOperationIdOf(chosen)],
+                ["ID pagamento ML", chosen.external_payment_id ?? "Pendente"],
                 ["Referência", chosen.external_reference],
                 ["Status", chosen.status],
               ].map(([key, value]) => (

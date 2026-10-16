@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { processAutomaticDueBilling } from "@/lib/subscriptions/automatic-due-billing";
 import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
+import { reconcileRecentMercadoPagoOperationIds } from "@/lib/payments/mercado-pago-operation-reconciliation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function authorized(request: Request) {
@@ -31,10 +32,18 @@ export async function GET(request: Request) {
     const admin = createAdminClient();
     const expiredPayments = await expireStalePayments(admin);
     const result = await processAutomaticDueBilling(100);
+    const operationReconciliation = await reconcileRecentMercadoPagoOperationIds(admin, {
+      paymentLimit: 150,
+      groupLimit: 6,
+    }).catch((error) => {
+      console.error("[CRON ML OPERATION ID] Falha na conciliação", error);
+      return { processedGroups: 0, resolved: 0, pending: 0, failed: 0 };
+    });
 
     return NextResponse.json({
       ok: true,
       expiredPayments,
+      operationReconciliation,
       ...result,
     });
   } catch (error) {
