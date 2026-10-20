@@ -27,10 +27,10 @@ function loadModule() {
 
 const reconciliation = loadModule();
 
-test("extract Mercado Pago alphanumeric operation id from activity report", () => {
+test("extract Mercado Pago SOURCE_ID by external reference", () => {
   const csv = [
-    "date_created,operation_id,external_reference,status,transaction_amount",
-    "2026-10-15T20:56:20-03:00,B33FDJGVGD5PZXRAM,prosperity-f1875a96-7745-4006-bb6b-8e41940219a2,approved,137.00",
+    "EXTERNAL_REFERENCE;SOURCE_ID;TRANSACTION_TYPE;TRANSACTION_DATE",
+    "prosperity-f1875a96-7745-4006-bb6b-8e41940219a2;B33FDJGVGD5PZXRAM;SETTLEMENT;2026-10-15T23:56:20Z",
   ].join("\n");
 
   assert.equal(
@@ -41,22 +41,35 @@ test("extract Mercado Pago alphanumeric operation id from activity report", () =
   );
 });
 
+test("prefer settlement SOURCE_ID over refund row for the same reference", () => {
+  const csv = [
+    "EXTERNAL_REFERENCE;SOURCE_ID;TRANSACTION_TYPE",
+    "prosperity-x;REF-ABC;REFUND",
+    "prosperity-x;B33FDJGVGD5PZXRAM;SETTLEMENT",
+  ].join("\n");
+
+  assert.equal(
+    reconciliation.operationIdByExternalReference(csv).get("prosperity-x"),
+    "B33FDJGVGD5PZXRAM",
+  );
+});
+
 test("parse both comma and semicolon Mercado Pago CSV formats", () => {
   assert.equal(
-    reconciliation.parseCsv('operation_id,external_reference\n"B33,ABC","prosperity-x"\n')[0]
-      .operation_id,
+    reconciliation.parseCsv('SOURCE_ID,EXTERNAL_REFERENCE\n"B33,ABC","prosperity-x"\n')[0]
+      .source_id,
     "B33,ABC",
   );
   assert.equal(
-    reconciliation.parseCsv("operation_id;external_reference\nB33ABC;prosperity-x\n")[0]
+    reconciliation.parseCsv("SOURCE_ID;EXTERNAL_REFERENCE\nB33ABC;prosperity-x\n")[0]
       .external_reference,
     "prosperity-x",
   );
 });
 
-test("use a bounded closed-hour report range around payment creation", () => {
+test("use a closed UTC hour accepted by settlement_report", () => {
   const range = reconciliation.reportRangeForPayment(
-    "2026-10-15T23:56:19.271626+00:00",
+    "2026-10-15T23:56:20.506Z",
   );
   assert.equal(range.key, "2026-10-15T23:00:00.000Z|2026-10-15T23:59:59.999Z");
   assert.equal(range.gte, "2026-10-15T23:00:00.000Z");
@@ -67,6 +80,7 @@ test("read reconciled transaction number from raw provider metadata", () => {
   assert.equal(
     reconciliation.mercadoPagoOperationId({
       prosperity_ml_operation_reconciliation: {
+        source: "mercadopago_settlement_report",
         operation_id: "B33FDJGVGD5PZXRAM",
       },
     }),

@@ -111,10 +111,18 @@ function mercadoPagoOperationIdOf(payment: Payment) {
   const raw = objectRecord(payment.raw_provider_data);
   const reconciliation = objectRecord(raw.prosperity_ml_operation_reconciliation);
   const operationId = reconciliation.operation_id;
+  const taskStatus =
+    typeof reconciliation.task_status === "string"
+      ? reconciliation.task_status.toLowerCase()
+      : "";
 
-  return typeof operationId === "string" && operationId.trim()
-    ? operationId.trim()
-    : "Aguardando conciliação";
+  if (typeof operationId === "string" && operationId.trim()) {
+    return operationId.trim();
+  }
+  if (taskStatus === "pending") return "Processando no Mercado Pago";
+  if (taskStatus === "error" || taskStatus === "failed") return "Não disponível";
+  if (taskStatus === "processed") return "Não localizado no relatório ML";
+  return "—";
 }
 
 function receivedOf(payment: Payment, order: Order | undefined) {

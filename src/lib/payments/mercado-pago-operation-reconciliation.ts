@@ -1,22 +1,15 @@
-import { env, requireEnv } from "@/lib/env";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 type RawObject = Record<string, unknown>;
 
-const REPORT_ID = "activities_collection";
 const META_KEY = "prosperity_ml_operation_reconciliation";
-const REPORT_COLUMNS = [
-  "date_created",
-  "operation_id",
-  "external_reference",
-  "status",
-  "transaction_amount",
-  "mercadopago_fee",
-  "payment_type",
-  "installments",
-  "amount_refunded",
+const REQUIRED_COLUMNS = [
+  "TRANSACTION_DATE",
+  "SOURCE_ID",
+  "EXTERNAL_REFERENCE",
+  "TRANSACTION_TYPE",
 ];
 const REPORT_BUCKET_MS = 60 * 60 * 1000;
 const RETRY_AFTER_MS = 6 * 60 * 60 * 1000;
@@ -42,34 +35,49 @@ type ReportRange = {
 type ReconciliationMeta = {
   source?: string;
   range_key?: string;
-  statement_id?: string;
-  statement_status?: string;
+  task_id?: string;
+  task_status?: string;
+  file_name?: string;
   operation_id?: string;
   requested_at?: string;
   checked_at?: string;
   error?: string;
 };
 
-type ReportStatement = {
-  id?: string;
-  status?: string;
-  origin?: {
-    data?: {
-      filters?: {
-        creation_date?: {
-          range?: {
-            gte?: string;
-            lte?: string;
-          };
-        };
-      };
-    };
+type SettlementConfig = {
+  file_name_prefix?: string;
+  frequency?: {
+    hour?: number;
+    type?: string;
+    value?: number;
   };
+  columns?: Array<{ key?: string }>;
+  separator?: string;
+  display_timezone?: string;
+  report_translation?: string;
+  header_language?: string;
+  include_withdraw?: boolean;
+  include_withdrawal_at_end?: boolean;
+  refund_detailed?: boolean;
+  shipping_detail?: boolean;
+  coupon_detailed?: boolean;
+  show_chargeback_cancel?: boolean;
+  show_fee_prevision?: boolean;
+  execute_after_withdrawal?: boolean;
+  check_available_balance?: boolean;
+  compensate_detail?: boolean;
+};
+
+type SettlementTask = {
+  id?: number | string;
+  status?: string;
+  file_name?: string;
 };
 
 class MercadoPagoReportError extends Error {
   constructor(
     public readonly status: number,
+    public readonly code: string | null,
     message: string,
     public readonly body?: unknown,
   ) {
@@ -85,6 +93,14 @@ function asObject(value: unknown): RawObject {
 
 function nonEmptyText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function numberValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return null;
 }
 
 function manualPayment(payment: OperationReconciliationPayment) {
@@ -110,10 +126,19 @@ function reconciliationMeta(raw: unknown): ReconciliationMeta {
 function shouldRetry(raw: unknown) {
   if (mercadoPagoOperationId(raw)) return false;
   const meta = reconciliationMeta(raw);
-  if (meta.statement_status === "pending") return true;
+  if (meta.task_status === "pending") return true;
   const checkedAt = Date.parse(meta.checked_at ?? "");
   if (!Number.isFinite(checkedAt)) return true;
   return Date.now() - checkedAt >= RETRY_AFTER_MS;
+}
+
+function providerCreatedAt(payment: OperationReconciliationPayment) {
+  const raw = asObject(payment.raw_provider_data);
+  return (
+    nonEmptyText(raw.created_date) ??
+    nonEmptyText(raw.date_created) ??
+    payment.created_at
+  );
 }
 
 export function reportRangeForPayment(createdAt: string): ReportRange {
@@ -132,8 +157,8 @@ function candidateReferences(payment: OperationReconciliationPayment) {
   const raw = asObject(payment.raw_provider_data);
   return new Set(
     [
-      nonEmptyText(payment.external_reference),
       nonEmptyText(raw.external_reference),
+      nonEmptyText(payment.external_reference),
       `prosperity-${payment.order_id}`,
     ].filter((value): value is string => Boolean(value)),
   );
@@ -189,36 +214,82 @@ export function parseCsv(csv: string) {
   if (!rows.length) return [] as Record<string, string>[];
   const headers = rows[0].map((header) => header.trim().toLowerCase());
   return rows.slice(1).map((values) =>
-    Object.fromEntries(headers.map((header, index) => [header, values[index]?.trim() ?? ""])),
+    Object.fromEntries(
+      headers.map((header, index) => [header, values[index]?.trim() ?? ""]),
+    ),
   );
 }
 
-export function operationIdByExternalReference(csv: string) {
-  const map = new Map<string, string>();
-  for (const row of parseCsv(csv)) {
-    const reference = row.external_reference?.trim();
-    const operationId = row.operation_id?.trim();
-    if (reference && operationId && !map.has(reference)) {
-      map.set(reference, operationId);
-    }
-  }
-  return map;
+function transactionTypeScore(value: string | undefined) {
+  const normalized = value?.trim().toUpperCase() ?? "";
+  if (normalized === "SETTLEMENT") return 4;
+  if (normalized === "PAYMENT") return 3;
+  if (normalized === "REFUND") return 2;
+  if (normalized === "CHARGEBACK") return 1;
+  return 0;
 }
 
-async function reportRequest<T>(
+export function operationIdByExternalReference(csv: string) {
+  const selected = new Map<
+    string,
+    { operationId: string; score: number }
+  >();
+
+  for (const row of parseCsv(csv)) {
+    const reference = row.external_reference?.trim();
+    const operationId = row.source_id?.trim();
+    if (!reference || !operationId) continue;
+
+    const score = transactionTypeScore(row.transaction_type);
+    const current = selected.get(reference);
+    if (!current || score > current.score) {
+      selected.set(reference, { operationId, score });
+    }
+  }
+
+  return new Map(
+    [...selected.entries()].map(([reference, value]) => [
+      reference,
+      value.operationId,
+    ]),
+  );
+}
+
+function apiErrorCode(body: unknown) {
+  const root = asObject(body);
+  return (
+    nonEmptyText(root.error) ??
+    nonEmptyText(root.code) ??
+    nonEmptyText(root.error_code)
+  );
+}
+
+function apiErrorMessage(body: unknown) {
+  const root = asObject(body);
+  return (
+    nonEmptyText(root.message) ??
+    nonEmptyText(root.error_description) ??
+    apiErrorCode(body)
+  );
+}
+
+async function settlementRequest<T>(
   token: string,
   path: string,
   init?: RequestInit,
+  safePath = path,
 ): Promise<T> {
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
+      Accept: "application/json",
       "Content-Type": "application/json",
       ...init?.headers,
     },
     cache: "no-store",
   });
+
   const text = await response.text();
   let body: unknown = null;
   if (text) {
@@ -228,167 +299,191 @@ async function reportRequest<T>(
       body = text;
     }
   }
+
   if (!response.ok) {
-    const message = nonEmptyText(asObject(body).message)
-      ?? nonEmptyText(asObject(body).error)
-      ?? `Mercado Pago respondeu HTTP ${response.status} na conciliação do número da transação.`;
-    throw new MercadoPagoReportError(response.status, message, body);
+    const code = apiErrorCode(body);
+    const providerMessage = apiErrorMessage(body);
+    const message = [
+      `Mercado Pago HTTP ${response.status}`,
+      init?.method ?? "GET",
+      safePath,
+      code,
+      providerMessage,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    throw new MercadoPagoReportError(response.status, code, message, body);
   }
+
   return body as T;
 }
 
-async function reportDownload(token: string, statementId: string) {
+async function settlementDownload(token: string, fileName: string) {
   const response = await fetch(
-    `https://api.mercadopago.com/v1/reporting/operations/${REPORT_ID}/statements/${encodeURIComponent(statementId)}/download?format=csv`,
+    `https://api.mercadopago.com/v1/account/settlement_report/${encodeURIComponent(fileName)}`,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "text/csv,*/*",
+      },
       cache: "no-store",
     },
   );
+
   if (!response.ok) {
     throw new MercadoPagoReportError(
       response.status,
-      `Mercado Pago respondeu HTTP ${response.status} ao baixar relatório de transações.`,
+      null,
+      `Mercado Pago HTTP ${response.status} ao baixar relatório Dinheiro em conta.`,
     );
   }
-  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
-  if (contentType.includes("zip")) {
-    throw new Error("Relatório Mercado Pago foi compactado; janela de conciliação ficou grande demais.");
-  }
+
   return response.text();
 }
 
-async function ensureReportConfiguration(token: string) {
-  const configPath = `/v1/reporting/operations/${REPORT_ID}/config`;
-  try {
-    const config = await reportRequest<{
-      structure?: {
-        id?: string;
-        name?: string;
-        columns?: Array<{ key?: string }>;
-        file_format?: unknown;
-        display_timezone?: string;
-      };
-    }>(token, configPath);
-    const structure = config.structure;
-    if (!structure?.id) return;
+function missingConfiguration(error: unknown) {
+  if (!(error instanceof MercadoPagoReportError)) return false;
+  if (error.status === 404) return true;
+  const code = (error.code ?? "").toLowerCase();
+  return (
+    code.includes("not_found") ||
+    code.includes("configuration_not_found") ||
+    code.includes("config_not_found")
+  );
+}
 
-    const currentColumns = (structure.columns ?? [])
-      .map((column) => nonEmptyText(column.key))
-      .filter((key): key is string => Boolean(key));
-    const missingColumns = REPORT_COLUMNS.filter((key) => !currentColumns.includes(key));
-    if (!missingColumns.length) return;
+function validFrequency(value: unknown) {
+  const frequency = asObject(value);
+  const hour = numberValue(frequency.hour);
+  const amount = numberValue(frequency.value);
+  const type = nonEmptyText(frequency.type);
+  if (hour == null || amount == null || !type) return null;
+  return { hour, value: amount, type };
+}
 
-    await reportRequest(token, `${configPath}/${encodeURIComponent(structure.id)}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        structure: {
-          name: structure.name || "Prosperity Pay - conciliação",
-          columns: [...currentColumns, ...missingColumns].map((key) => ({ key })),
-          ...(structure.file_format ? { file_format: structure.file_format } : {}),
-          ...(structure.display_timezone
-            ? { display_timezone: structure.display_timezone }
-            : {}),
-        },
-      }),
-    });
-    return;
-  } catch (error) {
-    if (!(error instanceof MercadoPagoReportError) || error.status !== 404) {
-      throw error;
-    }
+function configurationPayload(
+  current?: SettlementConfig | null,
+): Record<string, unknown> {
+  const currentColumns = (current?.columns ?? [])
+    .map((column) => nonEmptyText(column.key))
+    .filter((key): key is string => Boolean(key));
+  const columns = Array.from(new Set([...currentColumns, ...REQUIRED_COLUMNS]));
+
+  const payload: Record<string, unknown> = {
+    columns: columns.map((key) => ({ key })),
+    file_name_prefix:
+      nonEmptyText(current?.file_name_prefix) ?? "prosperity-pay-settlement",
+    frequency:
+      validFrequency(current?.frequency) ??
+      ({ hour: 0, type: "monthly", value: 1 } as const),
+  };
+
+  const optionalKeys: Array<keyof SettlementConfig> = [
+    "separator",
+    "display_timezone",
+    "report_translation",
+    "header_language",
+    "include_withdraw",
+    "include_withdrawal_at_end",
+    "refund_detailed",
+    "shipping_detail",
+    "coupon_detailed",
+    "show_chargeback_cancel",
+    "show_fee_prevision",
+    "execute_after_withdrawal",
+    "check_available_balance",
+    "compensate_detail",
+  ];
+
+  for (const key of optionalKeys) {
+    const value = current?.[key];
+    if (value !== undefined && value !== null) payload[key] = value;
   }
 
-  const appUrl = requireEnv(env.appUrl, "NEXT_PUBLIC_APP_URL").replace(/\/$/, "");
-  const notifierKey = requireEnv(
-    env.mercadoPagoWebhookSecret,
-    "MERCADO_PAGO_WEBHOOK_SECRET",
-  );
-
-  try {
-    await reportRequest(token, configPath, {
-      method: "POST",
-      body: JSON.stringify({
-        structure: {
-          name: "Prosperity Pay - conciliação",
-          columns: REPORT_COLUMNS.map((key) => ({ key })),
-          file_format: {
-            column_separator: ",",
-            decimal_separator: ".",
-            date_format: "yyyy-MM-dd",
-            name: "prosperity_pay_activities_collection",
-            prefix: "prosperity_pay_",
-          },
-          display_timezone: "GMT-03",
-        },
-        notifiers: [
-          {
-            type: "webhook",
-            data: {
-              url: `${appUrl}/api/webhooks/mercadopago/reports`,
-              key: notifierKey,
-            },
-            description: "Prosperity Pay - conciliação de transações",
-          },
-        ],
-      }),
-    });
-  } catch (error) {
-    if (!(error instanceof MercadoPagoReportError) || error.status !== 409) {
-      throw error;
-    }
+  if (!current) {
+    payload.separator = ";";
+    payload.display_timezone = "GMT-03";
+    payload.header_language = "pt";
   }
+
+  return payload;
 }
 
-function statementRange(statement: ReportStatement) {
-  return statement.origin?.data?.filters?.creation_date?.range;
-}
-
-async function findStatement(token: string, range: ReportRange) {
-  const createdFrom = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const data = await reportRequest<{ results?: ReportStatement[] }>(
-    token,
-    `/v1/reporting/operations/${REPORT_ID}/statements?size=100&page=1&created_from=${encodeURIComponent(createdFrom)}`,
-  );
-  return (data.results ?? []).find((statement) => {
-    const statementDateRange = statementRange(statement);
-    return statementDateRange?.gte === range.gte && statementDateRange?.lte === range.lte;
-  }) ?? null;
-}
-
-async function createOrFindStatement(token: string, range: ReportRange) {
+async function readSettlementConfiguration(token: string) {
   try {
-    const result = await reportRequest<{ record_id?: string }>(
+    return await settlementRequest<SettlementConfig>(
       token,
-      `/v1/reporting/operations/${REPORT_ID}/statements`,
+      "/v1/account/settlement_report/config",
+    );
+  } catch (error) {
+    if (missingConfiguration(error)) return null;
+    throw error;
+  }
+}
+
+async function ensureSettlementConfiguration(token: string) {
+  const current = await readSettlementConfiguration(token);
+  const currentColumns = (current?.columns ?? [])
+    .map((column) => nonEmptyText(column.key))
+    .filter((key): key is string => Boolean(key));
+  const missingColumns = REQUIRED_COLUMNS.filter(
+    (key) => !currentColumns.includes(key),
+  );
+
+  if (current && !missingColumns.length) return;
+
+  const method = current ? "PUT" : "POST";
+  try {
+    await settlementRequest(
+      token,
+      "/v1/account/settlement_report/config",
       {
-        method: "POST",
-        body: JSON.stringify({
-          filters: {
-            creation_date: {
-              range: { gte: range.gte, lte: range.lte },
-            },
-          },
-          file_format: "application/csv",
-        }),
+        method,
+        body: JSON.stringify(configurationPayload(current)),
       },
     );
-    if (result.record_id) return result.record_id;
   } catch (error) {
-    if (!(error instanceof MercadoPagoReportError) || error.status !== 409) {
-      throw error;
+    if (
+      !current &&
+      error instanceof MercadoPagoReportError &&
+      error.status === 409
+    ) {
+      const recovered = await readSettlementConfiguration(token);
+      if (recovered) {
+        await settlementRequest(
+          token,
+          "/v1/account/settlement_report/config",
+          {
+            method: "PUT",
+            body: JSON.stringify(configurationPayload(recovered)),
+          },
+        );
+        return;
+      }
     }
+    throw error;
   }
-
-  const existing = await findStatement(token, range);
-  return existing?.id ?? null;
 }
 
-async function statementStatus(token: string, statementId: string) {
-  return reportRequest<ReportStatement>(
+async function createSettlementTask(token: string, range: ReportRange) {
+  return settlementRequest<SettlementTask>(
     token,
-    `/v1/reporting/operations/${REPORT_ID}/statements/${encodeURIComponent(statementId)}`,
+    "/v1/account/settlement_report",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        begin_date: range.gte,
+        end_date: range.lte,
+      }),
+    },
   );
+}
+
+async function getSettlementTask(token: string, taskId: string) {
+  const safePath = `/v1/account/settlement_report/task/${encodeURIComponent(taskId)}`;
+  const path =
+    `${safePath}?access_token=${encodeURIComponent(token)}`;
+  return settlementRequest<SettlementTask>(token, path, undefined, safePath);
 }
 
 async function mergePaymentMetadata(
@@ -401,7 +496,9 @@ async function mergePaymentMetadata(
     .select("raw_provider_data")
     .eq("id", payment.id)
     .single();
-  if (error || !data) throw error ?? new Error("Pagamento não encontrado durante conciliação.");
+  if (error || !data) {
+    throw error ?? new Error("Pagamento não encontrado durante conciliação.");
+  }
 
   const latestRaw = asObject(data.raw_provider_data);
   const currentMeta = asObject(latestRaw[META_KEY]);
@@ -410,9 +507,10 @@ async function mergePaymentMetadata(
     [META_KEY]: {
       ...currentMeta,
       ...patch,
-      source: "mercadopago_activities_collection",
+      source: "mercadopago_settlement_report",
     },
   };
+
   const { error: updateError } = await admin
     .from("payments")
     .update({ raw_provider_data: mergedRaw as never })
@@ -431,12 +529,24 @@ async function persistGroupMetadata(
   }
 }
 
-function groupStatementId(payments: OperationReconciliationPayment[], range: ReportRange) {
+function groupTaskId(
+  payments: OperationReconciliationPayment[],
+  range: ReportRange,
+) {
   for (const payment of payments) {
     const meta = reconciliationMeta(payment.raw_provider_data);
-    if (meta.range_key === range.key && meta.statement_id) return meta.statement_id;
+    if (meta.range_key === range.key && meta.task_id) return meta.task_id;
   }
   return null;
+}
+
+function errorSummary(error: unknown) {
+  if (error instanceof MercadoPagoReportError) {
+    return error.message.slice(0, 900);
+  }
+  return error instanceof Error
+    ? error.message.slice(0, 900)
+    : String(error).slice(0, 900);
 }
 
 async function reconcileGroup(input: {
@@ -446,65 +556,75 @@ async function reconcileGroup(input: {
   token: string;
 }) {
   const { admin, payments, range, token } = input;
-  await ensureReportConfiguration(token);
+  await ensureSettlementConfiguration(token);
 
-  let statementId = groupStatementId(payments, range);
-  if (!statementId) {
-    statementId = await createOrFindStatement(token, range);
-    if (!statementId) {
-      throw new Error("Mercado Pago não retornou identificador do relatório de transações.");
+  let taskId = groupTaskId(payments, range);
+  if (!taskId) {
+    const task = await createSettlementTask(token, range);
+    if (task.id == null) {
+      throw new Error(
+        "Mercado Pago não retornou o identificador da tarefa do relatório.",
+      );
     }
+    taskId = String(task.id);
     await persistGroupMetadata(admin, payments, {
       range_key: range.key,
-      statement_id: statementId,
-      statement_status: "pending",
+      task_id: taskId,
+      task_status: task.status ?? "pending",
       requested_at: new Date().toISOString(),
+      checked_at: new Date().toISOString(),
       error: "",
     });
   }
 
-  const statement = await statementStatus(token, statementId);
-  const status = statement.status ?? "pending";
+  const task = await getSettlementTask(token, taskId);
+  const status = nonEmptyText(task.status)?.toLowerCase() ?? "pending";
   if (status === "pending") {
     await persistGroupMetadata(admin, payments, {
       range_key: range.key,
-      statement_id: statementId,
-      statement_status: "pending",
+      task_id: taskId,
+      task_status: "pending",
       checked_at: new Date().toISOString(),
       error: "",
     });
     return { resolved: 0, pending: payments.length };
   }
 
-  if (status !== "available") {
+  if (status !== "processed" || !task.file_name) {
     await persistGroupMetadata(admin, payments, {
       range_key: range.key,
-      statement_id: statementId,
-      statement_status: status,
+      task_id: taskId,
+      task_status: status,
       checked_at: new Date().toISOString(),
-      error: status === "failed" ? "Mercado Pago não conseguiu gerar o relatório." : "",
+      error:
+        status === "failed"
+          ? "Mercado Pago não conseguiu gerar o relatório Dinheiro em conta."
+          : "",
     });
     return { resolved: 0, pending: 0 };
   }
 
-  const csv = await reportDownload(token, statementId);
+  const csv = await settlementDownload(token, task.file_name);
   const operationIds = operationIdByExternalReference(csv);
   let resolved = 0;
 
   for (const payment of payments) {
-    const references = candidateReferences(payment);
-    const operationId = [...references]
+    const operationId = [...candidateReferences(payment)]
       .map((reference) => operationIds.get(reference))
       .find((value): value is string => Boolean(value));
 
     await mergePaymentMetadata(admin, payment, {
       range_key: range.key,
-      statement_id: statementId,
-      statement_status: "available",
+      task_id: taskId,
+      task_status: "processed",
+      file_name: task.file_name,
       operation_id: operationId ?? "",
       checked_at: new Date().toISOString(),
-      error: operationId ? "" : "Operação não encontrada no relatório desta janela.",
+      error: operationId
+        ? ""
+        : "SOURCE_ID não encontrado para a referência deste pagamento.",
     });
+
     if (operationId) resolved += 1;
   }
 
@@ -518,20 +638,34 @@ export async function reconcileMercadoPagoOperationIds(input: {
 }) {
   const eligible = input.payments.filter((payment) => {
     if (!payment.connection_id) return false;
-    if (!["approved", "refunded", "charged_back"].includes(payment.status)) return false;
-    if (manualPayment(payment) || !shouldRetry(payment.raw_provider_data)) return false;
-    return Date.parse(reportRangeForPayment(payment.created_at).lte) <= Date.now();
+    if (!["approved", "refunded", "charged_back"].includes(payment.status)) {
+      return false;
+    }
+    if (manualPayment(payment) || !shouldRetry(payment.raw_provider_data)) {
+      return false;
+    }
+    const range = reportRangeForPayment(providerCreatedAt(payment));
+    return Date.parse(range.lte) <= Date.now();
   });
 
   const groups = new Map<
     string,
-    { payments: OperationReconciliationPayment[]; range: ReportRange; connectionId: string }
+    {
+      payments: OperationReconciliationPayment[];
+      range: ReportRange;
+      connectionId: string;
+    }
   >();
+
   for (const payment of eligible) {
     const connectionId = payment.connection_id as string;
-    const range = reportRangeForPayment(payment.created_at);
+    const range = reportRangeForPayment(providerCreatedAt(payment));
     const key = `${connectionId}:${range.key}`;
-    const group = groups.get(key) ?? { payments: [], range, connectionId };
+    const group = groups.get(key) ?? {
+      payments: [],
+      range,
+      connectionId,
+    };
     group.payments.push(payment);
     groups.set(key, group);
   }
@@ -542,7 +676,10 @@ export async function reconcileMercadoPagoOperationIds(input: {
   let failed = 0;
   const tokenCache = new Map<string, string>();
 
-  for (const group of [...groups.values()].slice(0, Math.max(1, input.groupLimit ?? 3))) {
+  for (const group of [...groups.values()].slice(
+    0,
+    Math.max(1, input.groupLimit ?? 3),
+  )) {
     processedGroups += 1;
     try {
       let token = tokenCache.get(group.connectionId);
@@ -550,6 +687,7 @@ export async function reconcileMercadoPagoOperationIds(input: {
         token = await getProviderAccessToken(group.connectionId);
         tokenCache.set(group.connectionId, token);
       }
+
       const result = await reconcileGroup({
         admin: input.admin,
         payments: group.payments,
@@ -560,10 +698,23 @@ export async function reconcileMercadoPagoOperationIds(input: {
       pending += result.pending;
     } catch (error) {
       failed += group.payments.length;
-      console.error("[ML OPERATION ID] Falha na conciliação", {
+      const summary = errorSummary(error);
+      await persistGroupMetadata(input.admin, group.payments, {
+        range_key: group.range.key,
+        task_status: "error",
+        checked_at: new Date().toISOString(),
+        error: summary,
+      }).catch((metadataError) => {
+        console.error("[ML TRANSACTION ID] Falha ao persistir erro", {
+          paymentIds: group.payments.map((payment) => payment.id),
+          error: errorSummary(metadataError),
+        });
+      });
+
+      console.error("[ML TRANSACTION ID] Falha na conciliação", {
         connectionId: group.connectionId,
         paymentIds: group.payments.map((payment) => payment.id),
-        error: error instanceof Error ? error.message : String(error),
+        error: summary,
       });
     }
   }
