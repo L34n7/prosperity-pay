@@ -5,13 +5,6 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 type RawObject = Record<string, unknown>;
 
 const META_KEY = "prosperity_ml_operation_reconciliation";
-const REQUIRED_COLUMNS = [
-  "TRANSACTION_DATE",
-  "SOURCE_ID",
-  "EXTERNAL_REFERENCE",
-  "TRANSACTION_TYPE",
-];
-const REPORT_BUCKET_MS = 60 * 60 * 1000;
 const RETRY_AFTER_MS = 6 * 60 * 60 * 1000;
 
 export type OperationReconciliationPayment = {
@@ -26,58 +19,28 @@ export type OperationReconciliationPayment = {
   raw_provider_data: unknown;
 };
 
-type ReportRange = {
-  key: string;
-  gte: string;
-  lte: string;
-};
-
 type ReconciliationMeta = {
   source?: string;
-  range_key?: string;
   task_id?: string;
   task_status?: string;
   file_name?: string;
   operation_id?: string;
-  requested_at?: string;
   checked_at?: string;
   error?: string;
 };
 
-type SettlementConfig = {
-  file_name_prefix?: string;
-  frequency?: {
-    hour?: number;
-    type?: string;
-    value?: number;
-  };
-  columns?: Array<{ key?: string }>;
-  separator?: string;
-  display_timezone?: string;
-  report_translation?: string;
-  header_language?: string;
-  include_withdraw?: boolean;
-  include_withdrawal_at_end?: boolean;
-  refund_detailed?: boolean;
-  shipping_detail?: boolean;
-  coupon_detailed?: boolean;
-  show_chargeback_cancel?: boolean;
-  show_fee_prevision?: boolean;
-  execute_after_withdrawal?: boolean;
-  check_available_balance?: boolean;
-  compensate_detail?: boolean;
-};
-
-type SettlementTask = {
+type SettlementReport = {
   id?: number | string;
-  status?: string;
+  begin_date?: string;
+  end_date?: string;
   file_name?: string;
+  status?: string;
+  created_from?: string;
 };
 
 class MercadoPagoReportError extends Error {
   constructor(
     public readonly status: number,
-    public readonly code: string | null,
     message: string,
     public readonly body?: unknown,
   ) {
@@ -93,14 +56,6 @@ function asObject(value: unknown): RawObject {
 
 function nonEmptyText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function numberValue(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
-    return Number(value);
-  }
-  return null;
 }
 
 function manualPayment(payment: OperationReconciliationPayment) {
@@ -126,7 +81,11 @@ function reconciliationMeta(raw: unknown): ReconciliationMeta {
 function shouldRetry(raw: unknown) {
   if (mercadoPagoOperationId(raw)) return false;
   const meta = reconciliationMeta(raw);
-  if (meta.task_status === "pending") return true;
+
+  // Metadados da estratégia antiga devem ser reprocessados imediatamente
+  // pela rotina somente-leitura, sem aguardar a janela de retry.
+  if (meta.source !== "mercadopago_existing_settlement_report") return true;
+
   const checkedAt = Date.parse(meta.checked_at ?? "");
   if (!Number.isFinite(checkedAt)) return true;
   return Date.now() - checkedAt >= RETRY_AFTER_MS;
@@ -141,16 +100,18 @@ function providerCreatedAt(payment: OperationReconciliationPayment) {
   );
 }
 
-export function reportRangeForPayment(createdAt: string): ReportRange {
+export function reportRangeForPayment(createdAt: string) {
   const timestamp = Date.parse(createdAt);
   if (!Number.isFinite(timestamp)) {
     throw new Error("Data do pagamento inválida para conciliação Mercado Pago.");
   }
-  const startMs = Math.floor(timestamp / REPORT_BUCKET_MS) * REPORT_BUCKET_MS;
-  const endMs = startMs + REPORT_BUCKET_MS - 1;
-  const gte = new Date(startMs).toISOString();
-  const lte = new Date(endMs).toISOString();
-  return { key: `${gte}|${lte}`, gte, lte };
+  const startMs = Math.floor(timestamp / 3600000) * 3600000;
+  const endMs = startMs + 3600000 - 1;
+  return {
+    key: `${new Date(startMs).toISOString()}|${new Date(endMs).toISOString()}`,
+    gte: new Date(startMs).toISOString(),
+    lte: new Date(endMs).toISOString(),
+  };
 }
 
 function candidateReferences(payment: OperationReconciliationPayment) {
@@ -191,9 +152,8 @@ export function parseCsv(csv: string) {
       continue;
     }
 
-    if (char === '"') {
-      quoted = true;
-    } else if (char === delimiter) {
+    if (char === '"') quoted = true;
+    else if (char === delimiter) {
       row.push(field);
       field = "";
     } else if (char === "\n") {
@@ -201,9 +161,7 @@ export function parseCsv(csv: string) {
       if (row.some((value) => value.length > 0)) rows.push(row);
       row = [];
       field = "";
-    } else {
-      field += char;
-    }
+    } else field += char;
   }
 
   if (field.length || row.length) {
@@ -230,10 +188,7 @@ function transactionTypeScore(value: string | undefined) {
 }
 
 export function operationIdByExternalReference(csv: string) {
-  const selected = new Map<
-    string,
-    { operationId: string; score: number }
-  >();
+  const selected = new Map<string, { operationId: string; score: number }>();
 
   for (const row of parseCsv(csv)) {
     const reference = row.external_reference?.trim();
@@ -255,37 +210,11 @@ export function operationIdByExternalReference(csv: string) {
   );
 }
 
-function apiErrorCode(body: unknown) {
-  const root = asObject(body);
-  return (
-    nonEmptyText(root.error) ??
-    nonEmptyText(root.code) ??
-    nonEmptyText(root.error_code)
-  );
-}
-
-function apiErrorMessage(body: unknown) {
-  const root = asObject(body);
-  return (
-    nonEmptyText(root.message) ??
-    nonEmptyText(root.error_description) ??
-    apiErrorCode(body)
-  );
-}
-
-async function settlementRequest<T>(
-  token: string,
-  path: string,
-  init?: RequestInit,
-  safePath = path,
-): Promise<T> {
+async function mpRequest<T>(token: string, path: string): Promise<T> {
   const response = await fetch(`https://api.mercadopago.com${path}`, {
-    ...init,
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
-      "Content-Type": "application/json",
-      ...init?.headers,
     },
     cache: "no-store",
   });
@@ -301,24 +230,24 @@ async function settlementRequest<T>(
   }
 
   if (!response.ok) {
-    const code = apiErrorCode(body);
-    const providerMessage = apiErrorMessage(body);
-    const message = [
-      `Mercado Pago HTTP ${response.status}`,
-      init?.method ?? "GET",
-      safePath,
-      code,
-      providerMessage,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    throw new MercadoPagoReportError(response.status, code, message, body);
+    throw new MercadoPagoReportError(
+      response.status,
+      `Mercado Pago HTTP ${response.status} · GET · ${path}`,
+      body,
+    );
   }
 
   return body as T;
 }
 
-async function settlementDownload(token: string, fileName: string) {
+async function listSettlementReports(token: string) {
+  return mpRequest<SettlementReport[]>(
+    token,
+    "/v1/account/settlement_report/list",
+  );
+}
+
+async function downloadSettlementReport(token: string, fileName: string) {
   const response = await fetch(
     `https://api.mercadopago.com/v1/account/settlement_report/${encodeURIComponent(fileName)}`,
     {
@@ -333,156 +262,25 @@ async function settlementDownload(token: string, fileName: string) {
   if (!response.ok) {
     throw new MercadoPagoReportError(
       response.status,
-      null,
-      `Mercado Pago HTTP ${response.status} ao baixar relatório Dinheiro em conta.`,
+      `Mercado Pago HTTP ${response.status} ao baixar relatório existente.`,
     );
   }
 
   return response.text();
 }
 
-function missingConfiguration(error: unknown) {
-  if (!(error instanceof MercadoPagoReportError)) return false;
-  if (error.status === 404) return true;
-  const code = (error.code ?? "").toLowerCase();
+function reportCoversPayment(report: SettlementReport, payment: OperationReconciliationPayment) {
+  if (report.status?.toLowerCase() !== "processed" || !report.file_name) return false;
+  const paymentAt = Date.parse(providerCreatedAt(payment));
+  const begin = Date.parse(report.begin_date ?? "");
+  const end = Date.parse(report.end_date ?? "");
   return (
-    code.includes("not_found") ||
-    code.includes("configuration_not_found") ||
-    code.includes("config_not_found")
+    Number.isFinite(paymentAt) &&
+    Number.isFinite(begin) &&
+    Number.isFinite(end) &&
+    paymentAt >= begin &&
+    paymentAt <= end
   );
-}
-
-function validFrequency(value: unknown) {
-  const frequency = asObject(value);
-  const hour = numberValue(frequency.hour);
-  const amount = numberValue(frequency.value);
-  const type = nonEmptyText(frequency.type);
-  if (hour == null || amount == null || !type) return null;
-  return { hour, value: amount, type };
-}
-
-function configurationPayload(
-  current?: SettlementConfig | null,
-): Record<string, unknown> {
-  const currentColumns = (current?.columns ?? [])
-    .map((column) => nonEmptyText(column.key))
-    .filter((key): key is string => Boolean(key));
-  const columns = Array.from(new Set([...currentColumns, ...REQUIRED_COLUMNS]));
-
-  const payload: Record<string, unknown> = {
-    columns: columns.map((key) => ({ key })),
-    file_name_prefix:
-      nonEmptyText(current?.file_name_prefix) ?? "prosperity-pay-settlement",
-    frequency:
-      validFrequency(current?.frequency) ??
-      ({ hour: 0, type: "monthly", value: 1 } as const),
-  };
-
-  const optionalKeys: Array<keyof SettlementConfig> = [
-    "separator",
-    "display_timezone",
-    "report_translation",
-    "header_language",
-    "include_withdraw",
-    "include_withdrawal_at_end",
-    "refund_detailed",
-    "shipping_detail",
-    "coupon_detailed",
-    "show_chargeback_cancel",
-    "show_fee_prevision",
-    "execute_after_withdrawal",
-    "check_available_balance",
-    "compensate_detail",
-  ];
-
-  for (const key of optionalKeys) {
-    const value = current?.[key];
-    if (value !== undefined && value !== null) payload[key] = value;
-  }
-
-  if (!current) {
-    payload.separator = ";";
-    payload.display_timezone = "GMT-03";
-    payload.header_language = "pt";
-  }
-
-  return payload;
-}
-
-async function readSettlementConfiguration(token: string) {
-  try {
-    return await settlementRequest<SettlementConfig>(
-      token,
-      "/v1/account/settlement_report/config",
-    );
-  } catch (error) {
-    if (missingConfiguration(error)) return null;
-    throw error;
-  }
-}
-
-async function ensureSettlementConfiguration(token: string) {
-  const current = await readSettlementConfiguration(token);
-  const currentColumns = (current?.columns ?? [])
-    .map((column) => nonEmptyText(column.key))
-    .filter((key): key is string => Boolean(key));
-  const missingColumns = REQUIRED_COLUMNS.filter(
-    (key) => !currentColumns.includes(key),
-  );
-
-  if (current && !missingColumns.length) return;
-
-  const method = current ? "PUT" : "POST";
-  try {
-    await settlementRequest(
-      token,
-      "/v1/account/settlement_report/config",
-      {
-        method,
-        body: JSON.stringify(configurationPayload(current)),
-      },
-    );
-  } catch (error) {
-    if (
-      !current &&
-      error instanceof MercadoPagoReportError &&
-      error.status === 409
-    ) {
-      // Algumas contas OAuth retornam 404 no GET /config e 409 Duplicated_id
-      // no POST, embora a configuração já exista. Atualiza diretamente.
-      await settlementRequest(
-        token,
-        "/v1/account/settlement_report/config",
-        {
-          method: "PUT",
-          body: JSON.stringify(configurationPayload(null)),
-        },
-      );
-      return;
-    }
-    throw error;
-  }
-}
-
-async function createSettlementTask(token: string, range: ReportRange) {
-  return settlementRequest<SettlementTask>(
-    token,
-    "/v1/account/settlement_report",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        begin_date: range.gte,
-        end_date: range.lte,
-      }),
-    },
-  );
-}
-
-async function getSettlementTask(token: string, taskId: string) {
-  const safePath = `/v1/account/settlement_report/task/${encodeURIComponent(taskId)}`;
-  const path =
-    `${safePath}?access_token=${encodeURIComponent(token)}`;
-  return settlementRequest<SettlementTask>(token, path, undefined, safePath);
 }
 
 async function mergePaymentMetadata(
@@ -506,7 +304,7 @@ async function mergePaymentMetadata(
     [META_KEY]: {
       ...currentMeta,
       ...patch,
-      source: "mercadopago_settlement_report",
+      source: "mercadopago_existing_settlement_report",
     },
   };
 
@@ -518,116 +316,65 @@ async function mergePaymentMetadata(
   payment.raw_provider_data = mergedRaw;
 }
 
-async function persistGroupMetadata(
-  admin: AdminClient,
-  payments: OperationReconciliationPayment[],
-  patch: ReconciliationMeta,
-) {
-  for (const payment of payments) {
-    await mergePaymentMetadata(admin, payment, patch);
-  }
-}
-
-function groupTaskId(
-  payments: OperationReconciliationPayment[],
-  range: ReportRange,
-) {
-  for (const payment of payments) {
-    const meta = reconciliationMeta(payment.raw_provider_data);
-    if (meta.range_key === range.key && meta.task_id) return meta.task_id;
-  }
-  return null;
-}
-
 function errorSummary(error: unknown) {
-  if (error instanceof MercadoPagoReportError) {
-    return error.message.slice(0, 900);
-  }
   return error instanceof Error
     ? error.message.slice(0, 900)
     : String(error).slice(0, 900);
 }
 
-async function reconcileGroup(input: {
+async function reconcileConnection(input: {
   admin: AdminClient;
-  payments: OperationReconciliationPayment[];
-  range: ReportRange;
   token: string;
+  payments: OperationReconciliationPayment[];
 }) {
-  const { admin, payments, range, token } = input;
-  await ensureSettlementConfiguration(token);
-
-  let taskId = groupTaskId(payments, range);
-  if (!taskId) {
-    const task = await createSettlementTask(token, range);
-    if (task.id == null) {
-      throw new Error(
-        "Mercado Pago não retornou o identificador da tarefa do relatório.",
-      );
-    }
-    taskId = String(task.id);
-    await persistGroupMetadata(admin, payments, {
-      range_key: range.key,
-      task_id: taskId,
-      task_status: task.status ?? "pending",
-      requested_at: new Date().toISOString(),
-      checked_at: new Date().toISOString(),
-      error: "",
-    });
-  }
-
-  const task = await getSettlementTask(token, taskId);
-  const status = nonEmptyText(task.status)?.toLowerCase() ?? "pending";
-  if (status === "pending") {
-    await persistGroupMetadata(admin, payments, {
-      range_key: range.key,
-      task_id: taskId,
-      task_status: "pending",
-      checked_at: new Date().toISOString(),
-      error: "",
-    });
-    return { resolved: 0, pending: payments.length };
-  }
-
-  if (status !== "processed" || !task.file_name) {
-    await persistGroupMetadata(admin, payments, {
-      range_key: range.key,
-      task_id: taskId,
-      task_status: status,
-      checked_at: new Date().toISOString(),
-      error:
-        status === "failed"
-          ? "Mercado Pago não conseguiu gerar o relatório Dinheiro em conta."
-          : "",
-    });
-    return { resolved: 0, pending: 0 };
-  }
-
-  const csv = await settlementDownload(token, task.file_name);
-  const operationIds = operationIdByExternalReference(csv);
+  const { admin, token, payments } = input;
+  const reports = await listSettlementReports(token);
+  const reportCache = new Map<string, Map<string, string>>();
   let resolved = 0;
 
   for (const payment of payments) {
+    const report = [...reports]
+      .filter((item) => reportCoversPayment(item, payment))
+      .sort(
+        (a, b) =>
+          Date.parse(b.end_date ?? "") - Date.parse(a.end_date ?? ""),
+      )[0];
+
+    if (!report?.file_name) {
+      await mergePaymentMetadata(admin, payment, {
+        task_status: "not_available",
+        checked_at: new Date().toISOString(),
+        error: "Nenhum relatório existente cobre a data deste pagamento.",
+      });
+      continue;
+    }
+
+    let operationIds = reportCache.get(report.file_name);
+    if (!operationIds) {
+      const csv = await downloadSettlementReport(token, report.file_name);
+      operationIds = operationIdByExternalReference(csv);
+      reportCache.set(report.file_name, operationIds);
+    }
+
     const operationId = [...candidateReferences(payment)]
-      .map((reference) => operationIds.get(reference))
+      .map((reference) => operationIds?.get(reference))
       .find((value): value is string => Boolean(value));
 
     await mergePaymentMetadata(admin, payment, {
-      range_key: range.key,
-      task_id: taskId,
+      task_id: report.id == null ? undefined : String(report.id),
       task_status: "processed",
-      file_name: task.file_name,
+      file_name: report.file_name,
       operation_id: operationId ?? "",
       checked_at: new Date().toISOString(),
       error: operationId
         ? ""
-        : "SOURCE_ID não encontrado para a referência deste pagamento.",
+        : "SOURCE_ID não encontrado no relatório existente para esta referência.",
     });
 
     if (operationId) resolved += 1;
   }
 
-  return { resolved, pending: 0 };
+  return { resolved, checked: payments.length };
 }
 
 export async function reconcileMercadoPagoOperationIds(input: {
@@ -635,90 +382,51 @@ export async function reconcileMercadoPagoOperationIds(input: {
   payments: OperationReconciliationPayment[];
   groupLimit?: number;
 }) {
-  const eligible = input.payments.filter((payment) => {
-    if (!payment.connection_id) return false;
-    if (!["approved", "refunded", "charged_back"].includes(payment.status)) {
-      return false;
-    }
-    if (manualPayment(payment) || !shouldRetry(payment.raw_provider_data)) {
-      return false;
-    }
-    const range = reportRangeForPayment(providerCreatedAt(payment));
-    return Date.parse(range.lte) <= Date.now();
-  });
+  const eligible = input.payments.filter(
+    (payment) =>
+      Boolean(payment.connection_id) &&
+      ["approved", "refunded", "charged_back"].includes(payment.status) &&
+      !manualPayment(payment) &&
+      shouldRetry(payment.raw_provider_data),
+  );
 
-  const groups = new Map<
-    string,
-    {
-      payments: OperationReconciliationPayment[];
-      range: ReportRange;
-      connectionId: string;
-    }
-  >();
-
+  const byConnection = new Map<string, OperationReconciliationPayment[]>();
   for (const payment of eligible) {
     const connectionId = payment.connection_id as string;
-    const range = reportRangeForPayment(providerCreatedAt(payment));
-    const key = `${connectionId}:${range.key}`;
-    const group = groups.get(key) ?? {
-      payments: [],
-      range,
-      connectionId,
-    };
-    group.payments.push(payment);
-    groups.set(key, group);
+    const group = byConnection.get(connectionId) ?? [];
+    group.push(payment);
+    byConnection.set(connectionId, group);
   }
 
   let processedGroups = 0;
   let resolved = 0;
-  let pending = 0;
   let failed = 0;
-  const tokenCache = new Map<string, string>();
 
-  for (const group of [...groups.values()].slice(
+  for (const [connectionId, payments] of [...byConnection.entries()].slice(
     0,
     Math.max(1, input.groupLimit ?? 3),
   )) {
     processedGroups += 1;
     try {
-      let token = tokenCache.get(group.connectionId);
-      if (!token) {
-        token = await getProviderAccessToken(group.connectionId);
-        tokenCache.set(group.connectionId, token);
-      }
-
-      const result = await reconcileGroup({
+      const token = await getProviderAccessToken(connectionId);
+      const result = await reconcileConnection({
         admin: input.admin,
-        payments: group.payments,
-        range: group.range,
         token,
+        payments,
       });
       resolved += result.resolved;
-      pending += result.pending;
     } catch (error) {
-      failed += group.payments.length;
+      failed += payments.length;
       const summary = errorSummary(error);
-      await persistGroupMetadata(input.admin, group.payments, {
-        range_key: group.range.key,
-        task_status: "error",
-        checked_at: new Date().toISOString(),
-        error: summary,
-      }).catch((metadataError) => {
-        console.error("[ML TRANSACTION ID] Falha ao persistir erro", {
-          paymentIds: group.payments.map((payment) => payment.id),
-          error: errorSummary(metadataError),
-        });
-      });
-
-      console.error("[ML TRANSACTION ID] Falha na conciliação", {
-        connectionId: group.connectionId,
-        paymentIds: group.payments.map((payment) => payment.id),
+      console.error("[ML TRANSACTION ID] Falha ao consultar relatórios existentes", {
+        connectionId,
+        paymentIds: payments.map((payment) => payment.id),
         error: summary,
       });
     }
   }
 
-  return { processedGroups, resolved, pending, failed };
+  return { processedGroups, resolved, pending: 0, failed };
 }
 
 export async function reconcileRecentMercadoPagoOperationIds(
