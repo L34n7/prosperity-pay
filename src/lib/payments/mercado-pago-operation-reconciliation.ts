@@ -448,18 +448,17 @@ async function ensureSettlementConfiguration(token: string) {
       error instanceof MercadoPagoReportError &&
       error.status === 409
     ) {
-      const recovered = await readSettlementConfiguration(token);
-      if (recovered) {
-        await settlementRequest(
-          token,
-          "/v1/account/settlement_report/config",
-          {
-            method: "PUT",
-            body: JSON.stringify(configurationPayload(recovered)),
-          },
-        );
-        return;
-      }
+      // Algumas contas OAuth retornam 404 no GET /config e 409 Duplicated_id
+      // no POST, embora a configuração já exista. Atualiza diretamente.
+      await settlementRequest(
+        token,
+        "/v1/account/settlement_report/config",
+        {
+          method: "PUT",
+          body: JSON.stringify(configurationPayload(null)),
+        },
+      );
+      return;
     }
     throw error;
   }
