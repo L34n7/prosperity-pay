@@ -44,6 +44,9 @@ type SessionMetadata = {
   targetOfferId: string;
   billingReason: "subscription_change" | "subscription_renewal";
   renewalDueAt?: string;
+  affiliateRefCode?: string;
+  affiliateMembershipId?: string;
+  affiliateLinkId?: string;
 };
 
 function parseMetadata(value: Json): SessionMetadata {
@@ -80,6 +83,18 @@ function parseMetadata(value: Json): SessionMetadata {
     renewalDueAt:
       typeof raw.renewalDueAt === "string"
         ? raw.renewalDueAt
+        : undefined,
+    affiliateRefCode:
+      typeof raw.affiliateRefCode === "string"
+        ? raw.affiliateRefCode
+        : undefined,
+    affiliateMembershipId:
+      typeof raw.affiliateMembershipId === "string"
+        ? raw.affiliateMembershipId
+        : undefined,
+    affiliateLinkId:
+      typeof raw.affiliateLinkId === "string"
+        ? raw.affiliateLinkId
         : undefined,
   };
 }
@@ -371,7 +386,9 @@ export async function createSubscriptionSessionCheckout(input: SubscriptionSessi
     admin,
     orderId: order.id,
     originOrderId: subscription.order_id,
-    affiliateMembershipId: subscription.affiliate_membership_id,
+    affiliateMembershipId:
+      session.metadata.affiliateMembershipId ??
+      subscription.affiliate_membership_id,
     grossAmountCents: amountCents,
     currency: session.currency,
     cycleNumber: session.session_type === "subscription_renewal"

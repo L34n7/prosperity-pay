@@ -229,6 +229,70 @@ export function CheckoutFlow({
     const idempotencyKey = keyRef.current ?? newAttempt();
     const cardAttempt = payload.paymentMethod === "card";
     try {
+      if (
+        recurring &&
+        !sessionToken &&
+        checkoutEndpoint === "/api/checkout/transparent"
+      ) {
+        const resolutionResponse = await fetch(
+          "/api/checkout/resolve-existing-subscription",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              offerSlug: offer.slug,
+              customerEmail: buyerRef.current.email,
+              refCode: affiliateRef,
+            }),
+          },
+        );
+        const resolution = (await resolutionResponse.json()) as {
+          matched?: boolean;
+          checkoutUrl?: string | null;
+          scheduled?: boolean;
+          effectiveAt?: string | null;
+          requiresPlanChange?: boolean;
+          message?: string | null;
+          error?: string;
+        };
+
+        if (!resolutionResponse.ok) {
+          throw new Error(
+            resolution.error ||
+              "Não foi possível verificar sua assinatura atual.",
+          );
+        }
+
+        if (resolution.matched) {
+          if (resolution.checkoutUrl) {
+            window.location.assign(resolution.checkoutUrl);
+            return true;
+          }
+
+          if (resolution.scheduled) {
+            const effectiveAt = resolution.effectiveAt
+              ? new Intl.DateTimeFormat("pt-BR", {
+                  dateStyle: "short",
+                  timeZone: "America/Sao_Paulo",
+                }).format(new Date(resolution.effectiveAt))
+              : null;
+            setError(
+              effectiveAt
+                ? `Sua alteração foi agendada para o próximo ciclo, em ${effectiveAt}. Nenhuma nova assinatura foi criada.`
+                : "Sua alteração foi agendada para o próximo ciclo. Nenhuma nova assinatura foi criada.",
+            );
+            return true;
+          }
+
+          throw new Error(
+            resolution.message ||
+              (resolution.requiresPlanChange
+                ? "Você já possui este produto em outro plano. Faça a troca em Gerenciar plano para manter a composição correta."
+                : "Já existe uma assinatura para este produto e ela não precisa de uma nova contratação."),
+          );
+        }
+      }
+
       const response = await fetch(checkoutEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
@@ -240,8 +304,15 @@ export function CheckoutFlow({
           ...payload,
         }),
       });
-      const body = await response.json() as CheckoutResult & { error?: string };
+      const body = await response.json() as CheckoutResult & {
+        error?: string;
+        checkoutUrl?: string;
+      };
       if (!response.ok) {
+        if (body.checkoutUrl) {
+          window.location.assign(body.checkoutUrl);
+          return true;
+        }
         throw new Error(body.error || "Não foi possível processar o pagamento.");
       }
       setResult(body);

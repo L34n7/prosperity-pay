@@ -599,6 +599,99 @@ async function cancelOtherRenewalAttempts(input: {
   }
 }
 
+async function applyApprovedAffiliateAttribution(input: {
+  admin: AdminClient;
+  orderId: string;
+  subscriptionId: string;
+}) {
+  const { data: session, error: sessionError } = await input.admin
+    .from("subscription_checkout_sessions")
+    .select("metadata")
+    .eq("order_id", input.orderId)
+    .maybeSingle();
+
+  if (sessionError || !session?.metadata) {
+    if (sessionError) throw sessionError;
+    return;
+  }
+
+  const metadata =
+    typeof session.metadata === "object" && !Array.isArray(session.metadata)
+      ? (session.metadata as Record<string, unknown>)
+      : {};
+  const membershipId =
+    typeof metadata.affiliateMembershipId === "string"
+      ? metadata.affiliateMembershipId
+      : null;
+  const linkId =
+    typeof metadata.affiliateLinkId === "string"
+      ? metadata.affiliateLinkId
+      : null;
+  const refCode =
+    typeof metadata.affiliateRefCode === "string"
+      ? metadata.affiliateRefCode
+      : null;
+
+  if (!membershipId || !linkId || !refCode) return;
+
+  const { data: subscription, error: subscriptionError } = await input.admin
+    .from("subscriptions")
+    .select("product_id,metadata")
+    .eq("id", input.subscriptionId)
+    .single();
+  if (subscriptionError || !subscription) {
+    throw subscriptionError ?? new Error("Assinatura não encontrada.");
+  }
+
+  const { data: membership, error: membershipError } = await input.admin
+    .from("affiliate_memberships")
+    .select("id,status,program_id")
+    .eq("id", membershipId)
+    .maybeSingle();
+  if (membershipError) throw membershipError;
+  if (!membership || membership.status !== "active") return;
+
+  const { data: program, error: programError } = await input.admin
+    .from("affiliate_programs")
+    .select("id,product_id,active")
+    .eq("id", membership.program_id)
+    .maybeSingle();
+  if (programError) throw programError;
+  if (!program?.active || program.product_id !== subscription.product_id) return;
+
+  const { data: link, error: linkError } = await input.admin
+    .from("affiliate_links")
+    .select("id,membership_id,active")
+    .eq("id", linkId)
+    .eq("membership_id", membershipId)
+    .maybeSingle();
+  if (linkError) throw linkError;
+  if (!link?.active) return;
+
+  const subscriptionMetadata =
+    subscription.metadata &&
+    typeof subscription.metadata === "object" &&
+    !Array.isArray(subscription.metadata)
+      ? (subscription.metadata as Record<string, unknown>)
+      : {};
+
+  const { error: updateError } = await input.admin
+    .from("subscriptions")
+    .update({
+      affiliate_membership_id: membershipId,
+      affiliate_link_id: linkId,
+      metadata: {
+        ...subscriptionMetadata,
+        affiliateRefCode: refCode,
+        affiliateSyncedAt: new Date().toISOString(),
+        affiliateAttributionSource: "paid_public_checkout",
+      },
+    })
+    .eq("id", input.subscriptionId);
+
+  if (updateError) throw updateError;
+}
+
 export async function syncTransparentOrder(input: {
   admin: AdminClient;
   internalOrderId: string;
@@ -930,6 +1023,14 @@ export async function syncTransparentOrder(input: {
     revertedSubscriptionOrderId = reversal.orderId;
   } else {
     await admin.from("orders").update({ status: "pending_payment" }).eq("id", internalOrderId);
+  }
+
+  if (subscriptionApplied && billingOrder.subscription_id) {
+    await applyApprovedAffiliateAttribution({
+      admin,
+      orderId: internalOrderId,
+      subscriptionId: billingOrder.subscription_id,
+    });
   }
 
   await Promise.all([
