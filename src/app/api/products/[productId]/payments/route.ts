@@ -30,7 +30,7 @@ export async function GET(_: Request, context: Context) {
     const admin = createAdminClient();
     await expireStalePayments(admin, { productId });
 
-    const [offersResult, ordersResult] = await Promise.all([
+    const [offersResult, ordersResult, programResult] = await Promise.all([
       admin
         .from("offers")
         .select("id,name,payment_card_enabled,payment_pix_enabled,primary_payment_method")
@@ -44,10 +44,15 @@ export async function GET(_: Request, context: Context) {
         .eq("product_id", productId)
         .order("created_at", { ascending: false })
         .limit(500),
+      admin
+        .from("affiliate_programs")
+        .select("id")
+        .eq("product_id", productId)
+        .maybeSingle(),
     ]);
 
-    if (offersResult.error || ordersResult.error) {
-      throw offersResult.error ?? ordersResult.error;
+    if (offersResult.error || ordersResult.error || programResult.error) {
+      throw offersResult.error ?? ordersResult.error ?? programResult.error;
     }
 
     const offers = offersResult.data ?? [];
@@ -88,15 +93,133 @@ export async function GET(_: Request, context: Context) {
     const payments = (paymentsResult.data ?? []).filter((payment) => !isHiddenTestPayment(payment.raw_provider_data));
     const paymentIds = payments.map((payment) => payment.id);
 
-    const transactionsResult = paymentIds.length
-      ? await admin
-          .from("payment_transactions")
-          .select("id,payment_id,transaction_type,status,occurred_at,created_at")
-          .in("payment_id", paymentIds)
-          .order("created_at", { ascending: false })
-      : { data: [], error: null };
+    const [transactionsResult, attributionsResult, partnerCommissionsResult] =
+      await Promise.all([
+        paymentIds.length
+          ? admin
+              .from("payment_transactions")
+              .select("id,payment_id,transaction_type,status,occurred_at,created_at")
+              .in("payment_id", paymentIds)
+              .order("created_at", { ascending: false })
+          : Promise.resolve({ data: [], error: null }),
+        orderIds.length
+          ? admin
+              .from("affiliate_attributions")
+              .select("order_id,affiliate_membership_id")
+              .in("order_id", orderIds)
+          : Promise.resolve({ data: [], error: null }),
+        paymentIds.length
+          ? admin
+              .from("commissions")
+              .select("payment_id,beneficiary_user_id,commission_type,status")
+              .in("payment_id", paymentIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
-    if (transactionsResult.error) throw transactionsResult.error;
+    if (
+      transactionsResult.error ||
+      attributionsResult.error ||
+      partnerCommissionsResult.error
+    ) {
+      throw (
+        transactionsResult.error ||
+        attributionsResult.error ||
+        partnerCommissionsResult.error
+      );
+    }
+
+    const attributionMembershipIds = Array.from(
+      new Set(
+        (attributionsResult.data ?? [])
+          .map((item) => item.affiliate_membership_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const partnerBeneficiaryIds = Array.from(
+      new Set(
+        (partnerCommissionsResult.data ?? [])
+          .filter(
+            (commission) =>
+              commission.commission_type === "affiliate" &&
+              commission.status !== "cancelled" &&
+              commission.status !== "reversed",
+          )
+          .map((commission) => commission.beneficiary_user_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    const [attributedMembershipsResult, beneficiaryMembershipsResult] =
+      await Promise.all([
+        attributionMembershipIds.length
+          ? admin
+              .from("affiliate_memberships")
+              .select("id,partner_type")
+              .in("id", attributionMembershipIds)
+          : Promise.resolve({ data: [], error: null }),
+        programResult.data && partnerBeneficiaryIds.length
+          ? admin
+              .from("affiliate_memberships")
+              .select("user_id,partner_type,status,updated_at")
+              .eq("program_id", programResult.data.id)
+              .in("user_id", partnerBeneficiaryIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+    if (
+      attributedMembershipsResult.error ||
+      beneficiaryMembershipsResult.error
+    ) {
+      throw (
+        attributedMembershipsResult.error ||
+        beneficiaryMembershipsResult.error
+      );
+    }
+
+    const typeByMembershipId = new Map(
+      (attributedMembershipsResult.data ?? []).map((membership) => [
+        membership.id,
+        membership.partner_type,
+      ]),
+    );
+    const typeByBeneficiary = new Map<string, string>();
+    for (const membership of [...(beneficiaryMembershipsResult.data ?? [])].sort(
+      (a, b) => {
+        const activeOrder =
+          Number(b.status === "active") - Number(a.status === "active");
+        if (activeOrder !== 0) return activeOrder;
+        return String(b.updated_at).localeCompare(String(a.updated_at));
+      },
+    )) {
+      if (!typeByBeneficiary.has(membership.user_id)) {
+        typeByBeneficiary.set(membership.user_id, membership.partner_type);
+      }
+    }
+
+    const partnerTypeByOrder = new Map<string, string>();
+    for (const attribution of attributionsResult.data ?? []) {
+      if (!attribution.order_id) continue;
+      partnerTypeByOrder.set(
+        attribution.order_id,
+        typeByMembershipId.get(attribution.affiliate_membership_id) ?? "affiliate",
+      );
+    }
+    const paymentOrderById = new Map(
+      payments.map((payment) => [payment.id, payment.order_id]),
+    );
+    for (const commission of partnerCommissionsResult.data ?? []) {
+      if (
+        commission.commission_type !== "affiliate" ||
+        commission.status === "cancelled" ||
+        commission.status === "reversed"
+      ) continue;
+      const orderId = paymentOrderById.get(commission.payment_id);
+      if (!orderId || partnerTypeByOrder.has(orderId)) continue;
+      partnerTypeByOrder.set(
+        orderId,
+        typeByBeneficiary.get(commission.beneficiary_user_id) ?? "affiliate",
+      );
+    }
 
     const orderMap = new Map(orders.map((order) => [order.id, order]));
     const offerMap = new Map(offers.map((offer) => [offer.id, offer]));
@@ -151,6 +274,7 @@ export async function GET(_: Request, context: Context) {
           external_payment_id: payment.external_payment_id,
           external_reference: payment.external_reference,
           provider_fee_amount_cents: Number(payment.provider_fee_amount_cents ?? 0),
+          partner_type: partnerTypeByOrder.get(order.id) ?? null,
           allowed_methods: {
             card: Boolean(offer?.payment_card_enabled),
             pix: Boolean(offer?.payment_pix_enabled),

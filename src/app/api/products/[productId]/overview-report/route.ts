@@ -180,6 +180,20 @@ export async function GET(_: Request, context: Context) {
       );
     }
 
+    const userToMembership = new Map(members.map(member => [member.user_id, member.id]));
+    for (const commission of commissionsResult.data ?? []) {
+      if (
+        commission.commission_type !== "affiliate" ||
+        commission.status === "cancelled" ||
+        commission.status === "reversed"
+      ) continue;
+      const orderId = orderByPaymentId.get(commission.payment_id);
+      const membershipId = userToMembership.get(commission.beneficiary_user_id);
+      if (orderId && membershipId && !attributionByOrder.has(orderId)) {
+        attributionByOrder.set(orderId, membershipId);
+      }
+    }
+
     const ordersById = new Map(orders.map(order => [order.id, order]));
     const offersById = new Map(offers.map(offer => [offer.id, offer]));
     const offerStats = new Map(offers.map(offer => [offer.id, { ...emptyStats(), affiliate_sales_count: 0, direct_sales_count: 0 }]));
@@ -226,7 +240,6 @@ export async function GET(_: Request, context: Context) {
       }
     }
 
-    const userToMembership = new Map(members.map(member => [member.user_id, member.id]));
     const membershipToUser = new Map(members.map(member => [member.id, member.user_id]));
     const affiliateRuleByOrderAndUser = new Map<string, unknown>();
 

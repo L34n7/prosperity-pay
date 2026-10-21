@@ -17,19 +17,22 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const params = await searchParams;
   const activeTab = firstParam(params.tab) === "caixa" ? "caixa" : "pagamentos";
 
-  const content = activeTab === "caixa"
-    ? {
-        cash: await getSalesCashControlView({
-          month: firstParam(params.month),
-          day: firstParam(params.day),
-          hour: firstParam(params.hour),
-        }),
-        finance: null,
-      }
-    : {
-        cash: null,
-        finance: await getFinanceView(),
-      };
+  const content =
+    activeTab === "caixa"
+      ? {
+          cash: await getSalesCashControlView({
+            preset: firstParam(params.preset),
+            startDate: firstParam(params.startDate),
+            startTime: firstParam(params.startTime),
+            endDate: firstParam(params.endDate),
+            endTime: firstParam(params.endTime),
+          }),
+          finance: null,
+        }
+      : {
+          cash: null,
+          finance: await getFinanceView(),
+        };
 
   return (
     <>

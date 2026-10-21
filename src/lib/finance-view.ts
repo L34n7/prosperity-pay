@@ -189,14 +189,40 @@ export async function getFinanceView() {
         .filter((id): id is string => Boolean(id)),
     ),
   );
-  const outgoingMembershipsResult = outgoingMembershipIds.length
-    ? await admin
-        .from("affiliate_memberships")
-        .select("id,partner_type")
-        .in("id", outgoingMembershipIds)
-    : { data: [], error: null };
+  const outgoingBeneficiaryIds = Array.from(
+    new Set(
+      (outgoingCommissionsResult.data ?? [])
+        .filter((commission) => commission.commission_type === "affiliate")
+        .map((commission) => commission.beneficiary_user_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
 
-  if (outgoingMembershipsResult.error) throw outgoingMembershipsResult.error;
+  const [outgoingMembershipsResult, outgoingBeneficiaryMembershipsResult] =
+    await Promise.all([
+      outgoingMembershipIds.length
+        ? admin
+            .from("affiliate_memberships")
+            .select("id,partner_type")
+            .in("id", outgoingMembershipIds)
+        : Promise.resolve({ data: [], error: null }),
+      outgoingBeneficiaryIds.length
+        ? admin
+            .from("affiliate_memberships")
+            .select("user_id,program_id,partner_type,status,updated_at")
+            .in("user_id", outgoingBeneficiaryIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+  if (
+    outgoingMembershipsResult.error ||
+    outgoingBeneficiaryMembershipsResult.error
+  ) {
+    throw (
+      outgoingMembershipsResult.error ||
+      outgoingBeneficiaryMembershipsResult.error
+    );
+  }
 
   const outgoingMembershipType = new Map(
     (outgoingMembershipsResult.data ?? []).map((membership) => [
@@ -204,15 +230,80 @@ export async function getFinanceView() {
       membership.partner_type,
     ]),
   );
-  const outgoingPartnerTypes = Object.fromEntries(
-    (attributionsResult.data ?? [])
-      .filter((item) => item.order_id)
-      .map((item) => [
-        item.order_id as string,
-        item.affiliate_membership_id
-          ? outgoingMembershipType.get(item.affiliate_membership_id) ?? "affiliate"
+  const programProductById = new Map(
+    (partnerPrograms ?? []).map((program) => [program.id, program.product_id]),
+  );
+  const fallbackPartnerTypeByUserProduct = new Map<string, string>();
+
+  for (const membership of [...(outgoingBeneficiaryMembershipsResult.data ?? [])].sort(
+    (a, b) => {
+      const activeOrder =
+        Number(b.status === "active") - Number(a.status === "active");
+      if (activeOrder !== 0) return activeOrder;
+      return String(b.updated_at).localeCompare(String(a.updated_at));
+    },
+  )) {
+    const productId = programProductById.get(membership.program_id);
+    if (!productId) continue;
+    const key = `${membership.user_id}:${productId}`;
+    if (!fallbackPartnerTypeByUserProduct.has(key)) {
+      fallbackPartnerTypeByUserProduct.set(key, membership.partner_type);
+    }
+  }
+
+  const outgoingPartnerTypes: Record<string, string> = {};
+  for (const attribution of attributionsResult.data ?? []) {
+    if (!attribution.order_id) continue;
+    outgoingPartnerTypes[attribution.order_id] =
+      attribution.affiliate_membership_id
+        ? outgoingMembershipType.get(attribution.affiliate_membership_id) ??
+          "affiliate"
+        : "affiliate";
+  }
+
+  const paymentOrderById = new Map(
+    paymentRows.map((payment) => [payment.id, payment.order_id]),
+  );
+  const orderProductById = new Map(
+    safeOrders.map((order) => [order.id, order.product_id]),
+  );
+
+  for (const commission of outgoingCommissionsResult.data ?? []) {
+    if (commission.commission_type !== "affiliate") continue;
+    const orderId = paymentOrderById.get(commission.payment_id);
+    if (!orderId || outgoingPartnerTypes[orderId]) continue;
+    const productId = orderProductById.get(orderId);
+    if (!productId) continue;
+    outgoingPartnerTypes[orderId] =
+      fallbackPartnerTypeByUserProduct.get(
+        `${commission.beneficiary_user_id}:${productId}`,
+      ) ?? "affiliate";
+  }
+
+  const currentPartnerTypeByProduct = new Map<string, string>();
+  for (const membership of partnerMemberships ?? []) {
+    const productId = programProductById.get(membership.program_id);
+    if (!productId) continue;
+    if (
+      !currentPartnerTypeByProduct.has(productId) ||
+      membership.status === "active"
+    ) {
+      currentPartnerTypeByProduct.set(productId, membership.partner_type);
+    }
+  }
+  const commissionPartnerTypes = Object.fromEntries(
+    (commissions ?? []).map((commission) => {
+      if (commission.commission_type === "coproducer") {
+        return [commission.id, "coproducer"];
+      }
+      const productId = commission.payments?.orders?.product_id;
+      return [
+        commission.id,
+        productId
+          ? currentPartnerTypeByProduct.get(productId) ?? "affiliate"
           : "affiliate",
-      ]),
+      ];
+    }),
   );
 
   const producerRevenueEntryTypes = new Set([
@@ -253,6 +344,7 @@ export async function getFinanceView() {
         : null,
     })),
     commissions: commissions ?? [],
+    commissionPartnerTypes,
     outgoingCommissions: outgoingCommissionsResult.data ?? [],
     outgoingPartnerTypes,
     partnerMemberships: partnerMemberships ?? [],

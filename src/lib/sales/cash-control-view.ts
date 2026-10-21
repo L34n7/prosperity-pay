@@ -1,6 +1,12 @@
 import { ensureInitialPlatformAdmin, requireUser } from "@/lib/auth/require-user";
-
-const CASH_TIME_ZONE = "America/Sao_Paulo";
+import {
+  CASH_TIME_ZONE,
+  isSalesCashPreset,
+  resolveSalesCashPreset,
+  type SalesCashPreset,
+  type SalesCashRangeFields,
+} from "@/lib/sales/cash-control-presets";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type SalesCashControlTotals = {
   sales_count: number;
@@ -21,12 +27,9 @@ export type SalesCashControlTotals = {
 export type SalesCashControlView = {
   totals: SalesCashControlTotals;
   isPlatformAdmin: boolean;
-  filters: {
-    month: string;
-    day: number | null;
-    hour: number | null;
+  filters: SalesCashRangeFields & {
+    preset: SalesCashPreset;
   };
-  daysInMonth: number;
 };
 
 const EMPTY_TOTALS: SalesCashControlTotals = {
@@ -45,58 +48,119 @@ const EMPTY_TOTALS: SalesCashControlTotals = {
   total_commission_cents: 0,
 };
 
-function currentMonthInSaoPaulo(now = new Date()) {
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function validFields(input: Partial<SalesCashRangeFields>) {
+  return Boolean(
+    input.startDate &&
+      DATE_PATTERN.test(input.startDate) &&
+      input.endDate &&
+      DATE_PATTERN.test(input.endDate) &&
+      input.startTime &&
+      TIME_PATTERN.test(input.startTime) &&
+      input.endTime &&
+      TIME_PATTERN.test(input.endTime),
+  );
+}
+
+function timeZoneOffsetMs(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: CASH_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
-  }).formatToParts(now);
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  return year && month ? `${year}-${month}` : now.toISOString().slice(0, 7);
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const representedAsUtc = Date.UTC(
+    read("year"),
+    read("month") - 1,
+    read("day"),
+    read("hour"),
+    read("minute"),
+    read("second"),
+  );
+  return representedAsUtc - date.getTime();
 }
 
-function normalizeMonth(value?: string) {
-  return value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)
-    ? value
-    : currentMonthInSaoPaulo();
-}
-
-function daysInMonth(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  return new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
-}
-
-function optionalInteger(value: string | undefined, min: number, max: number) {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : null;
+function saoPauloWallTimeToUtc(dateValue: string, timeValue: string) {
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const [hour, minute] = timeValue.split(":").map(Number);
+  const wallClock = Date.UTC(year, month - 1, day, hour, minute, 0);
+  const guess = new Date(wallClock);
+  const firstOffset = timeZoneOffsetMs(guess);
+  let resolved = new Date(wallClock - firstOffset);
+  const secondOffset = timeZoneOffsetMs(resolved);
+  if (secondOffset !== firstOffset) {
+    resolved = new Date(wallClock - secondOffset);
+  }
+  return resolved;
 }
 
 export async function getSalesCashControlView(input: {
-  month?: string;
-  day?: string;
-  hour?: string;
+  preset?: string;
+  startDate?: string;
+  startTime?: string;
+  endDate?: string;
+  endTime?: string;
 }): Promise<SalesCashControlView> {
-  const { user, supabase } = await requireUser();
+  const { user } = await requireUser();
   const isPlatformAdmin = await ensureInitialPlatformAdmin(user.id);
-  const month = normalizeMonth(input.month);
-  const monthDays = daysInMonth(month);
-  const day = optionalInteger(input.day, 1, monthDays);
-  const hour = optionalInteger(input.hour, 0, 23);
+  const preset = isSalesCashPreset(input.preset)
+    ? input.preset
+    : "current_month";
 
-  const { data, error } = await supabase.rpc("get_sales_cash_control_totals", {
-    target_month: `${month}-01`,
-    target_day: day,
-    target_hour: hour,
-  });
+  const submittedFields = {
+    startDate: input.startDate,
+    startTime: input.startTime,
+    endDate: input.endDate,
+    endTime: input.endTime,
+  };
+  const fields = validFields(submittedFields)
+    ? (submittedFields as SalesCashRangeFields)
+    : resolveSalesCashPreset(
+        preset === "custom" ? "current_month" : preset,
+        new Date(),
+      );
+
+  const startAt = saoPauloWallTimeToUtc(fields.startDate, fields.startTime);
+  const endAtInclusiveMinute = saoPauloWallTimeToUtc(
+    fields.endDate,
+    fields.endTime,
+  );
+  const endAt = new Date(endAtInclusiveMinute.getTime() + 60_000);
+
+  if (
+    !Number.isFinite(startAt.getTime()) ||
+    !Number.isFinite(endAt.getTime()) ||
+    endAt <= startAt
+  ) {
+    throw new Error("Intervalo de datas inválido.");
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc(
+    "get_sales_cash_control_range_totals",
+    {
+      target_user_id: user.id,
+      target_start_at: startAt.toISOString(),
+      target_end_at: endAt.toISOString(),
+    },
+  );
 
   if (error) throw error;
 
   return {
     totals: data?.[0] ?? EMPTY_TOTALS,
     isPlatformAdmin,
-    filters: { month, day, hour },
-    daysInMonth: monthDays,
+    filters: {
+      preset: validFields(submittedFields) ? preset : "current_month",
+      ...fields,
+    },
   };
 }

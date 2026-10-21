@@ -31,6 +31,7 @@ type ProductPayment = {
   external_payment_id: string | null;
   external_reference: string;
   provider_fee_amount_cents: number;
+  partner_type: "affiliate" | "accredited" | null;
   allowed_methods: { card: boolean; pix: boolean; primary: "card" | "pix" };
   actual_method: "card" | "pix" | "other";
   provider_method_id: string | null;
@@ -348,7 +349,7 @@ export function ProductPaymentsManagement({ id }: { id: string }) {
             <div><dt>Valor bruto</dt><dd>{money(selected.amount_cents)}</dd></div>
             <div><dt>Taxa do gateway</dt><dd>{money(selected.provider_fee_amount_cents)}</dd></div>
             <div><dt>Taxa Prosperity</dt><dd>{selected.financial ? money(selected.financial.prosperity_fee_amount_cents) : "—"}</dd></div>
-            <div><dt>Comissão afiliado</dt><dd>{selected.financial ? money(selected.financial.affiliate_amount_cents) : "—"}</dd></div>
+            <div><dt>{selected.partner_type === "accredited" ? "Comissão credenciado" : selected.partner_type === "affiliate" ? "Comissão afiliado" : "Comissão parceiro"}</dt><dd>{selected.financial ? money(selected.financial.affiliate_amount_cents) : "—"}</dd></div>
             <div><dt>Coprodução</dt><dd>{selected.financial ? money(selected.financial.coproducer_amount_cents) : "—"}</dd></div>
             <div><dt>Produtor</dt><dd>{selected.financial ? money(selected.financial.producer_amount_cents) : "—"}</dd></div>
           </dl></section>
