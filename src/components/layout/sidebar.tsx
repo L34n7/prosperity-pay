@@ -24,7 +24,7 @@ import { Brand } from "@/components/ui/brand";
 const primaryItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Produtos", href: "/produtos", icon: Package },
-  { label: "Pagamentos", href: "/pagamentos", icon: CreditCard },
+  { label: "Vendas", href: "/pagamentos", icon: CreditCard },
   { label: "Afiliados", href: "/afiliados", icon: Users },
   { label: "Coproduções", href: "/coproducoes", icon: UserRound },
   { label: "Comissões", href: "/comissoes", icon: BadgeDollarSign },

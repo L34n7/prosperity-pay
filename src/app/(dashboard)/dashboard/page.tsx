@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DashboardModeSelect } from "@/components/dashboard/dashboard-mode-select";
+import { OperationalStatsGrid } from "@/components/dashboard/operational-stats-grid";
 import { PaymentStatusChart } from "@/components/dashboard/payment-status-chart";
 import { PaymentVolumeChart } from "@/components/dashboard/payment-volume-chart";
 import { PageHeader } from "@/components/ui/page-header";
@@ -28,19 +29,6 @@ function metadataText(value: unknown, key: string) {
 function paymentMethodOf(rawProviderData: unknown) {
   const method = mercadoPagoPaymentMetadata(rawProviderData).method;
   return method === "pix" ? "PIX" : method === "card" ? "Cartão" : "—";
-}
-
-function StatsGrid({ items }: { items: Array<[string, string]> }) {
-  return (
-    <section className="operational-stats">
-      {items.map(([label, value]) => (
-        <article className="panel operational-stat" key={label}>
-          <span>{label}</span>
-          <strong>{value}</strong>
-        </article>
-      ))}
-    </section>
-  );
 }
 
 function PaymentsReport({
@@ -258,7 +246,7 @@ function ProducerDashboard({
         }
       />
 
-      <StatsGrid
+      <OperationalStatsGrid
         items={[
           ["Vendas", String(approved.length)],
           ["Volume processado", formatCents(volume)],
@@ -393,7 +381,7 @@ function PartnerDashboard({
         }
       />
 
-      <StatsGrid
+      <OperationalStatsGrid
         items={[
           ["Comissões geradas", formatCents(generated)],
           ["Em retenção", formatCents(retained)],
@@ -459,7 +447,7 @@ async function AdminDashboard({ firstName }: { firstName: string }) {
         description="Visão consolidada de toda a operação da Prosperity Pay."
       />
 
-      <StatsGrid
+      <OperationalStatsGrid
         items={[
           ["Vendas", String(Number(totals.sales_count))],
           ["Volume processado", formatCents(Number(totals.volume_cents))],

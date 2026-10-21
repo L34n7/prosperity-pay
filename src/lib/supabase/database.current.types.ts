@@ -459,6 +459,28 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
           total_commission_cents: number;
         }>;
       };
+      get_sales_cash_control_totals: {
+        Args: {
+          target_month: string;
+          target_day: number | null;
+          target_hour: number | null;
+        };
+        Returns: Array<{
+          sales_count: number;
+          volume_cents: number;
+          product_revenue_cents: number;
+          ticket_average_cents: number;
+          available_cents: number;
+          pending_cents: number;
+          withdrawals_cents: number;
+          prosperity_fee_cents: number;
+          provider_fee_cents: number;
+          affiliate_commission_cents: number;
+          accredited_commission_cents: number;
+          coproducer_commission_cents: number;
+          total_commission_cents: number;
+        }>;
+      };
       get_auth_user_id_by_email: {
         Args: { p_email: string };
         Returns: string | null;

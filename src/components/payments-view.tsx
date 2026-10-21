@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatCents, formatDate } from "@/lib/operational";
 import type { PaymentStatus } from "@/lib/payments";
@@ -326,11 +325,6 @@ export function PaymentsView({
 
   return (
     <>
-      <PageHeader
-        title="Pagamentos"
-        description="Transações dos seus produtos, com comprador, e-mail e plano."
-      />
-
       <section className="panel operational-panel">
         <label className="payment-search">
           <span>Buscar pagamentos</span>

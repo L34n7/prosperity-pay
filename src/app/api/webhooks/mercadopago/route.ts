@@ -6,6 +6,7 @@ import { dispatchSubscriptionIntegrationEventSafe } from "@/lib/integrations/sub
 import { revertPrepaidSubscriptionAfterPaymentReversal } from "@/lib/subscriptions/payment-reversal";
 import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 import { getPaymentProvider, type ProviderPayment } from "@/lib/payments";
+import { reversePaymentFinancials } from "@/lib/payments/payment-financial-reversal";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { verifyMercadoPagoSignature } from "@/lib/payments/providers/mercadopago/webhook-signature";
 import { sha256 } from "@/lib/security/hash";
@@ -55,37 +56,6 @@ async function candidates(admin: AdminClient, providerId: string, userId?: strin
 
 async function providerFor(connectionId: string) {
   return getPaymentProvider("mercadopago", await getProviderAccessToken(connectionId));
-}
-
-async function reverseFinancials(admin: AdminClient, storedPayment: { id: string }, payment: ProviderPayment) {
-  const { data: entries, error } = await admin.from("ledger_entries").select("*")
-    .eq("payment_id", storedPayment.id).eq("status", "posted").gt("amount_cents", 0);
-  if (error) throw error;
-  if (entries?.length) {
-    const entryType = payment.status === "refunded" ? "refund" : "chargeback";
-    const byAccount = new Map<string, { amount: number; ids: string[]; entry: (typeof entries)[number] }>();
-    for (const entry of entries) {
-      const group = byAccount.get(entry.account_id) ?? { amount: 0, ids: [], entry };
-      group.amount += Number(entry.amount_cents);
-      group.ids.push(entry.id);
-      byAccount.set(entry.account_id, group);
-    }
-    const reversal = await admin.from("ledger_entries").upsert([...byAccount.values()].map(({ amount, ids, entry }) => ({
-      account_id: entry.account_id,
-      order_id: entry.order_id,
-      payment_id: entry.payment_id,
-      settlement_model: entry.settlement_model,
-      entry_type: entryType,
-      amount_cents: -amount,
-      currency: entry.currency,
-      available_at: new Date().toISOString(),
-      source_type: entryType,
-      source_id: storedPayment.id,
-      reference: `${entryType}:${payment.externalId}`,
-      metadata: { reversesEntryIds: ids },
-    })), { onConflict: "account_id,source_type,source_id,entry_type", ignoreDuplicates: true });
-    if (reversal.error) throw reversal.error;
-  }
 }
 
 async function applyPaymentState(input: {
@@ -141,18 +111,17 @@ async function applyPaymentState(input: {
     | null = null;
 
   if (payment.status === "refunded" || payment.status === "charged_back") {
-    await reverseFinancials(admin, storedPayment, payment);
-    const updates = await Promise.all([
-      admin.from("orders").update({
-        status: payment.status === "refunded" ? "refunded" : "charged_back",
-        updated_at: new Date().toISOString(),
-      }).eq("id", storedPayment.order_id),
-      admin.from("commissions").update({
-        status: "reversed",
-        reversed_at: new Date().toISOString(),
-      }).eq("payment_id", storedPayment.id),
-    ]);
-    for (const update of updates) if (update.error) throw update.error;
+    await reversePaymentFinancials({
+      admin,
+      paymentId: storedPayment.id,
+      status: payment.status,
+      externalPaymentId: payment.externalId,
+    });
+    const orderUpdate = await admin.from("orders").update({
+      status: payment.status === "refunded" ? "refunded" : "charged_back",
+      updated_at: new Date().toISOString(),
+    }).eq("id", storedPayment.order_id);
+    if (orderUpdate.error) throw orderUpdate.error;
 
     subscriptionReversal =
       await revertPrepaidSubscriptionAfterPaymentReversal(

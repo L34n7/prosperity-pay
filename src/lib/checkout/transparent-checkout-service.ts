@@ -8,6 +8,7 @@ import { revertPrepaidSubscriptionAfterPaymentReversal } from "@/lib/subscriptio
 import { dispatchPaymentEmailNotificationsSafe } from "@/lib/email/payment-notifications";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { fetchMercadoPagoFeeForOrder } from "@/lib/payments/mercado-pago-fee-reconciliation";
+import { reversePaymentFinancials } from "@/lib/payments/payment-financial-reversal";
 import { digits, sha256 } from "@/lib/security/hash";
 import { createRecurringSnapshot } from "@/lib/subscriptions/recurring-financials";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -913,6 +914,13 @@ export async function syncTransparentOrder(input: {
       })
       .eq("id", internalOrderId);
     if (orderError) throw orderError;
+
+    await reversePaymentFinancials({
+      admin,
+      paymentId: currentPayment.id,
+      status,
+      externalPaymentId: transaction.id ?? currentPayment.id,
+    });
 
     const reversal = await revertPrepaidSubscriptionAfterPaymentReversal(
       admin,
