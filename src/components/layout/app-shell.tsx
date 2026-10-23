@@ -2,10 +2,25 @@
 
 import { useState } from "react";
 import { Sidebar } from "./sidebar";
+import { SupportModeBanner } from "./support-mode-banner";
 import { Topbar } from "./topbar";
 
-export type ShellProfile = { name: string; email: string; admin: boolean; platformAdmin: boolean; accreditedPartner: boolean };
-export function AppShell({ children, profile }: { children: React.ReactNode; profile: ShellProfile }) {
+export type ShellProfile = {
+  name: string;
+  email: string;
+  admin: boolean;
+  platformAdmin: boolean;
+  accreditedPartner: boolean;
+  supportMode?: boolean;
+};
+
+export function AppShell({
+  children,
+  profile,
+}: {
+  children: React.ReactNode;
+  profile: ShellProfile;
+}) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -25,6 +40,9 @@ export function AppShell({ children, profile }: { children: React.ReactNode; pro
         onMobileClose={() => setMobileOpen(false)}
       />
       <div className="app-frame">
+        {profile.supportMode ? (
+          <SupportModeBanner name={profile.name} email={profile.email} />
+        ) : null}
         <Topbar profile={profile} onMenuOpen={() => setMobileOpen(true)} />
         <main className="app-content">{children}</main>
       </div>

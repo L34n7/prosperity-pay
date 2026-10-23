@@ -88,7 +88,7 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admi
             {!collapsed && <p>Conta</p>}
             {secondaryItems.map(renderItem)}
             {admin && renderItem({ label: "Admin", href: "/admin", icon: Landmark })}
-            {platformAdmin && renderItem({ label: "Plataforma", href: "/admin/plataforma", icon: ServerCog })}
+            {platformAdmin && renderItem({ label: "Usuários", href: "/admin/usuarios", icon: Users })}\n            {platformAdmin && renderItem({ label: "Plataforma", href: "/admin/plataforma", icon: ServerCog })}
           </div>
         </nav>
 
