@@ -5,6 +5,11 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { WithdrawalConfirmationModal } from "@/components/withdrawal-confirmation-modal";
 import { formatCents, formatDate, requestJson } from "@/lib/operational";
+import {
+  MIN_WITHDRAWAL_CENTS,
+  residualBalanceCents,
+  withdrawableBalanceCents,
+} from "@/lib/financial/withdrawal-balance";
 import styles from "./withdrawals-view.module.css";
 
 type Balance = { available_cents: number };
@@ -67,6 +72,8 @@ export function WithdrawalsView() {
     () => pix.filter((item) => item.status === "verified"),
     [pix],
   );
+  const withdrawableCents = withdrawableBalanceCents(balance.available_cents);
+  const residualCents = residualBalanceCents(balance.available_cents);
 
   const load = useCallback(async () => {
     try {
@@ -101,7 +108,7 @@ export function WithdrawalsView() {
     const payoutAccountId = String(data.get("pix") ?? "");
     const selectedPix = verifiedPix.find((item) => item.id === payoutAccountId);
 
-    if (!Number.isFinite(amountCents) || amountCents < 500) {
+    if (!Number.isFinite(amountCents) || amountCents < MIN_WITHDRAWAL_CENTS) {
       setError("O saque mínimo é de R$ 5,00.");
       return;
     }
@@ -176,11 +183,18 @@ export function WithdrawalsView() {
               <p>Escolha a chave de destino e informe o valor desejado.</p>
             </div>
             <strong className={styles.balance}>
-              {formatCents(balance.available_cents)}
+              {formatCents(withdrawableCents)}
             </strong>
           </header>
 
           <div className={styles.panelBody}>
+            {residualCents > 0 && withdrawableCents === 0 && (
+              <p className={styles.residualBalance}>
+                Você possui {formatCents(residualCents)} acumulado. Esse saldo
+                será somado aos próximos créditos e ficará disponível para saque
+                ao atingir R$ 5,00.
+              </p>
+            )}
             {!allowed ? (
               <p className={styles.blocked}>
                 Para sacar, conclua a verificação de identidade e cadastre uma
@@ -206,20 +220,20 @@ export function WithdrawalsView() {
                     name="amount"
                     type="number"
                     min="5"
-                    max={balance.available_cents / 100}
+                    max={withdrawableCents / 100}
                     step="0.01"
                     placeholder="5,00"
                     required
                   />
                   <small>
-                    Mínimo R$ 5,00 · Máximo {formatCents(balance.available_cents)}
+                    Mínimo R$ 5,00 · Máximo {formatCents(withdrawableCents)}
                   </small>
                 </label>
 
                 <div className={styles.actionCell}>
                   <button
                     className={styles.submit}
-                    disabled={balance.available_cents < 500}
+                    disabled={withdrawableCents < MIN_WITHDRAWAL_CENTS}
                   >
                     Solicitar saque
                   </button>

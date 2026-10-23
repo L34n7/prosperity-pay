@@ -140,7 +140,7 @@ export async function getPartnerCustomerPortfolio(options?: {
     admin
       .from("commissions")
       .select(
-        "amount_cents,status,created_at,payments!commissions_payment_id_fkey(order_id)",
+        "amount_cents,status,available_at,created_at,payments!commissions_payment_id_fkey(order_id)",
       )
       .eq("beneficiary_user_id", user.id),
   ]);
@@ -334,10 +334,15 @@ export async function getPartnerCustomerPortfolio(options?: {
     const entry = portfolioMap.get(key);
     if (!entry) continue;
     const amount = Number(commission.amount_cents || 0);
+    const effectiveStatus =
+      commission.status === "pending" &&
+      asTime(commission.available_at) <= Date.now()
+        ? "available"
+        : commission.status;
     entry.commissionTotalCents += amount;
-    if (commission.status === "pending") entry.commissionPendingCents += amount;
-    if (commission.status === "available") entry.commissionAvailableCents += amount;
-    if (commission.status === "paid") entry.commissionPaidCents += amount;
+    if (effectiveStatus === "pending") entry.commissionPendingCents += amount;
+    if (effectiveStatus === "available") entry.commissionAvailableCents += amount;
+    if (effectiveStatus === "paid") entry.commissionPaidCents += amount;
   }
 
   const customers = Array.from(portfolioMap.values())

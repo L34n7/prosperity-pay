@@ -71,3 +71,14 @@
 .receipt{margin-top:12px;padding:10px 12px;border:1px solid rgba(34,230,161,.12);border-radius:9px;background:rgba(34,230,161,.03);color:var(--text-muted);font-size:.84rem}
 @media(max-width:950px){.historyDetails{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.historyTop{flex-direction:column}.historyDetails{grid-template-columns:1fr}}
+
+.residualBalance {
+  margin: 0 0 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.018);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}

@@ -319,12 +319,8 @@ function PartnerDashboard({
   const retained = valid
     .filter((commission) => effectiveStatus(commission) === "pending")
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
-  const available = valid
-    .filter((commission) => effectiveStatus(commission) === "available")
-    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
-  const received = valid
-    .filter((commission) => effectiveStatus(commission) === "paid")
-    .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
+  const available = data.withdrawalSummary.withdrawable_cents;
+  const received = data.withdrawalSummary.paid_cents;
 
   const partnerTypeByProduct = new Map<string, string>();
   for (const membership of data.partnerMemberships) {
@@ -385,8 +381,8 @@ function PartnerDashboard({
         items={[
           ["Comissões geradas", formatCents(generated)],
           ["Em retenção", formatCents(retained)],
-          ["Disponível", formatCents(available)],
-          ["Já recebido", formatCents(received)],
+          ["Disponível para saque", formatCents(available)],
+          ["Já sacado", formatCents(received)],
         ]}
       />
 
@@ -422,8 +418,8 @@ function PartnerDashboard({
                 {effectiveStatus(commission) === "pending"
                   ? "Em retenção"
                   : effectiveStatus(commission) === "available"
-                    ? "Disponível"
-                    : "Pago"}
+                    ? "Liberada"
+                    : "Paga"}
               </span>
             </div>
           ))

@@ -4,6 +4,10 @@ import { isHiddenTestPayment } from "@/lib/payments/payment-visibility";
 import { reconcileMercadoPagoFees } from "@/lib/payments/mercado-pago-fee-reconciliation";
 import { reconcileMercadoPagoOperationIds } from "@/lib/payments/mercado-pago-operation-reconciliation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  residualBalanceCents,
+  withdrawableBalanceCents,
+} from "@/lib/financial/withdrawal-balance";
 
 export async function getFinanceView() {
   const { user, supabase } = await requireUser();
@@ -30,7 +34,7 @@ export async function getFinanceView() {
     supabase
       .from("commissions")
       .select(
-        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(product_id,products(name),offers!orders_offer_id_fkey(name)))",
+        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(id,product_id,products(name),offers!orders_offer_id_fkey(name)))",
       )
       .eq("beneficiary_user_id", user.id)
       .order("created_at", { ascending: false })
@@ -306,6 +310,43 @@ export async function getFinanceView() {
     }),
   );
 
+  const incomingPartnerTypesByOrder = Object.fromEntries(
+    (commissions ?? []).flatMap((commission) => {
+      const orderId = commission.payments?.orders?.id;
+      if (!orderId) return [];
+      return [[orderId, commissionPartnerTypes[commission.id] ?? "affiliate"]];
+    }),
+  );
+
+  const safeBalance = balance ?? {
+    pending_cents: 0,
+    available_cents: 0,
+    withdrawing_cents: 0,
+    total_received_cents: 0,
+  };
+  const paidWithdrawalCents = (withdrawals ?? [])
+    .filter((withdrawal) => withdrawal.status === "paid")
+    .reduce(
+      (sum, withdrawal) => sum + Number(withdrawal.amount_cents ?? 0),
+      0,
+    );
+  const processingWithdrawalCents = (withdrawals ?? [])
+    .filter(
+      (withdrawal) =>
+        withdrawal.status === "requested" ||
+        withdrawal.status === "processing",
+    )
+    .reduce(
+      (sum, withdrawal) => sum + Number(withdrawal.amount_cents ?? 0),
+      0,
+    );
+  const withdrawalSummary = {
+    withdrawable_cents: withdrawableBalanceCents(safeBalance.available_cents),
+    residual_cents: residualBalanceCents(safeBalance.available_cents),
+    paid_cents: paidWithdrawalCents,
+    processing_cents: processingWithdrawalCents,
+  };
+
   const producerRevenueEntryTypes = new Set([
     "sale_credit",
     "gateway_fee",
@@ -345,6 +386,7 @@ export async function getFinanceView() {
     })),
     commissions: commissions ?? [],
     commissionPartnerTypes,
+    incomingPartnerTypesByOrder,
     outgoingCommissions: outgoingCommissionsResult.data ?? [],
     outgoingPartnerTypes,
     partnerMemberships: partnerMemberships ?? [],
@@ -375,12 +417,8 @@ export async function getFinanceView() {
             commission.status !== "reversed",
         ),
     },
-    balance: balance ?? {
-      pending_cents: 0,
-      available_cents: 0,
-      withdrawing_cents: 0,
-      total_received_cents: 0,
-    },
+    balance: safeBalance,
+    withdrawalSummary,
     withdrawals: withdrawals ?? [],
     payments: paymentRows
       .filter((payment) => !isHiddenTestPayment(payment.raw_provider_data))

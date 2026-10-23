@@ -31,14 +31,16 @@ export function PartnerCustomerPortfolio({
   title,
   description,
   emptyText,
+  emphasized = false,
 }: {
   portfolio: PartnerPortfolio;
   title: string;
   description: string;
   emptyText: string;
+  emphasized?: boolean;
 }) {
   return (
-    <section className="panel operational-panel">
+    <section className={`panel operational-panel partner-customer-portfolio${emphasized ? " is-emphasized" : ""}`}>
       <div className="premium-report-head" style={{ padding: "0 0 18px", borderBottom: 0 }}>
         <div>
           <span>Relacionamento comercial</span>
@@ -80,7 +82,7 @@ export function PartnerCustomerPortfolio({
                   <td><strong>{date(customer.nextDueAt)}</strong><span>Última compra {date(customer.lastPurchaseAt)}</span></td>
                   <td><strong>{customer.subscriptionId ? money(customer.currentAmountCents) : "—"}</strong><span>{customer.subscriptionId ? "mensalidade atual" : "venda avulsa"}</span></td>
                   <td><strong>{money(customer.salesVolumeCents)}</strong><span>{customer.paidOrders} pagamento(s)</span></td>
-                  <td><strong>{money(customer.commissionTotalCents)}</strong><span>{money(customer.commissionAvailableCents)} disponível</span></td>
+                  <td><strong>{money(customer.commissionTotalCents)}</strong><span>{money(customer.commissionAvailableCents)} liberada</span></td>
                 </tr>
               ))}
             </tbody>
@@ -99,7 +101,7 @@ export function PartnerCustomerPortfolio({
           <span>{portfolio.summary.totalCustomers} cliente(s) · {money(portfolio.summary.salesVolumeCents)} em vendas atribuídas</span>
           <div style={{ gap: 14 }}>
             <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><CircleDollarSign size={13} />{money(portfolio.summary.commissionPendingCents)} pendente</span>
-            <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><BadgeCheck size={13} />{money(portfolio.summary.commissionAvailableCents)} disponível</span>
+            <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><BadgeCheck size={13} />{money(portfolio.summary.commissionAvailableCents)} liberada</span>
             <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><CalendarClock size={13} />{money(portfolio.summary.commissionPaidCents)} pago</span>
           </div>
         </div>
