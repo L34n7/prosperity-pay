@@ -216,7 +216,7 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
         .from("financial_allocations")
         .select("allocation_type,beneficiary_user_id,amount_cents")
         .eq("snapshot_id", snapshotResult.data.id)
-        .in("allocation_type", ["affiliate", "coproducer"])
+        .in("allocation_type", ["affiliate", "accredited", "coproducer"])
         .gt("amount_cents", 0)
     : { data: [], error: null };
 
@@ -257,8 +257,14 @@ async function hydrateNotification(admin: AdminClient, paymentId: string) {
         Number(allocation.amount_cents || 0),
     );
 
-    if (allocation.allocation_type === "affiliate") {
+    if (
+      allocation.allocation_type === "affiliate" ||
+      allocation.allocation_type === "accredited"
+    ) {
       recipientRoles.set(allocation.beneficiary_user_id, "affiliate");
+      if (allocation.allocation_type === "accredited") {
+        accreditedPartnerUserId = allocation.beneficiary_user_id;
+      }
     } else if (allocation.allocation_type === "coproducer") {
       recipientRoles.set(allocation.beneficiary_user_id, "coproducer");
     }

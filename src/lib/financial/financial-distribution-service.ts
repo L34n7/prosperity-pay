@@ -12,13 +12,13 @@ export type DistributionInput = {
   settlementModel: SettlementModel;
   producerId: string;
   prosperityFee: FeeRule;
-  affiliate?: { userId: string; rule: FeeRule };
+  affiliate?: { userId: string; rule: FeeRule; partnerType?: "affiliate" | "accredited" };
   affiliateBaseAmountCents?: number;
   coproducers: ParticipantShare[];
 };
 
 export type FinancialAllocation = {
-  type: "producer" | "affiliate" | "coproducer" | "prosperity_fee" | "gateway_fee";
+  type: "producer" | "affiliate" | "accredited" | "coproducer" | "prosperity_fee" | "gateway_fee";
   destination: "internal_balance" | "connected_account" | "platform_revenue" | "gateway";
   beneficiaryUserId: string | null;
   amountCents: number;
@@ -96,8 +96,15 @@ export class FinancialDistributionService {
       amountCents: input.gatewayFeeCents, ruleSnapshot: { observed: true },
     });
     if (eligibleAffiliate && affiliateCents > 0) allocations.push({
-      type: "affiliate", destination: "internal_balance", beneficiaryUserId: eligibleAffiliate.userId,
-      amountCents: affiliateCents, ruleSnapshot: { ...eligibleAffiliate.rule, commissionBaseCents: affiliateBaseAmountCents },
+      type: eligibleAffiliate.partnerType === "accredited" ? "accredited" : "affiliate",
+      destination: "internal_balance",
+      beneficiaryUserId: eligibleAffiliate.userId,
+      amountCents: affiliateCents,
+      ruleSnapshot: {
+        ...eligibleAffiliate.rule,
+        commissionBaseCents: affiliateBaseAmountCents,
+        partnerType: eligibleAffiliate.partnerType ?? "affiliate",
+      },
     });
     allocations.push(...coproducerAmounts.filter((item) => item.amountCents > 0).map((item) => ({
       type: "coproducer" as const, destination: "internal_balance" as const,

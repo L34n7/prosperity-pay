@@ -140,7 +140,7 @@ export async function GET(_: Request, context: Context) {
         (partnerCommissionsResult.data ?? [])
           .filter(
             (commission) =>
-              commission.commission_type === "affiliate" &&
+              ["affiliate", "accredited"].includes(commission.commission_type) &&
               commission.status !== "cancelled" &&
               commission.status !== "reversed",
           )
@@ -209,12 +209,17 @@ export async function GET(_: Request, context: Context) {
     );
     for (const commission of partnerCommissionsResult.data ?? []) {
       if (
-        commission.commission_type !== "affiliate" ||
+        !["affiliate", "accredited"].includes(commission.commission_type) ||
         commission.status === "cancelled" ||
         commission.status === "reversed"
       ) continue;
       const orderId = paymentOrderById.get(commission.payment_id);
-      if (!orderId || partnerTypeByOrder.has(orderId)) continue;
+      if (!orderId) continue;
+      if (commission.commission_type === "accredited") {
+        partnerTypeByOrder.set(orderId, "accredited");
+        continue;
+      }
+      if (partnerTypeByOrder.has(orderId)) continue;
       partnerTypeByOrder.set(
         orderId,
         typeByBeneficiary.get(commission.beneficiary_user_id) ?? "affiliate",

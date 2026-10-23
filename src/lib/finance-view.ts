@@ -196,7 +196,7 @@ export async function getFinanceView() {
   const outgoingBeneficiaryIds = Array.from(
     new Set(
       (outgoingCommissionsResult.data ?? [])
-        .filter((commission) => commission.commission_type === "affiliate")
+        .filter((commission) => ["affiliate", "accredited"].includes(commission.commission_type))
         .map((commission) => commission.beneficiary_user_id)
         .filter((id): id is string => Boolean(id)),
     ),
@@ -273,9 +273,14 @@ export async function getFinanceView() {
   );
 
   for (const commission of outgoingCommissionsResult.data ?? []) {
-    if (commission.commission_type !== "affiliate") continue;
+    if (!["affiliate", "accredited"].includes(commission.commission_type)) continue;
     const orderId = paymentOrderById.get(commission.payment_id);
-    if (!orderId || outgoingPartnerTypes[orderId]) continue;
+    if (!orderId) continue;
+    if (commission.commission_type === "accredited") {
+      outgoingPartnerTypes[orderId] = "accredited";
+      continue;
+    }
+    if (outgoingPartnerTypes[orderId]) continue;
     const productId = orderProductById.get(orderId);
     if (!productId) continue;
     outgoingPartnerTypes[orderId] =
@@ -299,6 +304,9 @@ export async function getFinanceView() {
     (commissions ?? []).map((commission) => {
       if (commission.commission_type === "coproducer") {
         return [commission.id, "coproducer"];
+      }
+      if (commission.commission_type === "accredited") {
+        return [commission.id, "accredited"];
       }
       const productId = commission.payments?.orders?.product_id;
       return [

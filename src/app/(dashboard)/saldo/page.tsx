@@ -50,8 +50,12 @@ export default async function Page() {
     rows
       .filter(
         (entry) =>
-          entry.entry_type === "affiliate_commission" &&
-          incomingPartnerTypesByOrder[entry.order_id ?? ""] === type,
+          type === "accredited"
+            ? entry.entry_type === "accredited_commission" ||
+              (entry.entry_type === "affiliate_commission" &&
+                incomingPartnerTypesByOrder[entry.order_id ?? ""] === "accredited")
+            : entry.entry_type === "affiliate_commission" &&
+              incomingPartnerTypesByOrder[entry.order_id ?? ""] !== "accredited",
       )
       .reduce((sum, entry) => sum + Number(entry.amount_cents), 0);
 
@@ -80,6 +84,9 @@ export default async function Page() {
   }
 
   const entryLabel = (entry: (typeof rows)[number]) => {
+    if (entry.entry_type === "accredited_commission") {
+      return "Comissão de credenciado";
+    }
     if (entry.entry_type === "affiliate_commission") {
       return incomingPartnerTypesByOrder[entry.order_id ?? ""] === "accredited"
         ? "Comissão de credenciado"

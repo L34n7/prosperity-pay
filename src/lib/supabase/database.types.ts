@@ -1974,6 +1974,7 @@ export type Database = {
       allocation_type:
         | "producer"
         | "affiliate"
+        | "accredited"
         | "coproducer"
         | "prosperity_fee"
         | "gateway_fee"
@@ -2007,6 +2008,7 @@ export type Database = {
       ledger_entry_type:
         | "sale_credit"
         | "affiliate_commission"
+        | "accredited_commission"
         | "coproducer_commission"
         | "prosperity_fee"
         | "gateway_fee"
@@ -2207,6 +2209,7 @@ export const Constants = {
       allocation_type: [
         "producer",
         "affiliate",
+        "accredited",
         "coproducer",
         "prosperity_fee",
         "gateway_fee",
@@ -2245,6 +2248,7 @@ export const Constants = {
       ledger_entry_type: [
         "sale_credit",
         "affiliate_commission",
+        "accredited_commission",
         "coproducer_commission",
         "prosperity_fee",
         "gateway_fee",

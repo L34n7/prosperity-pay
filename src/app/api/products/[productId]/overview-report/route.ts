@@ -148,7 +148,7 @@ export async function GET(_: Request, context: Context) {
       ? await admin.from("financial_allocations")
         .select("id,snapshot_id,allocation_type,beneficiary_user_id,amount_cents,rule_snapshot")
         .in("snapshot_id", snapshotIds)
-        .in("allocation_type", ["affiliate", "coproducer"])
+        .in("allocation_type", ["affiliate", "accredited", "coproducer"])
       : { data: [], error: null };
     if (allocationsResult.error) throw allocationsResult.error;
 
@@ -183,7 +183,7 @@ export async function GET(_: Request, context: Context) {
     const userToMembership = new Map(members.map(member => [member.user_id, member.id]));
     for (const commission of commissionsResult.data ?? []) {
       if (
-        commission.commission_type !== "affiliate" ||
+        !["affiliate", "accredited"].includes(commission.commission_type) ||
         commission.status === "cancelled" ||
         commission.status === "reversed"
       ) continue;
@@ -251,7 +251,7 @@ export async function GET(_: Request, context: Context) {
       if (!order) continue;
       const amount = Number(allocation.amount_cents ?? 0);
 
-      if (allocation.allocation_type === "affiliate") {
+      if (allocation.allocation_type === "affiliate" || allocation.allocation_type === "accredited") {
         affiliateRuleByOrderAndUser.set(
           `${orderId}:${allocation.beneficiary_user_id}`,
           allocation.rule_snapshot,
@@ -273,7 +273,7 @@ export async function GET(_: Request, context: Context) {
     const affiliateCommissionByOrderAndUser = new Map<string, number>();
     for (const commission of commissionsResult.data ?? []) {
       if (
-        commission.commission_type !== "affiliate" ||
+        !["affiliate", "accredited"].includes(commission.commission_type) ||
         commission.status === "cancelled" ||
         commission.status === "reversed"
       ) continue;

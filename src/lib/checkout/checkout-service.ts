@@ -100,7 +100,7 @@ async function selectConnection(admin: ReturnType<typeof createAdminClient>, pro
 async function resolveAffiliate(admin: ReturnType<typeof createAdminClient>, input: CheckoutRequest, offer: CommercialOffer, product: CommercialProduct) {
   if (!input.refCode || !offer.affiliate_enabled) return undefined;
   const { data: link } = await admin.from("affiliate_links")
-    .select("id, membership_id, affiliate_memberships!inner(user_id, status, affiliate_commission_bps_override, affiliate_programs!inner(product_id, active))")
+    .select("id, membership_id, affiliate_memberships!inner(user_id, status, partner_type, affiliate_commission_bps_override, affiliate_programs!inner(product_id, active))")
     .eq("ref_code", input.refCode).eq("active", true).maybeSingle();
   const membership = link?.affiliate_memberships;
   if (!link || !membership || Array.isArray(membership) || membership.status !== "active" || membership.affiliate_programs?.product_id !== product.id || !membership.affiliate_programs.active) return undefined;
@@ -295,10 +295,10 @@ export async function createCheckout(input: CheckoutRequest) {
     .or(`offer_id.is.null,offer_id.eq.${offer.id}`);
   if (participantError) throw participantError;
 
-  let affiliate: { userId: string; rule: FeeRule; membershipId: string; linkId: string } | undefined;
+  let affiliate: { userId: string; rule: FeeRule; membershipId: string; linkId: string; partnerType: "affiliate" | "accredited" } | undefined;
   if (input.refCode && offer.affiliate_enabled) {
     const { data: link } = await admin.from("affiliate_links")
-      .select("id, membership_id, affiliate_memberships!inner(user_id, status, affiliate_commission_bps_override, affiliate_programs!inner(product_id, active))")
+      .select("id, membership_id, affiliate_memberships!inner(user_id, status, partner_type, affiliate_commission_bps_override, affiliate_programs!inner(product_id, active))")
       .eq("ref_code", input.refCode).eq("active", true).maybeSingle();
     const membership = link?.affiliate_memberships;
     if (link && membership && !Array.isArray(membership) && membership.status === "active" && membership.affiliate_programs?.product_id === product.id && membership.affiliate_programs.active) {
@@ -312,6 +312,7 @@ export async function createCheckout(input: CheckoutRequest) {
         userId: membership.user_id,
         membershipId: link.membership_id,
         linkId: link.id,
+        partnerType: membership.partner_type,
         rule: affiliateCommissionRule(offer, commissionBpsOverride),
       };
     }

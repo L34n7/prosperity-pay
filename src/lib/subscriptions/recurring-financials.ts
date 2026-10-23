@@ -103,7 +103,7 @@ export async function createRecurringSnapshot(input: {
   // In connected_account the full recurring charge settles in the producer account;
   // therefore we must not create internal credits that were not physically collected.
   const connectedRecurring = product.settlement_model === "connected_account";
-  let affiliate: { userId: string; rule: FeeRule } | undefined;
+  let affiliate: { userId: string; rule: FeeRule; partnerType: "affiliate" | "accredited" } | undefined;
   let effectiveAffiliateBaseAmountCents = affiliateBaseAmountCents ?? grossAmountCents;
   let affiliateCommissionBreakdown:
     | {
@@ -140,13 +140,14 @@ export async function createRecurringSnapshot(input: {
       let membershipRow: {
         id: string;
         user_id: string;
+        partner_type: "affiliate" | "accredited";
         affiliate_commission_bps_override: number | null;
       } | null = null;
 
       if (affiliateMembershipId) {
         const { data, error } = await admin
           .from("affiliate_memberships")
-          .select("id,user_id,affiliate_commission_bps_override,affiliate_programs!inner(active,product_id)")
+          .select("id,user_id,partner_type,affiliate_commission_bps_override,affiliate_programs!inner(active,product_id)")
           .eq("id", affiliateMembershipId)
           .eq("status", "active")
           .maybeSingle();
@@ -157,13 +158,14 @@ export async function createRecurringSnapshot(input: {
           membershipRow = {
             id: data.id,
             user_id: data.user_id,
+            partner_type: data.partner_type,
             affiliate_commission_bps_override: data.affiliate_commission_bps_override,
           };
         }
       } else if (originOrderId) {
         const { data: attribution, error: attributionError } = await admin
           .from("affiliate_attributions")
-          .select("affiliate_membership_id,affiliate_memberships!inner(user_id,affiliate_commission_bps_override)")
+          .select("affiliate_membership_id,affiliate_memberships!inner(user_id,partner_type,affiliate_commission_bps_override)")
           .eq("order_id", originOrderId)
           .maybeSingle();
         if (attributionError) throw attributionError;
@@ -173,6 +175,7 @@ export async function createRecurringSnapshot(input: {
           membershipRow = {
             id: attribution.affiliate_membership_id,
             user_id: raw.user_id,
+            partner_type: raw.partner_type,
             affiliate_commission_bps_override: raw.affiliate_commission_bps_override,
           };
         }
@@ -260,12 +263,14 @@ export async function createRecurringSnapshot(input: {
           if (exactCommissionCents > 0) {
             affiliate = {
               userId: membershipRow.user_id,
+              partnerType: membershipRow.partner_type,
               rule: feeRule("fixed", 0, exactCommissionCents),
             };
           }
         } else {
           affiliate = {
             userId: membershipRow.user_id,
+            partnerType: membershipRow.partner_type,
             rule: fallbackRule,
           };
         }

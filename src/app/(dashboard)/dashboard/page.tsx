@@ -191,20 +191,18 @@ function ProducerDashboard({
   );
   const affiliate = validOutgoing
     .filter((commission) => {
+      if (commission.commission_type === "accredited") return false;
       if (commission.commission_type !== "affiliate") return false;
       const orderId = paymentOrderById.get(commission.payment_id);
-      return (
-        !orderId || data.outgoingPartnerTypes[orderId] !== "accredited"
-      );
+      return !orderId || data.outgoingPartnerTypes[orderId] !== "accredited";
     })
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
   const accredited = validOutgoing
     .filter((commission) => {
+      if (commission.commission_type === "accredited") return true;
       if (commission.commission_type !== "affiliate") return false;
       const orderId = paymentOrderById.get(commission.payment_id);
-      return Boolean(
-        orderId && data.outgoingPartnerTypes[orderId] === "accredited",
-      );
+      return Boolean(orderId && data.outgoingPartnerTypes[orderId] === "accredited");
     })
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
   const coproducer = validOutgoing
@@ -344,10 +342,11 @@ function PartnerDashboard({
   const accredited = valid
     .filter(
       (commission) =>
-        commission.commission_type === "affiliate" &&
-        partnerTypeByProduct.get(
-          commission.payments?.orders?.product_id ?? "",
-        ) === "accredited",
+        commission.commission_type === "accredited" ||
+        (commission.commission_type === "affiliate" &&
+          partnerTypeByProduct.get(
+            commission.payments?.orders?.product_id ?? "",
+          ) === "accredited"),
     )
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
   const coproducer = valid
