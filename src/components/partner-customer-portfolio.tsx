@@ -52,7 +52,7 @@ export function PartnerCustomerPortfolio({
       <div className="affiliate-result-grid" style={{ marginBottom: 20 }}>
         <div><small>Clientes</small><strong>{portfolio.summary.totalCustomers}</strong></div>
         <div><small>Assinaturas ativas</small><strong>{portfolio.summary.activeCustomers}</strong></div>
-        <div><small>Receita recorrente da carteira</small><strong>{money(portfolio.summary.recurringRevenueCents)}</strong></div>
+        <div><small>Média de recorrência geral</small><strong>{money(portfolio.summary.averageRecurringCents)}</strong></div>
         <div><small>Comissões geradas</small><strong>{money(portfolio.summary.commissionTotalCents)}</strong></div>
       </div>
 
@@ -98,11 +98,13 @@ export function PartnerCustomerPortfolio({
 
       {portfolio.customers.length > 0 && (
         <div className="table-footer">
-          <span>{portfolio.summary.totalCustomers} cliente(s) · {money(portfolio.summary.salesVolumeCents)} em vendas atribuídas</span>
+          <span>
+            {portfolio.summary.totalCustomers} cliente(s) · Total de comissão em vendas atribuídas: {money(portfolio.summary.commissionTotalCents)}
+          </span>
           <div style={{ gap: 14 }}>
             <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><CircleDollarSign size={13} />{money(portfolio.summary.commissionPendingCents)} pendente</span>
             <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><BadgeCheck size={13} />{money(portfolio.summary.commissionAvailableCents)} liberada</span>
-            <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><CalendarClock size={13} />{money(portfolio.summary.commissionPaidCents)} pago</span>
+            <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><CalendarClock size={13} />{money(portfolio.summary.withdrawnCents)} sacado</span>
           </div>
         </div>
       )}

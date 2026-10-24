@@ -34,7 +34,7 @@ export async function getFinanceView() {
     supabase
       .from("commissions")
       .select(
-        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,updated_at,payments!commissions_payment_id_fkey(paid_at,orders!payments_order_id_fkey(id,product_id,customer_id,paid_at,products(name),offers!orders_offer_id_fkey(name)))",
+        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,updated_at",
       )
       .eq("beneficiary_user_id", user.id)
       .order("created_at", { ascending: false })
@@ -75,15 +75,25 @@ export async function getFinanceView() {
 
   const safeOrders = orders ?? [];
   const orderIds = safeOrders.map((order) => order.id);
-  const commissionCustomerIds = (commissions ?? [])
-    .map((commission) => commission.payments?.orders?.customer_id)
-    .filter((id): id is string => Boolean(id));
   const customerIds = Array.from(
-    new Set([
-      ...safeOrders.map((order) => order.customer_id).filter(Boolean),
-      ...commissionCustomerIds,
-    ]),
+    new Set(safeOrders.map((order) => order.customer_id).filter(Boolean)),
   );
+  const commissionIds = (commissions ?? []).map((commission) => commission.id);
+
+  const { data: enrichedCommissionRows, error: enrichedCommissionError } =
+    commissionIds.length
+      ? await admin
+          .from("commissions")
+          .select(
+            "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,updated_at,payments!commissions_payment_id_fkey(paid_at,orders!payments_order_id_fkey(id,product_id,customer_id,paid_at,products(name),offers!orders_offer_id_fkey(name),customers!orders_customer_id_fkey(name,email)))",
+          )
+          .in("id", commissionIds)
+          .order("created_at", { ascending: false })
+      : { data: [], error: null };
+
+  if (enrichedCommissionError) throw enrichedCommissionError;
+
+  const commissionRows = enrichedCommissionRows ?? [];
 
   const { data: producerAccounts, error: producerAccountsError } = await admin
     .from("ledger_accounts")
@@ -307,7 +317,7 @@ export async function getFinanceView() {
     }
   }
   const commissionPartnerTypes = Object.fromEntries(
-    (commissions ?? []).map((commission) => {
+    commissionRows.map((commission) => {
       if (commission.commission_type === "coproducer") {
         return [commission.id, "coproducer"];
       }
@@ -325,7 +335,7 @@ export async function getFinanceView() {
   );
 
   const incomingPartnerTypesByOrder = Object.fromEntries(
-    (commissions ?? []).flatMap((commission) => {
+    commissionRows.flatMap((commission) => {
       const orderId = commission.payments?.orders?.id;
       if (!orderId) return [];
       return [[orderId, commissionPartnerTypes[commission.id] ?? "affiliate"]];
@@ -390,22 +400,6 @@ export async function getFinanceView() {
     ]),
   );
 
-  const enrichedCommissions = (commissions ?? []).map((commission) => ({
-    ...commission,
-    payments: commission.payments
-      ? {
-          ...commission.payments,
-          orders: commission.payments.orders
-            ? {
-                ...commission.payments.orders,
-                customers:
-                  customerMap.get(commission.payments.orders.customer_id) ?? null,
-              }
-            : null,
-        }
-      : null,
-  }));
-
   return {
     orders: safeOrders.map((order) => ({
       ...order,
@@ -414,7 +408,7 @@ export async function getFinanceView() {
         ? producerNetByOrder.get(order.id) ?? 0
         : null,
     })),
-    commissions: enrichedCommissions,
+    commissions: commissionRows,
     commissionPartnerTypes,
     incomingPartnerTypesByOrder,
     outgoingCommissions: outgoingCommissionsResult.data ?? [],
@@ -425,7 +419,7 @@ export async function getFinanceView() {
     hasPartner:
       (partnerMemberships ?? []).some((membership) => membership.status === "active") ||
       Number(participantCountResult.count ?? 0) > 0 ||
-      (commissions ?? []).some(
+      commissionRows.some(
         (commission) =>
           commission.status !== "cancelled" && commission.status !== "reversed",
       ),
@@ -440,7 +434,7 @@ export async function getFinanceView() {
       ),
       coproducer:
         Number(participantCountResult.count ?? 0) > 0 ||
-        (commissions ?? []).some(
+        commissionRows.some(
           (commission) =>
             commission.commission_type === "coproducer" &&
             commission.status !== "cancelled" &&

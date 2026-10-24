@@ -18,6 +18,38 @@ type FinanceView = Awaited<ReturnType<typeof getFinanceView>>;
 type DashboardPayment = FinanceView["payments"][number];
 type DashboardOrder = FinanceView["orders"][number];
 
+const PARTNER_TIME_ZONE = "America/Sao_Paulo";
+
+function partnerDatePart(value: string | null | undefined) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: PARTNER_TIME_ZONE,
+  }).format(parsed);
+}
+
+function partnerTimePart(value: string | null | undefined) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: PARTNER_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(parsed);
+}
+
+function PartnerDateTime({ value }: { value: string | null | undefined }) {
+  return (
+    <span className="date-time-cell">
+      <strong>{partnerDatePart(value)}</strong>
+      {partnerTimePart(value) && <span>{partnerTimePart(value)}</span>}
+    </span>
+  );
+}
+
 function metadataText(value: unknown, key: string) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = (value as Record<string, unknown>)[key];
@@ -450,8 +482,12 @@ function PartnerDashboard({
                       <td className="commission-report-value">
                         {formatCents(commission.amount_cents)}
                       </td>
-                      <td>{formatDate(purchaseDate)}</td>
-                      <td>{formatDate(statusDate(commission))}</td>
+                      <td>
+                        <PartnerDateTime value={purchaseDate} />
+                      </td>
+                      <td>
+                        <PartnerDateTime value={statusDate(commission)} />
+                      </td>
                       <td>
                         <span
                           className={

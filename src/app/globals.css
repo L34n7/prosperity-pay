@@ -1635,3 +1635,21 @@ a {
 .partner-customer-portfolio.is-emphasized .table-footer {
   font-size: .76rem;
 }
+
+.date-time-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.25;
+}
+
+.date-time-cell > strong {
+  color: var(--text);
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.date-time-cell > span {
+  color: var(--text-muted);
+  font-size: .72rem;
+}

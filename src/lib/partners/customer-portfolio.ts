@@ -35,11 +35,13 @@ export type PartnerPortfolio = {
     totalCustomers: number;
     activeCustomers: number;
     recurringRevenueCents: number;
+    averageRecurringCents: number;
     salesVolumeCents: number;
     commissionPendingCents: number;
     commissionAvailableCents: number;
     commissionPaidCents: number;
     commissionTotalCents: number;
+    withdrawnCents: number;
   };
 };
 
@@ -113,11 +115,13 @@ export async function getPartnerCustomerPortfolio(options?: {
         totalCustomers: 0,
         activeCustomers: 0,
         recurringRevenueCents: 0,
+        averageRecurringCents: 0,
         salesVolumeCents: 0,
         commissionPendingCents: 0,
         commissionAvailableCents: 0,
         commissionPaidCents: 0,
         commissionTotalCents: 0,
+        withdrawnCents: 0,
       },
     };
   }
@@ -125,7 +129,7 @@ export async function getPartnerCustomerPortfolio(options?: {
   const membershipIds = membershipInfos.map((item) => item.id);
   const membershipMap = new Map(membershipInfos.map((item) => [item.id, item]));
 
-  const [attributionsResult, subscriptionsResult, commissionsResult] = await Promise.all([
+  const [attributionsResult, subscriptionsResult, commissionsResult, withdrawalsResult] = await Promise.all([
     admin
       .from("affiliate_attributions")
       .select("affiliate_membership_id,order_id,attributed_at")
@@ -143,10 +147,25 @@ export async function getPartnerCustomerPortfolio(options?: {
         "amount_cents,status,available_at,created_at,payments!commissions_payment_id_fkey(order_id)",
       )
       .eq("beneficiary_user_id", user.id),
+    admin
+      .from("withdrawals")
+      .select("amount_cents,status")
+      .eq("user_id", user.id)
+      .eq("status", "paid"),
   ]);
 
-  if (attributionsResult.error || subscriptionsResult.error || commissionsResult.error) {
-    throw attributionsResult.error || subscriptionsResult.error || commissionsResult.error;
+  if (
+    attributionsResult.error ||
+    subscriptionsResult.error ||
+    commissionsResult.error ||
+    withdrawalsResult.error
+  ) {
+    throw (
+      attributionsResult.error ||
+      subscriptionsResult.error ||
+      commissionsResult.error ||
+      withdrawalsResult.error
+    );
   }
 
   const attributions = attributionsResult.data ?? [];
@@ -367,12 +386,31 @@ export async function getPartnerCustomerPortfolio(options?: {
       totalCustomers: 0,
       activeCustomers: 0,
       recurringRevenueCents: 0,
+      averageRecurringCents: 0,
       salesVolumeCents: 0,
       commissionPendingCents: 0,
       commissionAvailableCents: 0,
       commissionPaidCents: 0,
       commissionTotalCents: 0,
+      withdrawnCents: 0,
     },
+  );
+
+  const activeSubscriptions = subscriptions.filter(
+    (subscription) => subscription.status === "active",
+  );
+  summary.activeCustomers = activeSubscriptions.length;
+  summary.recurringRevenueCents = activeSubscriptions.reduce(
+    (sum, subscription) =>
+      sum + Number(subscription.current_amount_cents || 0),
+    0,
+  );
+  summary.averageRecurringCents = summary.activeCustomers
+    ? Math.round(summary.recurringRevenueCents / summary.activeCustomers)
+    : 0;
+  summary.withdrawnCents = (withdrawalsResult.data ?? []).reduce(
+    (sum, withdrawal) => sum + Number(withdrawal.amount_cents || 0),
+    0,
   );
 
   return {
