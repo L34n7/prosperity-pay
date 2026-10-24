@@ -152,10 +152,10 @@ function PaymentsReport({
                       {formatCents(payment.gross_amount_cents)}
                     </td>
                     <td className="payment-date">
-                      {generatedAt ? formatDate(generatedAt) : "—"}
+                      <PartnerDateTime value={generatedAt} />
                     </td>
                     <td className="payment-date">
-                      {paidAt ? formatDate(paidAt) : "—"}
+                      <PartnerDateTime value={paidAt} />
                     </td>
                   </tr>
                 );
