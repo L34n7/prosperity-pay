@@ -138,7 +138,7 @@ export async function getPartnerCustomerPortfolio(options?: {
     admin
       .from("subscriptions")
       .select(
-        "id,affiliate_membership_id,customer_id,product_id,offer_id,status,current_amount_cents,current_period_start,current_period_end,next_due_at,created_at",
+        "id,order_id,affiliate_membership_id,customer_id,product_id,offer_id,status,current_amount_cents,current_period_start,current_period_end,next_due_at,created_at,updated_at",
       )
       .in("affiliate_membership_id", membershipIds),
     admin
@@ -170,6 +170,68 @@ export async function getPartnerCustomerPortfolio(options?: {
 
   const attributions = attributionsResult.data ?? [];
   const subscriptions = subscriptionsResult.data ?? [];
+
+  const subscriptionRank = (status: string) => {
+    if (status === "active") return 5;
+    if (status === "past_due") return 4;
+    if (status === "paused") return 3;
+    if (status === "pending") return 2;
+    if (status === "cancelled") return 1;
+    return 0;
+  };
+
+  const canonicalSubscriptionMap = new Map<
+    string,
+    (typeof subscriptions)[number]
+  >();
+
+  for (const subscription of subscriptions) {
+    if (!subscription.affiliate_membership_id) continue;
+    const key = [
+      subscription.affiliate_membership_id,
+      subscription.customer_id,
+      subscription.product_id,
+    ].join(":");
+    const current = canonicalSubscriptionMap.get(key);
+    if (!current) {
+      canonicalSubscriptionMap.set(key, subscription);
+      continue;
+    }
+
+    const candidateRank = subscriptionRank(subscription.status);
+    const currentRank = subscriptionRank(current.status);
+    const candidateHasOrder = Boolean(subscription.order_id);
+    const currentHasOrder = Boolean(current.order_id);
+    const candidateTime = Math.max(
+      asTime(subscription.current_period_end),
+      asTime(subscription.next_due_at),
+      asTime(subscription.updated_at),
+      asTime(subscription.created_at),
+    );
+    const currentTime = Math.max(
+      asTime(current.current_period_end),
+      asTime(current.next_due_at),
+      asTime(current.updated_at),
+      asTime(current.created_at),
+    );
+
+    if (
+      candidateRank > currentRank ||
+      (candidateRank === currentRank &&
+        candidateHasOrder &&
+        !currentHasOrder) ||
+      (candidateRank === currentRank &&
+        candidateHasOrder === currentHasOrder &&
+        candidateTime > currentTime)
+    ) {
+      canonicalSubscriptionMap.set(key, subscription);
+    }
+  }
+
+  const canonicalSubscriptions = Array.from(
+    canonicalSubscriptionMap.values(),
+  );
+
   const attributedOrderIds = unique(
     attributions.map((item) => item.order_id).filter((id): id is string => Boolean(id)),
   );
@@ -298,7 +360,7 @@ export async function getPartnerCustomerPortfolio(options?: {
     return entry;
   }
 
-  for (const subscription of subscriptions) {
+  for (const subscription of canonicalSubscriptions) {
     if (!subscription.affiliate_membership_id) continue;
     const entry = ensureCustomer({
       membershipId: subscription.affiliate_membership_id,
@@ -366,6 +428,14 @@ export async function getPartnerCustomerPortfolio(options?: {
 
   const customers = Array.from(portfolioMap.values())
     .map(({ _lastOfferAt: _ignored, ...customer }) => customer)
+    .filter(
+      (customer) =>
+        customer.paidOrders > 0 ||
+        customer.commissionTotalCents > 0 ||
+        ["active", "past_due", "paused"].includes(
+          customer.subscriptionStatus ?? "",
+        ),
+    )
     .sort((a, b) => asTime(b.lastPurchaseAt) - asTime(a.lastPurchaseAt));
 
   const summary = customers.reduce(
@@ -396,15 +466,6 @@ export async function getPartnerCustomerPortfolio(options?: {
     },
   );
 
-  const activeSubscriptions = subscriptions.filter(
-    (subscription) => subscription.status === "active",
-  );
-  summary.activeCustomers = activeSubscriptions.length;
-  summary.recurringRevenueCents = activeSubscriptions.reduce(
-    (sum, subscription) =>
-      sum + Number(subscription.current_amount_cents || 0),
-    0,
-  );
   summary.averageRecurringCents = summary.activeCustomers
     ? Math.round(summary.recurringRevenueCents / summary.activeCustomers)
     : 0;
