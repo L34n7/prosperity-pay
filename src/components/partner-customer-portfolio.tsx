@@ -15,7 +15,12 @@ function date(value: string | null) {
   return new Intl.DateTimeFormat("pt-BR").format(parsed);
 }
 
-function subscriptionLabel(status: string | null) {
+function subscriptionLabel(
+  status: string | null,
+  manualActivation = false,
+) {
+  if (manualActivation) return "Ativação Manual";
+
   const labels: Record<string, string> = {
     active: "Ativa",
     pending: "Pendente",
@@ -66,7 +71,13 @@ export function PartnerCustomerPortfolio({
               </tr>
             </thead>
             <tbody>
-              {portfolio.customers.map((customer) => (
+              {portfolio.customers.map((customer) => {
+                const manualActivation =
+                  customer.subscriptionStatus === "active" &&
+                  customer.paidOrders === 0 &&
+                  customer.commissionTotalCents === 0;
+
+                return (
                 <tr key={customer.key}>
                   <td>
                     <strong>{customer.customerName}</strong>
@@ -78,13 +89,14 @@ export function PartnerCustomerPortfolio({
                       <span />{customer.partnerType === "accredited" ? "Credenciado" : "Afiliado"}
                     </span>
                   </td>
-                  <td><strong>{subscriptionLabel(customer.subscriptionStatus)}</strong><span>Cliente desde {date(customer.customerSince)}</span></td>
+                  <td><strong>{subscriptionLabel(customer.subscriptionStatus, manualActivation)}</strong><span>Cliente desde {date(customer.customerSince)}</span></td>
                   <td><strong>{date(customer.nextDueAt)}</strong><span>Última compra {date(customer.lastPurchaseAt)}</span></td>
                   <td><strong>{customer.subscriptionId ? money(customer.currentAmountCents) : "—"}</strong><span>{customer.subscriptionId ? "mensalidade atual" : "venda avulsa"}</span></td>
                   <td><strong>{money(customer.salesVolumeCents)}</strong><span>{customer.paidOrders} pagamento(s)</span></td>
                   <td><strong>{money(customer.commissionTotalCents)}</strong><span>{money(customer.commissionAvailableCents)} liberada</span></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
