@@ -6,6 +6,7 @@ import {
 import { createPrepaidSubscriptionIntent } from "@/lib/subscriptions/prepaid-billing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
+import { synchronizePrepaidSubscriptionLifecycle } from "@/lib/subscriptions/lifecycle";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -407,6 +408,10 @@ export async function resendAutomaticDueBilling(subscriptionIds: string[]) {
     return { processed: 0, sent: 0, failed: 0, results: [] };
   }
 
+  await synchronizePrepaidSubscriptionLifecycle(admin, {
+    subscriptionIds: uniqueIds,
+  });
+
   const now = new Date().toISOString();
   const { data: subscriptions, error: subscriptionsError } = await admin
     .from("subscriptions")
@@ -515,6 +520,7 @@ export async function resendAutomaticDueBilling(subscriptionIds: string[]) {
 
 export async function processAutomaticDueBilling(limit = 100) {
   const admin = createAdminClient();
+  await synchronizePrepaidSubscriptionLifecycle(admin);
   const now = new Date();
   // Mantém uma janela de recuperação maior para assinaturas legadas
   // migradas da Atomo que possam ser espelhadas alguns dias após o vencimento.

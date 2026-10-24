@@ -91,7 +91,7 @@ async function loadSubscription(admin: AdminClient, subscriptionId: string) {
   if (error || !data) throw new HttpError(404, "Assinatura não encontrada.");
   const subscription = data as LoadedSubscription;
   if (subscription.billing_model !== "prepaid") throw new HttpError(409, "Esta assinatura não usa o modelo pré-pago.");
-  if (!["active", "past_due"].includes(subscription.status)) throw new HttpError(409, "Assinatura indisponível para alteração.");
+  if (!["active", "past_due", "paused"].includes(subscription.status)) throw new HttpError(409, "Assinatura indisponível para alteração.");
   return subscription;
 }
 

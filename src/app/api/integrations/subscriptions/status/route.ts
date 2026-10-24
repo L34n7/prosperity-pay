@@ -9,6 +9,7 @@ import { requireSignedIntegrationRequest } from "@/lib/integrations/inbound-auth
 import { dispatchPaymentIntegrationEventsSafe } from "@/lib/integrations/payment-events";
 import { dispatchSubscriptionIntegrationEventSafe } from "@/lib/integrations/subscription-events";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { synchronizePrepaidSubscriptionLifecycle } from "@/lib/subscriptions/lifecycle";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -273,6 +274,11 @@ export async function POST(request: Request) {
     if (repair.repaired) {
       subscription = await loadSubscription(admin, subscriptionId);
     }
+
+    await synchronizePrepaidSubscriptionLifecycle(admin, {
+      subscriptionIds: [subscriptionId],
+    });
+    subscription = await loadSubscription(admin, subscriptionId);
 
     const [offerResult, customerResult, itemsResult] = await Promise.all([
       admin
