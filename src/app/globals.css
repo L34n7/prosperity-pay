@@ -1041,6 +1041,45 @@ a {
   box-shadow: inset 2px 0 rgba(34,230,161,.34);
 }
 
+
+.payment-report-table.balance-movements-table {
+  min-width: 640px;
+  table-layout: fixed;
+}
+
+.payment-report-table.balance-movements-table th:nth-child(1),
+.payment-report-table.balance-movements-table td:nth-child(1) { width: 62%; }
+.payment-report-table.balance-movements-table th:nth-child(2),
+.payment-report-table.balance-movements-table td:nth-child(2) { width: 18%; }
+.payment-report-table.balance-movements-table th:nth-child(3),
+.payment-report-table.balance-movements-table td:nth-child(3) { width: 20%; }
+
+.payment-report-table.commission-report-table {
+  min-width: 1080px;
+  table-layout: fixed;
+}
+
+.payment-report-table.commission-report-table th:nth-child(1),
+.payment-report-table.commission-report-table td:nth-child(1) { width: 25%; }
+.payment-report-table.commission-report-table th:nth-child(2),
+.payment-report-table.commission-report-table td:nth-child(2) { width: 23%; }
+.payment-report-table.commission-report-table th:nth-child(3),
+.payment-report-table.commission-report-table td:nth-child(3) { width: 11%; }
+.payment-report-table.commission-report-table th:nth-child(4),
+.payment-report-table.commission-report-table td:nth-child(4) { width: 13%; }
+.payment-report-table.commission-report-table th:nth-child(5),
+.payment-report-table.commission-report-table td:nth-child(5) { width: 13%; }
+.payment-report-table.commission-report-table th:nth-child(6),
+.payment-report-table.commission-report-table td:nth-child(6) { width: 15%; }
+
+.balance-movement-value,
+.commission-report-value {
+  color: #f7fbf8 !important;
+  font-size: .88rem !important;
+  font-weight: 740 !important;
+  white-space: nowrap;
+}
+
 .payment-value {
   color: #f7fbf8 !important;
   font-size: .9rem !important;

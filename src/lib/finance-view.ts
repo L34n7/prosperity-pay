@@ -34,7 +34,7 @@ export async function getFinanceView() {
     supabase
       .from("commissions")
       .select(
-        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,payments!commissions_payment_id_fkey(orders!payments_order_id_fkey(id,product_id,products(name),offers!orders_offer_id_fkey(name)))",
+        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,updated_at,payments!commissions_payment_id_fkey(paid_at,orders!payments_order_id_fkey(id,product_id,paid_at,products(name),offers!orders_offer_id_fkey(name),customers!orders_customer_id_fkey(name,email)))",
       )
       .eq("beneficiary_user_id", user.id)
       .order("created_at", { ascending: false })

@@ -310,6 +310,46 @@ function PartnerDashboard({
       ? "available"
       : commission.status;
 
+  const partnerTypeOf = (commission: FinanceView["commissions"][number]) => {
+    if (commission.commission_type === "coproducer") return "coproducer";
+    if (commission.commission_type === "accredited") return "accredited";
+    return data.commissionPartnerTypes[commission.id] === "accredited"
+      ? "accredited"
+      : "affiliate";
+  };
+
+  const statusLabel = (commission: FinanceView["commissions"][number]) => {
+    const status = effectiveStatus(commission);
+    if (status === "pending") return "Retido";
+    if (status === "available") return "Liberado";
+    if (status === "paid") return "Pago";
+    if (status === "reversed") return "Estornado";
+    if (status === "cancelled") return "Cancelado";
+    return status;
+  };
+
+  const statusDate = (commission: FinanceView["commissions"][number]) => {
+    const status = effectiveStatus(commission);
+    if (status === "available") return commission.available_at;
+    if (status === "paid") return commission.paid_at ?? commission.available_at;
+    if (status === "reversed") {
+      return commission.reversed_at ?? commission.updated_at ?? commission.created_at;
+    }
+    if (status === "cancelled") {
+      return commission.updated_at ?? commission.created_at;
+    }
+    return commission.created_at;
+  };
+
+  const statusBadgeClass = (commission: FinanceView["commissions"][number]) => {
+    const status = effectiveStatus(commission);
+    if (status === "available") return "available";
+    if (status === "paid") return "paid";
+    if (status === "reversed") return "reversed";
+    if (status === "cancelled") return "cancelled";
+    return "pending";
+  };
+
   const generated = valid.reduce(
     (sum, commission) => sum + Number(commission.amount_cents),
     0,
@@ -320,37 +360,14 @@ function PartnerDashboard({
   const available = data.withdrawalSummary.withdrawable_cents;
   const received = data.withdrawalSummary.paid_cents;
 
-  const partnerTypeByProduct = new Map<string, string>();
-  for (const membership of data.partnerMemberships) {
-    const program = data.partnerPrograms.find(
-      (item) => item.id === membership.program_id,
-    );
-    if (program) {
-      partnerTypeByProduct.set(program.product_id, membership.partner_type);
-    }
-  }
-
   const affiliate = valid
-    .filter(
-      (commission) =>
-        commission.commission_type === "affiliate" &&
-        partnerTypeByProduct.get(
-          commission.payments?.orders?.product_id ?? "",
-        ) !== "accredited",
-    )
+    .filter((commission) => partnerTypeOf(commission) === "affiliate")
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
   const accredited = valid
-    .filter(
-      (commission) =>
-        commission.commission_type === "accredited" ||
-        (commission.commission_type === "affiliate" &&
-          partnerTypeByProduct.get(
-            commission.payments?.orders?.product_id ?? "",
-          ) === "accredited"),
-    )
+    .filter((commission) => partnerTypeOf(commission) === "accredited")
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
   const coproducer = valid
-    .filter((commission) => commission.commission_type === "coproducer")
+    .filter((commission) => partnerTypeOf(commission) === "coproducer")
     .reduce((sum, commission) => sum + Number(commission.amount_cents), 0);
 
   const roleCards: Array<[string, string]> = [];
@@ -398,30 +415,59 @@ function PartnerDashboard({
 
       <section className="panel operational-panel">
         <h2>Comissões recentes</h2>
-        {valid.length ? (
-          valid.slice(0, 8).map((commission) => (
-            <div className="record-row" key={commission.id}>
-              <strong>
-                {commission.commission_type === "coproducer"
-                  ? "Coprodutor"
-                  : partnerTypeByProduct.get(
-                        commission.payments?.orders?.product_id ?? "",
-                      ) === "accredited"
-                    ? "Credenciado"
-                    : "Afiliado"}
-                {" · "}
-                {commission.payments?.orders?.products?.name ?? "Produto"}
-              </strong>
-              <span>{formatCents(commission.amount_cents)}</span>
-              <span>
-                {effectiveStatus(commission) === "pending"
-                  ? "Em retenção"
-                  : effectiveStatus(commission) === "available"
-                    ? "Liberada"
-                    : "Paga"}
-              </span>
-            </div>
-          ))
+        {data.commissions.length ? (
+          <div className="payment-report-table-wrap">
+            <table className="payment-report-table commission-report-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Produto / oferta</th>
+                  <th>Valor</th>
+                  <th>Data compra</th>
+                  <th>Data status</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.commissions.slice(0, 8).map((commission) => {
+                  const order = commission.payments?.orders;
+                  const customer = order?.customers;
+                  const purchaseDate =
+                    order?.paid_at ??
+                    commission.payments?.paid_at ??
+                    commission.created_at;
+
+                  return (
+                    <tr key={commission.id}>
+                      <td>
+                        <strong>{customer?.name || "Cliente"}</strong>
+                        <span>{customer?.email || "E-mail não informado"}</span>
+                      </td>
+                      <td>
+                        <strong>{order?.products?.name ?? "Produto"}</strong>
+                        <span>{order?.offers?.name ?? "Oferta"}</span>
+                      </td>
+                      <td className="commission-report-value">
+                        {formatCents(commission.amount_cents)}
+                      </td>
+                      <td>{formatDate(purchaseDate)}</td>
+                      <td>{formatDate(statusDate(commission))}</td>
+                      <td>
+                        <span
+                          className={
+                            "status-badge status-" + statusBadgeClass(commission)
+                          }
+                        >
+                          <span aria-hidden="true" />
+                          {statusLabel(commission)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p>Nenhuma comissão registrada até o momento.</p>
         )}

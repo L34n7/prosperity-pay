@@ -16,6 +16,14 @@ const ENTRY_LABELS: Record<string, string> = {
   adjustment: "Ajuste",
 };
 
+const COMMISSION_ADJUSTMENT_SOURCES = new Set([
+  "commission_base_correction",
+  "manual_date_correction_void",
+  "manual_date_correction_post",
+]);
+
+type PartnerType = "affiliate" | "accredited" | "coproducer";
+
 export default async function Page() {
   const [finance, { supabase, user }] = await Promise.all([
     getFinanceView(),
@@ -37,7 +45,9 @@ export default async function Page() {
   const { data: entries, error } = account
     ? await supabase
         .from("ledger_entries")
-        .select("id,entry_type,amount_cents,available_at,created_at,order_id")
+        .select(
+          "id,entry_type,amount_cents,available_at,created_at,order_id,source_type",
+        )
         .eq("account_id", account.id)
         .order("created_at", { ascending: false })
         .limit(100)
@@ -46,17 +56,39 @@ export default async function Page() {
   if (error) throw error;
 
   const rows = entries ?? [];
-  const partnerCredit = (type: "affiliate" | "accredited") =>
+
+  const entryPartnerType = (
+    entry: (typeof rows)[number],
+  ): PartnerType | null => {
+    if (entry.entry_type === "accredited_commission") return "accredited";
+    if (entry.entry_type === "coproducer_commission") return "coproducer";
+    if (entry.entry_type === "affiliate_commission") {
+      return incomingPartnerTypesByOrder[entry.order_id ?? ""] === "accredited"
+        ? "accredited"
+        : "affiliate";
+    }
+
+    if (
+      entry.entry_type === "adjustment" &&
+      COMMISSION_ADJUSTMENT_SOURCES.has(entry.source_type ?? "")
+    ) {
+      const partnerType =
+        incomingPartnerTypesByOrder[entry.order_id ?? ""] ?? null;
+      if (
+        partnerType === "affiliate" ||
+        partnerType === "accredited" ||
+        partnerType === "coproducer"
+      ) {
+        return partnerType;
+      }
+    }
+
+    return null;
+  };
+
+  const partnerCredit = (type: PartnerType) =>
     rows
-      .filter(
-        (entry) =>
-          type === "accredited"
-            ? entry.entry_type === "accredited_commission" ||
-              (entry.entry_type === "affiliate_commission" &&
-                incomingPartnerTypesByOrder[entry.order_id ?? ""] === "accredited")
-            : entry.entry_type === "affiliate_commission" &&
-              incomingPartnerTypesByOrder[entry.order_id ?? ""] !== "accredited",
-      )
+      .filter((entry) => entryPartnerType(entry) === type)
       .reduce((sum, entry) => sum + Number(entry.amount_cents), 0);
 
   const creditCards: Array<[string, number]> = [
@@ -68,30 +100,43 @@ export default async function Page() {
     ],
   ];
 
-  if (partnerRoles.affiliate || partnerCredit("affiliate") > 0) {
-    creditCards.push(["Afiliado", partnerCredit("affiliate")]);
+  const affiliateCredit = partnerCredit("affiliate");
+  const accreditedCredit = partnerCredit("accredited");
+  const coproducerCredit = partnerCredit("coproducer");
+
+  if (partnerRoles.affiliate || affiliateCredit !== 0) {
+    creditCards.push(["Afiliado", affiliateCredit]);
   }
-  if (partnerRoles.accredited || partnerCredit("accredited") > 0) {
-    creditCards.push(["Credenciado", partnerCredit("accredited")]);
+  if (partnerRoles.accredited || accreditedCredit !== 0) {
+    creditCards.push(["Credenciado", accreditedCredit]);
   }
-  if (partnerRoles.coproducer) {
-    creditCards.push([
-      "Coprodução",
-      rows
-        .filter((entry) => entry.entry_type === "coproducer_commission")
-        .reduce((sum, entry) => sum + Number(entry.amount_cents), 0),
-    ]);
+  if (partnerRoles.coproducer || coproducerCredit !== 0) {
+    creditCards.push(["Coprodução", coproducerCredit]);
   }
 
   const entryLabel = (entry: (typeof rows)[number]) => {
+    const partnerType = entryPartnerType(entry);
+
     if (entry.entry_type === "accredited_commission") {
       return "Comissão de credenciado";
     }
     if (entry.entry_type === "affiliate_commission") {
-      return incomingPartnerTypesByOrder[entry.order_id ?? ""] === "accredited"
+      return partnerType === "accredited"
         ? "Comissão de credenciado"
         : "Comissão de afiliado";
     }
+    if (entry.entry_type === "coproducer_commission") {
+      return "Comissão de coprodução";
+    }
+    if (
+      entry.entry_type === "adjustment" &&
+      COMMISSION_ADJUSTMENT_SOURCES.has(entry.source_type ?? "")
+    ) {
+      if (partnerType === "accredited") return "Ajuste de comissão de credenciado";
+      if (partnerType === "affiliate") return "Ajuste de comissão de afiliado";
+      if (partnerType === "coproducer") return "Ajuste de comissão de coprodução";
+    }
+
     return ENTRY_LABELS[entry.entry_type] ?? entry.entry_type;
   };
 
@@ -142,13 +187,30 @@ export default async function Page() {
       <section className="panel operational-panel">
         <h2>Movimentações</h2>
         {rows.length ? (
-          rows.map((entry) => (
-            <div className="record-row" key={entry.id}>
-              <strong>{entryLabel(entry)}</strong>
-              <span>{formatCents(entry.amount_cents)}</span>
-              <span>{formatDate(entry.created_at)}</span>
-            </div>
-          ))
+          <div className="payment-report-table-wrap">
+            <table className="payment-report-table balance-movements-table">
+              <thead>
+                <tr>
+                  <th>Origem</th>
+                  <th>Valor</th>
+                  <th>Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>
+                      <strong>{entryLabel(entry)}</strong>
+                    </td>
+                    <td className="balance-movement-value">
+                      {formatCents(entry.amount_cents)}
+                    </td>
+                    <td>{formatDate(entry.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p>Sem movimentações até agora.</p>
         )}
