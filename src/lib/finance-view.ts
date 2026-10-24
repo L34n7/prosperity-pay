@@ -34,7 +34,7 @@ export async function getFinanceView() {
     supabase
       .from("commissions")
       .select(
-        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,updated_at,payments!commissions_payment_id_fkey(paid_at,orders!payments_order_id_fkey(id,product_id,paid_at,products(name),offers!orders_offer_id_fkey(name),customers!orders_customer_id_fkey(name,email)))",
+        "id,payment_id,commission_type,status,amount_cents,available_at,paid_at,reversed_at,created_at,updated_at,payments!commissions_payment_id_fkey(paid_at,orders!payments_order_id_fkey(id,product_id,customer_id,paid_at,products(name),offers!orders_offer_id_fkey(name)))",
       )
       .eq("beneficiary_user_id", user.id)
       .order("created_at", { ascending: false })
@@ -75,8 +75,14 @@ export async function getFinanceView() {
 
   const safeOrders = orders ?? [];
   const orderIds = safeOrders.map((order) => order.id);
+  const commissionCustomerIds = (commissions ?? [])
+    .map((commission) => commission.payments?.orders?.customer_id)
+    .filter((id): id is string => Boolean(id));
   const customerIds = Array.from(
-    new Set(safeOrders.map((order) => order.customer_id).filter(Boolean)),
+    new Set([
+      ...safeOrders.map((order) => order.customer_id).filter(Boolean),
+      ...commissionCustomerIds,
+    ]),
   );
 
   const { data: producerAccounts, error: producerAccountsError } = await admin
@@ -384,6 +390,22 @@ export async function getFinanceView() {
     ]),
   );
 
+  const enrichedCommissions = (commissions ?? []).map((commission) => ({
+    ...commission,
+    payments: commission.payments
+      ? {
+          ...commission.payments,
+          orders: commission.payments.orders
+            ? {
+                ...commission.payments.orders,
+                customers:
+                  customerMap.get(commission.payments.orders.customer_id) ?? null,
+              }
+            : null,
+        }
+      : null,
+  }));
+
   return {
     orders: safeOrders.map((order) => ({
       ...order,
@@ -392,7 +414,7 @@ export async function getFinanceView() {
         ? producerNetByOrder.get(order.id) ?? 0
         : null,
     })),
-    commissions: commissions ?? [],
+    commissions: enrichedCommissions,
     commissionPartnerTypes,
     incomingPartnerTypesByOrder,
     outgoingCommissions: outgoingCommissionsResult.data ?? [],
