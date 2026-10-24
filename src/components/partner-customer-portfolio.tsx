@@ -63,11 +63,11 @@ export function PartnerCustomerPortfolio({
 
       {portfolio.customers.length ? (
         <div className="data-table-wrap">
-          <table className="data-table" style={{ minWidth: 1040 }}>
+          <table className="data-table" style={{ minWidth: 920 }}>
             <thead>
               <tr>
                 <th>Cliente</th><th>Produto / oferta</th><th>Parceiro</th><th>Assinatura</th>
-                <th>Próxima renovação</th><th>Valor atual</th><th>Volume atribuído</th><th>Comissão</th>
+                <th>Próxima renovação</th><th>Volume atribuído</th><th>Comissão</th>
               </tr>
             </thead>
             <tbody>
@@ -91,7 +91,6 @@ export function PartnerCustomerPortfolio({
                   </td>
                   <td><strong>{subscriptionLabel(customer.subscriptionStatus, manualActivation)}</strong><span>Cliente desde {date(customer.customerSince)}</span></td>
                   <td><strong>{date(customer.nextDueAt)}</strong><span>Última compra {date(customer.lastPurchaseAt)}</span></td>
-                  <td><strong>{customer.subscriptionId ? money(customer.currentAmountCents) : "—"}</strong><span>{customer.subscriptionId ? "mensalidade atual" : "venda avulsa"}</span></td>
                   <td><strong>{money(customer.salesVolumeCents)}</strong><span>{customer.paidOrders} pagamento(s)</span></td>
                   <td><strong>{money(customer.commissionTotalCents)}</strong><span>{money(customer.commissionAvailableCents)} liberada</span></td>
                 </tr>
