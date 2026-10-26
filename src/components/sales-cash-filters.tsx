@@ -50,7 +50,6 @@ export function SalesCashFilters({
           name="preset"
           value={preset}
           onChange={(event) => changePreset(event.target.value)}
-          disabled={isLoading}
         >
           {preset === "custom" && <option value="custom">Personalizado</option>}
           {SALES_CASH_PRESETS.map((item) => (
@@ -69,7 +68,6 @@ export function SalesCashFilters({
           required
           value={fields.startDate}
           onChange={(event) => changeField("startDate", event.target.value)}
-          disabled={isLoading}
         />
       </label>
 
@@ -82,7 +80,6 @@ export function SalesCashFilters({
           required
           value={fields.startTime}
           onChange={(event) => changeField("startTime", event.target.value)}
-          disabled={isLoading}
         />
       </label>
 
@@ -94,7 +91,6 @@ export function SalesCashFilters({
           required
           value={fields.endDate}
           onChange={(event) => changeField("endDate", event.target.value)}
-          disabled={isLoading}
         />
       </label>
 
@@ -107,7 +103,6 @@ export function SalesCashFilters({
           required
           value={fields.endTime}
           onChange={(event) => changeField("endTime", event.target.value)}
-          disabled={isLoading}
         />
       </label>
 
