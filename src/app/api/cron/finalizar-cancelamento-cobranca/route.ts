@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   }
 
   const admin = createAdminClient();
-  const { data: delivery, error: deliveryError } = await admin
+  const { data: delivery, error: deliveryError } = await (admin as any)
     .from("subscription_billing_deliveries")
     .select("id,subscription_id,order_id,payment_id,status,last_error")
     .eq("id", deliveryId)
@@ -133,7 +133,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const { error: finishError } = await admin.from("subscription_billing_deliveries")
+  const { error: finishError } = await (admin as any).from("subscription_billing_deliveries")
     .update({
       status: "skipped",
       last_error: "cancelled_after_notification_sent",
