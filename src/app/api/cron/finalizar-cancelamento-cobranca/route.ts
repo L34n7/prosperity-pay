@@ -60,7 +60,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Condições de segurança não atendidas." }, { status: 409 });
   }
 
-  const externalOrderId = String(checkout.external_checkout_id);
+  const externalOrderId = String(checkout?.external_checkout_id || "");
   const endpoint = "https://api.mercadopago.com/v1/orders/" + encodeURIComponent(externalOrderId);
   let remoteCancelled = false;
   let httpStatus = 0;
