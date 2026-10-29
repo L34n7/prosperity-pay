@@ -1,0 +1,27 @@
+name: Validar cobranças automáticas
+on:
+  pull_request:
+    paths:
+      - 'src/lib/subscriptions/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.github/workflows/verify-automatic-billing.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/subscriptions/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.github/workflows/verify-automatic-billing.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: node --test tests/automatic-due-eligibility.test.mjs
