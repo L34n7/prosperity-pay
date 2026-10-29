@@ -7,6 +7,7 @@ import { createPrepaidSubscriptionIntent } from "@/lib/subscriptions/prepaid-bil
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getProviderAccessToken } from "@/lib/payments/provider-credentials";
 import { synchronizePrepaidSubscriptionLifecycle } from "@/lib/subscriptions/lifecycle";
+import { isEligibleForAutomaticDueBilling } from "@/lib/subscriptions/automatic-due-eligibility";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -115,6 +116,18 @@ async function finishDelivery(
   if (error) throw error;
 }
 
+async function canChargeAutomatically(
+  admin: AdminClient,
+  subscription: DueSubscription,
+) {
+  const { data: current, error } = await admin.from("subscriptions")
+    .select("id,status,billing_model,current_period_end")
+    .eq("id", subscription.id).maybeSingle();
+  if (error) throw error;
+  return Boolean(current &&
+    isEligibleForAutomaticDueBilling(current, subscription.current_period_end));
+}
+
 async function processOne(
   admin: AdminClient,
   subscription: DueSubscription,
@@ -122,6 +135,12 @@ async function processOne(
 ) {
   if (!product.automatic_due_billing_enabled || product.status !== "active") {
     return { status: "disabled" as const };
+  }
+
+  // Não basta a listagem do cron: a assinatura pode ter sido pausada
+  // enquanto a tarefa estava em fila, ou ter passado dos sete dias.
+  if (!(await canChargeAutomatically(admin, subscription))) {
+    return { status: "blocked" as const, subscriptionId: subscription.id };
   }
 
   const delivery = await claimBillingDelivery(admin, {
@@ -136,6 +155,14 @@ async function processOne(
   }
 
   try {
+    if (!(await canChargeAutomatically(admin, subscription))) {
+      await finishDelivery(admin, delivery.id, {
+        status: "skipped",
+        last_error: "blocked_or_due_period_expired",
+      });
+      return { status: "blocked" as const, subscriptionId: subscription.id };
+    }
+
     const { data: customer, error: customerError } = await admin
       .from("customers")
       .select("id,name,email")
@@ -182,6 +209,15 @@ async function processOne(
 
       checkoutUrl = intent.checkoutUrl;
       const token = sessionTokenFromUrl(checkoutUrl);
+
+      // Última checagem antes de criar um pagamento externo no Mercado Pago.
+      if (!(await canChargeAutomatically(admin, subscription))) {
+        await finishDelivery(admin, delivery.id, {
+          status: "skipped",
+          last_error: "blocked_before_pix_creation",
+        });
+        return { status: "blocked" as const, subscriptionId: subscription.id };
+      }
 
       const pixResult = await createSubscriptionSessionCheckout({
         sessionToken: token,
@@ -245,6 +281,15 @@ async function processOne(
 
     const token = sessionTokenFromUrl(checkoutUrl);
     const view = await getSubscriptionCheckoutSessionView(token);
+
+    // Se o bloqueio ocorreu durante o processamento, não reenviar cobrança.
+    if (!(await canChargeAutomatically(admin, subscription))) {
+      await finishDelivery(admin, delivery.id, {
+        status: "skipped",
+        last_error: "blocked_before_email_send",
+      });
+      return { status: "blocked" as const, subscriptionId: subscription.id };
+    }
 
     await sendSubscriptionBillingEmail({
       to: customer.email,
@@ -462,6 +507,10 @@ export async function resendAutomaticDueBilling(subscriptionIds: string[]) {
     }
 
     try {
+      if (!(await canChargeAutomatically(admin, subscription))) {
+        results.push({status:"blocked" as const,subscriptionId:subscription.id});
+        continue;
+      }
       await cancelPendingRenewalAttemptsForResend(admin, subscription.id);
 
       const { data: existingDelivery, error: deliveryError } = await (admin as any)
