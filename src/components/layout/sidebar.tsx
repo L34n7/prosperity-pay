@@ -46,9 +46,10 @@ type SidebarProps = {
   admin: boolean;
   platformAdmin: boolean;
   accreditedPartner: boolean;
+  producer: boolean;
 };
 
-export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admin, platformAdmin, accreditedPartner }: SidebarProps) {
+export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admin, platformAdmin, accreditedPartner, producer }: SidebarProps) {
   const pathname = usePathname();
 
   const renderItem = ({ label, href, icon: Icon }: SidebarItem) => {
@@ -82,7 +83,8 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admi
           <div className="nav-group">
             {!collapsed && <p>Visão financeira</p>}
             {primaryItems.map(renderItem)}
-            {accreditedPartner && renderItem({ label: "Credenciado", href: "/credenciados", icon: UserRoundCheck })}
+            {producer && renderItem({ label: "Credenciados", href: "/credenciados/gestao", icon: UserRoundCheck })}
+            {accreditedPartner && renderItem({ label: "Meu credenciamento", href: "/credenciados", icon: UserRoundCheck })}
           </div>
           <div className="nav-group nav-secondary">
             {!collapsed && <p>Conta</p>}

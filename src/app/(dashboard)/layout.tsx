@@ -29,6 +29,7 @@ export default async function DashboardLayout({
     { data: profile },
     { data: roles },
     { data: accreditedMembership },
+    { data: ownedProduct },
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -42,6 +43,12 @@ export default async function DashboardLayout({
       .eq("user_id", user.id)
       .eq("partner_type", "accredited")
       .eq("status", "active")
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("products")
+      .select("id")
+      .eq("producer_id", user.id)
       .limit(1)
       .maybeSingle(),
   ]);
@@ -61,6 +68,7 @@ export default async function DashboardLayout({
         admin: financeAdmin,
         platformAdmin,
         accreditedPartner: Boolean(accreditedMembership),
+        producer: Boolean(ownedProduct),
         supportMode,
       }}
     >

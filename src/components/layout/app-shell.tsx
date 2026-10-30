@@ -11,6 +11,7 @@ export type ShellProfile = {
   admin: boolean;
   platformAdmin: boolean;
   accreditedPartner: boolean;
+  producer: boolean;
   supportMode?: boolean;
 };
 
@@ -34,6 +35,7 @@ export function AppShell({
         admin={profile.admin}
         platformAdmin={profile.platformAdmin}
         accreditedPartner={profile.accreditedPartner}
+        producer={profile.producer}
         collapsed={collapsed}
         mobileOpen={mobileOpen}
         onCollapse={toggleCollapsed}
