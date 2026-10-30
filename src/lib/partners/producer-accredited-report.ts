@@ -364,6 +364,7 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
         .range(start, end),
     );
     for (const balance of balances) {
+      if (!balance.user_id) continue;
       const partner = partnersMap.get(balance.user_id);
       if (partner) partner.availableCents = amount(balance.available_cents);
     }
