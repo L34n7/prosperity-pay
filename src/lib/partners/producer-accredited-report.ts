@@ -233,7 +233,8 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
       if (!paidPaymentByOrder.has(payment.order_id)) paidPaymentByOrder.set(payment.order_id, payment.id);
     }
     for (const a of attributionResult.data ?? []) {
-      if (a.affiliate_membership_id && membershipById.has(a.affiliate_membership_id)
+      if (a.order_id && a.affiliate_membership_id
+        && membershipById.has(a.affiliate_membership_id)
         && !attributionByOrder.has(a.order_id)) {
         attributionByOrder.set(a.order_id, a.affiliate_membership_id);
       }
