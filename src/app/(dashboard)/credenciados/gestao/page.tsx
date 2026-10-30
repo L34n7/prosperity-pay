@@ -42,7 +42,7 @@ export default async function Page({ searchParams }: { searchParams: Params }) {
     { label: "Total faturado", value: formatCents(t.grossCents), note: `${t.sales} vendas aprovadas no mês`, icon: TrendingUp, kind: "primary" },
     { label: "Comissões geradas", value: formatCents(t.generatedCents), note: "Comissões válidas dos credenciados", icon: BadgeDollarSign, kind: "gold" },
     { label: "Total pago", value: formatCents(t.paidCents), note: "Saques efetivamente pagos no mês selecionado", icon: HandCoins, kind: "blue" },
-    { label: "Em caixa", value: formatCents(t.availableCents), note: "Comissões liberadas ainda não pagas", icon: Coins, kind: "primary" },
+    { label: "Em caixa", value: formatCents(t.availableCents), note: "Saldo real disponível para saque agora · sem filtro de mês", icon: Coins, kind: "primary" },
     { label: "Em retenção", value: formatCents(t.pendingCents), note: "Aguardando prazo de liberação", icon: Clock3, kind: "orange" },
     { label: "Credenciados ativos", value: String(t.active), note: `${t.selling} com vendas no mês · ${t.partners} cadastrados`, icon: Users, kind: "purple" },
     { label: "Faturado geral", value: formatCents(t.generalGrossCents), note: "Acumulado desde o início · sem influência dos filtros", icon: TrendingUp, kind: "gold" },
@@ -87,7 +87,7 @@ export default async function Page({ searchParams }: { searchParams: Params }) {
 
       <div className={styles.explanation}>
         <BadgeCheck size={18} />
-        <p><strong>Como interpretar:</strong> faturamento representa vendas aprovadas atribuídas a credenciados, inclusive renovações. <strong>Total pago</strong> e o valor <strong>Pago</strong> de cada credenciado consideram exclusivamente os saques com status pago e data de pagamento dentro do mês selecionado, mesmo que as comissões tenham sido geradas em outros meses. <strong>Em caixa</strong> e <strong>retenção</strong> refletem a situação atual das comissões das vendas do mês filtrado. Os saques são realizados por carteira do credenciado e não podem ser separados com segurança por produto. <strong>Faturado geral</strong> e <strong>Comissões gerais</strong> abrangem todo o histórico dos seus produtos, sem influência dos filtros. O saldo efetivo de saque está no módulo Saldo.</p>
+        <p><strong>Como interpretar:</strong> faturamento representa vendas aprovadas atribuídas a credenciados, inclusive renovações. <strong>Total pago</strong> e o valor <strong>Pago</strong> de cada credenciado consideram exclusivamente os saques com status pago e data de pagamento dentro do mês selecionado, mesmo que as comissões tenham sido geradas em outros meses. <strong>Em caixa</strong> mostra o saldo real disponível para saque neste momento, descontados os saques já pagos ou em andamento, independentemente do mês selecionado. <strong>Retenção</strong> continua representando as comissões das vendas filtradas ainda não liberadas. Os saques são realizados por carteira do credenciado e não podem ser separados com segurança por produto. <strong>Faturado geral</strong> e <strong>Comissões gerais</strong> abrangem todo o histórico dos seus produtos, sem influência dos filtros. O saldo efetivo de saque está no módulo Saldo.</p>
       </div>
 
       <section className={styles.section}>
@@ -123,7 +123,7 @@ export default async function Page({ searchParams }: { searchParams: Params }) {
                   <div><span>Vendas</span><strong>{partner.salesCount}</strong></div>
                   <div><span>Clientes</span><strong>{partner.customersCount}</strong></div>
                   <div><span>Saques pagos no mês</span><strong>{formatCents(partner.paidCents)}</strong></div>
-                  <div><span>Em caixa</span><strong>{formatCents(partner.availableCents)}</strong></div>
+                  <div><span>Em caixa agora</span><strong>{formatCents(partner.availableCents)}</strong></div>
                   <div><span>Retido</span><strong>{formatCents(partner.pendingCents)}</strong></div>
                   <div><span>Última venda</span><strong className={styles.dateValue}>{dateTime(partner.lastSale)}</strong></div>
                 </div>

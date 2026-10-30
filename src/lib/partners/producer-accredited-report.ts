@@ -304,7 +304,8 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
         // the KPI is calculated separately from actual paid withdrawals.
         saleStatus = "Pago";
       } else if (c.status === "available" || (c.status === "pending" && c.availableAt && new Date(c.availableAt).getTime() <= now)) {
-        partner.availableCents += c.amountCents;
+        // Do not sum earned commissions as cash: withdrawals can already
+        // have consumed part or all of this credit.
         saleStatus = "Disponível";
       } else {
         partner.pendingCents += c.amountCents;
@@ -348,6 +349,23 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
     for (const withdrawal of paidWithdrawals) {
       const partner = partnersMap.get(withdrawal.user_id);
       if (partner) partner.paidCents += amount(withdrawal.amount_cents);
+    }
+  }
+
+  // Real withdrawable balance comes from the ledger-backed wallet view.
+  // This is a current balance, not a sum of commissions from sales in the
+  // filtered month. It already reflects withdrawals, including in progress.
+  for (const batch of chunks(Array.from(partnersMap.keys()))) {
+    const balances = await getAllRows((start, end) =>
+      admin.from("user_balance_summary")
+        .select("user_id,available_cents")
+        .in("user_id", batch)
+        .order("user_id")
+        .range(start, end),
+    );
+    for (const balance of balances) {
+      const partner = partnersMap.get(balance.user_id);
+      if (partner) partner.availableCents = amount(balance.available_cents);
     }
   }
 
