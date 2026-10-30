@@ -188,7 +188,7 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
 
   const orders: Array<{
     id: string; order_number: number; product_id: string; customer_id: string;
-    paid_at: string; gross_amount_cents: number;
+    paid_at: string | null; gross_amount_cents: number;
   }> = [];
   for (const batch of chunks(ids)) {
     const rows = await getAllRows((start, end) =>
