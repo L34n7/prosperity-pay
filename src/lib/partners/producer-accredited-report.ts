@@ -56,6 +56,8 @@ export type AccreditedProducerReport = {
     paidCents: number;
     availableCents: number;
     pendingCents: number;
+    generalGrossCents: number;
+    generalCommissionCents: number;
   };
 };
 
@@ -124,7 +126,10 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
   const productId = input.productId && products.some((p) => p.id === input.productId)
     ? input.productId : "all";
   const selected = productId === "all" ? products : products.filter((p) => p.id === productId);
-  const ids = selected.map((p) => String(p.id));
+  const selectedIds = new Set(selected.map((p) => String(p.id)));
+  // Lifetime totals always span all the producer's products, even if the
+  // current filter selects a single product.
+  const ids = products.map((p) => String(p.id));
   const productName = new Map(products.map((p) => [String(p.id), String(p.name || "Produto")]));
 
   const programs = await getAllRows((start, end) =>
@@ -165,6 +170,7 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
 
   const partnersMap = new Map<string, AccreditedProducerPartner>();
   for (const membership of memberships) {
+    if (!selectedIds.has(programProduct.get(membership.program_id) ?? "")) continue;
     const profile = profileById.get(membership.user_id);
     const product = productName.get(programProduct.get(membership.program_id) ?? "") ?? "Produto";
     let partner = partnersMap.get(membership.user_id);
@@ -196,7 +202,6 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
         .select("id,order_number,product_id,customer_id,paid_at,gross_amount_cents")
         .eq("producer_id", user.id).in("product_id", batch)
         .eq("status", "paid")
-        .gte("paid_at", period.start).lt("paid_at", period.end)
         .order("paid_at", { ascending: false }).order("id")
         .range(start, end),
     );
@@ -265,6 +270,10 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
   }
 
   const now = Date.now();
+  const periodStart = new Date(period.start).getTime();
+  const periodEnd = new Date(period.end).getTime();
+  let generalGrossCents = 0;
+  let generalCommissionCents = 0;
   const customersPerPartner = new Map<string, Set<string>>();
   for (const order of orders) {
     // A paid order must also have a confirmed gateway/manual payment.
@@ -273,17 +282,26 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
     const membershipId = attributionByOrder.get(order.id) ?? commissions[0]?.memberId;
     const membership = membershipId ? membershipById.get(membershipId) : null;
     if (!membership || programProduct.get(membership.program_id) !== order.product_id) continue;
-    const partner = partnersMap.get(membership.user_id);
-    if (!partner) continue;
-
     const validCommissions = commissions.filter((c) =>
       c.memberId === membership.id && c.status !== "cancelled" && c.status !== "reversed");
     const commissionCents = validCommissions.reduce((sum, c) => sum + c.amountCents, 0);
+
+    // These lifetime KPIs are independent of both the month and the product filters.
+    generalGrossCents += amount(order.gross_amount_cents);
+    generalCommissionCents += commissionCents;
+
+    const saleDate = safeDate(order.paid_at);
+    const saleTime = saleDate ? new Date(saleDate).getTime() : NaN;
+    const partner = partnersMap.get(membership.user_id);
+    if (!partner || !selectedIds.has(order.product_id)
+      || !Number.isFinite(saleTime) || saleTime < periodStart || saleTime >= periodEnd) continue;
+
     let saleStatus = "Sem comissão";
     for (const c of validCommissions) {
       partner.generatedCents += c.amountCents;
       if (c.status === "paid") {
-        partner.paidCents += c.amountCents;
+        // Commission settlement state is not the payout date. "Pago" in
+        // the KPI is calculated separately from actual paid withdrawals.
         saleStatus = "Pago";
       } else if (c.status === "available" || (c.status === "pending" && c.availableAt && new Date(c.availableAt).getTime() <= now)) {
         partner.availableCents += c.amountCents;
@@ -296,8 +314,8 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
 
     partner.salesCount++;
     partner.grossCents += amount(order.gross_amount_cents);
-    const saleDate = safeDate(order.paid_at) ?? "";
-    if (!partner.lastSale || saleDate > partner.lastSale) partner.lastSale = saleDate;
+    const confirmedSaleDate = saleDate ?? "";
+    if (!partner.lastSale || confirmedSaleDate > partner.lastSale) partner.lastSale = confirmedSaleDate;
     if (order.customer_id) {
       const set = customersPerPartner.get(partner.id) ?? new Set<string>();
       set.add(order.customer_id);
@@ -306,12 +324,31 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
     const customer = customerById.get(order.customer_id);
     partner.sales.push({
       id: order.id, orderNumber: order.order_number,
-      paidAt: saleDate,
+      paidAt: confirmedSaleDate,
       product: productName.get(order.product_id) ?? "Produto",
       customer: customer?.name ?? "Cliente", customerEmail: customer?.email ?? "—",
       grossCents: amount(order.gross_amount_cents),
       commissionCents, commissionStatus: saleStatus,
     });
+  }
+
+  // Withdrawals are settled from a partner's wallet. Use the actual
+  // payout timestamp, not the sale month or the commission status.
+  // Wallet withdrawals cannot be reliably split by originating product.
+  for (const batch of chunks(Array.from(partnersMap.keys()))) {
+    const paidWithdrawals = await getAllRows((start, end) =>
+      admin.from("withdrawals")
+        .select("id,user_id,amount_cents,paid_at")
+        .in("user_id", batch)
+        .eq("status", "paid")
+        .gte("paid_at", period.start).lt("paid_at", period.end)
+        .order("paid_at", { ascending: false }).order("id")
+        .range(start, end),
+    );
+    for (const withdrawal of paidWithdrawals) {
+      const partner = partnersMap.get(withdrawal.user_id);
+      if (partner) partner.paidCents += amount(withdrawal.amount_cents);
+    }
   }
 
   const partners = Array.from(partnersMap.values())
@@ -339,6 +376,8 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
       paidCents: partners.reduce((sum,p) => sum+p.paidCents,0),
       availableCents: partners.reduce((sum,p) => sum+p.availableCents,0),
       pendingCents: partners.reduce((sum,p) => sum+p.pendingCents,0),
+      generalGrossCents,
+      generalCommissionCents,
     },
   } satisfies AccreditedProducerReport;
 }

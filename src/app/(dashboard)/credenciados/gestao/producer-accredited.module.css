@@ -17,7 +17,7 @@
 .apply{min-height:44px;display:flex;align-items:center;justify-content:center;gap:9px;padding:0 20px;border:1px solid #38ecaa;border-radius:10px;background:var(--primary);color:#042318;font-weight:760;cursor:pointer;font-size:.82rem}
 .apply:disabled{opacity:.7;cursor:wait}
 .spinner{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .kpi{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:start;min-height:170px;gap:8px;padding:18px 20px;background:linear-gradient(145deg,#142119,#0e1711);border:1px solid #254534;border-top:3px solid var(--primary);border-radius:16px}
 .kpi::after{position:absolute;content:"";width:130px;height:130px;top:-68px;right:-45px;border-radius:100%;background:currentColor;opacity:.035;filter:blur(12px)}
 .kpiIcon{display:grid;place-items:center;width:38px;height:38px;background:#22e6a113;border:1px solid #22e6a128;border-radius:10px;color:var(--primary)}
