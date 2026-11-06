@@ -198,3 +198,24 @@
 .quickSpin{animation:quickSpin 1.1s linear infinite}
 @keyframes quickSpin{to{transform:rotate(360deg)}}
 @media(max-width:560px){.quickSelect,.quickInput{min-height:42px}.quickHelp{font-size:.72rem}.editModeActive{flex:1 1 44%}}
+
+/* Contas do mês por caixa: leitura separada do saldo bancário. */
+.boxGrid{grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr))}
+.boxBalanceLabel{margin-top:13px;color:#9ebbaa;font-size:.68rem;font-weight:680}
+.boxBalanceLabel+.boxAmount{margin:4px 0 14px}
+.boxBills{display:grid;gap:12px;margin-top:15px;padding:14px;border:1px solid #3a5442;border-radius:11px;background:linear-gradient(150deg,#14281b,#102118)}
+.boxBillsHeading{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.boxBillsHeading>div{display:grid;gap:6px;min-width:0}
+.boxBillsHeading>div>span{font-size:.71rem;color:#a2c4ad;font-weight:690}
+.boxBillsHeading>div>strong{font-size:1.16rem;font-weight:830;letter-spacing:-.03em;color:#edc799;overflow-wrap:anywhere}
+.boxBillsCount{padding:5px 8px;border:1px solid #546346;background:#2b3625;border-radius:30px;color:#c5d8af;white-space:nowrap;font-size:.64rem;font-weight:770}
+.boxBillsBreakdown{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;border-top:1px solid #35513c;padding-top:11px}
+.boxBillsBreakdown>div{display:grid;gap:6px;min-width:0}
+.boxBillsBreakdown span{font-size:.68rem;color:#9cb6a0}
+.boxBillsBreakdown strong{font-size:.84rem;font-weight:790;overflow-wrap:anywhere}
+.boxBillsPending{color:#ecc49a}
+.boxBillsPaid{color:#83ebb1}
+.boxBillsAdjustment{border-top:1px dashed #3b5b44;padding-top:10px;font-size:.68rem;line-height:1.5;color:#b1c9b7}
+.boxBillsLink{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:10px 12px;border:1px solid #3c7353;border-radius:9px;background:#1e4530;color:#b6f1cf;font:inherit;font-size:.73rem;font-weight:740;cursor:pointer}
+.boxBillsLink:hover{background:#285d40;border-color:#61d89c}
+.boxBillsLink:focus-visible{outline:2px solid #7df4b2;outline-offset:2px}

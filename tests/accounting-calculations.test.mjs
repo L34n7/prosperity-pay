@@ -16,7 +16,7 @@ vm.runInNewContext(js, {
     throw new Error("Unexpected require: " + name);
   },
 });
-const { summarizeAccounting } = moduleObj.exports;
+const { summarizeAccounting, summarizeBoxAccounts } = moduleObj.exports;
 const banks = [
   { id: "inter", name: "Inter" },
   { id: "mp", name: "Mercado Pago" },
@@ -113,4 +113,54 @@ test("saídas avulsas históricas são transportadas e não duplicadas no mês s
   assert.equal(view.totals.initialBalance,98900);
   assert.equal(view.totals.balance,98900);
   assert.equal(view.totals.outflow,0);
+});
+
+test("contas por caixa somam valor líquido, total, pago e pendente sem misturar saldos", () => {
+  const current = [
+    entry("opening", 100000, "inter", "crm", "2026-10-01"),
+    entry("outflow", 1000, "inter", "crm"),
+    entry("income", 2000, "inter", "crm"),
+    entry("expense", 15000, "inter", "crm", "2026-11-01", { status: "pending" }),
+    entry("expense", 5000, "inter", "leandro"),
+    entry("expense", 2200, "inter", "leandro", "2026-12-01", { status: "pending" }),
+  ];
+  const invoices = [{
+    invoice_month: "2026-11-01", box_id: "leandro", card_id:"card1",
+    charges: 3, total_cents: 45000, adjustment_cents: -5000,
+    paid_cents: 10000, remaining_cents: 30000,
+  },{
+    invoice_month: "2026-12-01", box_id: "crm",card_id:"card2",
+    charges: 8, total_cents: 80000, adjustment_cents: 0,
+    paid_cents: 0, remaining_cents: 80000,
+  }];
+  const data = summarizeBoxAccounts("2026-11", boxes, current, invoices);
+  assert.equal(data.crm.count, 1);
+  assert.equal(data.crm.grossCents, 15000);
+  assert.equal(data.crm.totalCents, 15000);
+  assert.equal(data.crm.pendingCents, 15000);
+  assert.equal(data.crm.paidCents, 0);
+  assert.equal(data.leandro.count, 4);
+  assert.equal(data.leandro.cardCount, 3);
+  assert.equal(data.leandro.grossCents, 50000);
+  assert.equal(data.leandro.adjustmentCents, -5000);
+  assert.equal(data.leandro.totalCents, 45000);
+  assert.equal(data.leandro.paidCents, 15000);
+  assert.equal(data.leandro.pendingCents, 30000);
+  assert.equal(data.leandro.paidCents + data.leandro.pendingCents,data.leandro.totalCents);
+});
+test("resumo mensal do caixa não inclui Pix nem transferências entre os responsáveis", () => {
+  const view = summarizeAccounting("2026-11",banks,boxes,[
+    entry("opening", 50000, "inter", "crm", "2026-10-01"),
+    entry("outflow", 12000, "inter", "crm"),
+    entry("transfer", 5000, "inter", "crm", "2026-11-01",{
+      target_bank_id:"inter",target_box_id:"leandro",
+    }),
+    entry("expense", 7500, "inter", "crm", "2026-11-01",{status:"pending"}),
+  ]);
+  assert.equal(view.boxAccounts.crm.count, 1);
+  assert.equal(view.boxAccounts.crm.totalCents, 7500);
+  assert.equal(view.boxAccounts.crm.pendingCents, 7500);
+  assert.equal(view.boxAccounts.leandro.count, 0);
+  assert.equal(view.boxAccounts.leandro.totalCents, 0);
+  assert.equal(view.boxBalances.crm, 33000);
 });

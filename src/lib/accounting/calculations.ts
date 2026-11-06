@@ -1,6 +1,6 @@
 import type { Database } from "@/lib/supabase/database.current.types";
 import { brazilDate, groupCardInvoices } from "./cash-flow";
-import type { Card, CardPayment, CardAdjustment, ExpectedIncome } from "./cash-flow";
+import type { Card, CardInvoice, CardPayment, CardAdjustment, ExpectedIncome } from "./cash-flow";
 
 export type Bank = Database["public"]["Tables"]["finance_banks"]["Row"];
 export type CashBox = Database["public"]["Tables"]["finance_boxes"]["Row"];
@@ -9,6 +9,62 @@ export type Entry = Database["public"]["Tables"]["finance_entries"]["Row"];
 export type Period = Database["public"]["Tables"]["finance_periods"]["Row"];
 
 export type MonthlySnapshot = ReturnType<typeof summarizeAccounting>;
+
+export type BoxAccountsSummary = {
+  count: number;
+  directCount: number;
+  cardCount: number;
+  grossCents: number;
+  adjustmentCents: number;
+  totalCents: number;
+  paidCents: number;
+  pendingCents: number;
+};
+
+/** Contas do mês por responsável. Compra parcelada conta como uma linha no mês;
+ * créditos/estornos ajustam a fatura, mas não viram despesas ou saídas de banco.
+ * Pagamentos de fatura só contam uma vez como quitados (não como novas contas).
+ */
+export function summarizeBoxAccounts(
+  month: string,
+  boxes: CashBox[],
+  entries: Entry[],
+  invoices: CardInvoice[],
+): Record<string, BoxAccountsSummary> {
+  const selected = month + "-01";
+  const result: Record<string, BoxAccountsSummary> = {};
+  const empty = (): BoxAccountsSummary => ({
+    count: 0, directCount: 0, cardCount: 0,
+    grossCents: 0, adjustmentCents: 0, totalCents: 0,
+    paidCents: 0, pendingCents: 0,
+  });
+  for (const box of boxes) result[box.id] = empty();
+  const byBox = (id: string) => (result[id] ??= empty());
+
+  for (const entry of entries) {
+    if (entry.kind !== "expense" || entry.card_id || entry.competence_month !== selected) continue;
+    const box = byBox(entry.box_id);
+    box.count++;
+    box.directCount++;
+    box.grossCents += entry.amount_cents;
+    box.totalCents += entry.amount_cents;
+    if (entry.status === "paid") box.paidCents += entry.amount_cents;
+    else box.pendingCents += entry.amount_cents;
+  }
+
+  for (const invoice of invoices) {
+    if (invoice.invoice_month !== selected) continue;
+    const box = byBox(invoice.box_id);
+    box.count += invoice.charges;
+    box.cardCount += invoice.charges;
+    box.grossCents += invoice.total_cents;
+    box.adjustmentCents += invoice.adjustment_cents;
+    box.totalCents += invoice.total_cents + invoice.adjustment_cents;
+    box.paidCents += invoice.paid_cents;
+    box.pendingCents += invoice.remaining_cents;
+  }
+  return result;
+}
 
 function increment(map: Record<string, number>, key: string, amount: number) {
   map[key] = (map[key] ?? 0) + amount;
@@ -112,12 +168,13 @@ export function summarizeAccounting(
     }
   }
   const invoices=groupCardInvoices(cards,entries,cardPayments,adjustments);
+  const boxAccounts=summarizeBoxAccounts(month,boxes,entries,invoices);
   pending+=invoices.filter(i=>i.invoice_month===selected).reduce((sum,i)=>sum+i.remaining_cents,0);
   const balance = Object.values(bankBalances).reduce((sum, item) => sum + item, 0);
   const initialBalance = Object.values(bankOpening).reduce((sum, item) => sum + item, 0);
   return {
     month,
-    bankBalances, boxBalances, matrix, bankOpening, boxOpening, originExpenses,
+    bankBalances, boxBalances, boxAccounts, matrix, bankOpening, boxOpening, originExpenses,
     totals: { balance, initialBalance, received, paid, pending, transferred, opening, outflow },
     monthEntries: monthEntries.sort((a, b) => b.created_at.localeCompare(a.created_at)),
     suggestions: [...titles.values()].slice(0, 100),

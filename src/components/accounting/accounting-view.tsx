@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import {
-  ArrowDownCircle, ArrowLeftRight, ArrowUpCircle, Building2, CalendarDays,
+  ArrowDownCircle, ArrowLeftRight, ArrowRight, ArrowUpCircle, Building2, CalendarDays,
   CheckCircle2, CircleDollarSign, Download, Landmark, LockKeyhole,
   Pencil, Plus, ReceiptText, Search, Settings2, ShieldCheck, Trash2, Wallet, X, Save, Loader2,
 } from "lucide-react";
@@ -430,8 +430,8 @@ export function AccountingView() {
           </div>
         </section>
         <section className={styles.panel}>
-          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Distribuição interna</span><h2>Saldo por caixa</h2>
-            <p>Os responsáveis mantêm seus próprios saldos mesmo usando o mesmo banco.</p></div>
+          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Distribuição interna · {labelMonth(month)}</span><h2>Saldos e contas por caixa</h2>
+            <p>Compare o saldo de cada responsável com as contas do mês selecionado. Compras de cartão entram na fatura e não são descontadas do banco antes do pagamento.</p></div>
             <button className={styles.iconButton} title="Novo caixa" onClick={() => {setSettingsOpen(true);startSetting("box");}}><Plus size={18}/></button>
           </div>
           <div className={styles.boxGrid}>
@@ -440,8 +440,29 @@ export function AccountingView() {
                 <div><strong>{box.name}</strong><small>{box.person_type === "pj" ? "Pessoa jurídica" : "Pessoa física"}{!box.active ? " · Arquivado" : ""}</small></div>
                 <button className={styles.miniEdit} title="Editar caixa" onClick={() => {setSettingsOpen(true);startSetting("box",box);}}><Pencil size={14}/></button>
               </div>
+              <div className={styles.boxBalanceLabel}>Saldo bancário acumulado</div>
               <strong className={styles.boxAmount}>{money(view.boxBalances[box.id] ?? 0)}</strong>
               <div className={styles.boxSources}>{view.banks.filter(bank=>bank.active).map((bank) => <span key={bank.id}>{bank.name}<b>{money(view.matrix[bank.id + ":" + box.id] ?? 0)}</b></span>)}</div>
+              <div className={styles.boxBills}>
+                <div className={styles.boxBillsHeading}>
+                  <div>
+                    <span>Contas de {labelMonth(month)}</span>
+                    <strong>{money(view.boxAccounts[box.id]?.totalCents ?? 0)}</strong>
+                  </div>
+                  <span className={styles.boxBillsCount}>{view.boxAccounts[box.id]?.count ?? 0} {(view.boxAccounts[box.id]?.count ?? 0) === 1 ? "conta" : "contas"}</span>
+                </div>
+                <div className={styles.boxBillsBreakdown}>
+                  <div><span>A pagar</span><strong className={styles.boxBillsPending}>{money(view.boxAccounts[box.id]?.pendingCents ?? 0)}</strong></div>
+                  <div><span>Já pago</span><strong className={styles.boxBillsPaid}>{money(view.boxAccounts[box.id]?.paidCents ?? 0)}</strong></div>
+                </div>
+                {(view.boxAccounts[box.id]?.adjustmentCents ?? 0) !== 0 && <div className={styles.boxBillsAdjustment}>
+                  Ajustes de fatura incluídos: {money(view.boxAccounts[box.id]?.adjustmentCents ?? 0)}
+                </div>}
+                <button type="button" className={styles.boxBillsLink} onClick={() => {
+                  setBoxFilter(box.id); setBankFilter(""); setOriginFilter(""); setStatusFilter("all"); setSearch("");
+                  setSheetTab("accounts");
+                }}>Ver contas deste caixa <ArrowRight size={15}/></button>
+              </div>
             </article>) : <p className={styles.empty}>Nenhum caixa cadastrado.</p>}
           </div>
         </section>

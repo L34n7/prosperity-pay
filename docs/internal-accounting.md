@@ -94,3 +94,11 @@ Por padrão o relatório abre nos **últimos 60 dias**, incluindo transações r
 A parte de R$83,34 do Pix Jefferson Eugênio (antigo título "parte CRM") passou para o caixa **Leandro**, com título corrigido. O Pix de R$450,00 de Ministério Unido Casa de Deus também foi realocado para Leandro. Os R$266,66 de Jefferson atribuídos a Lucas permanecem com Lucas. O saldo bancário agregado não se altera: apenas a repartição por caixa foi modificada.
 
 Outros 25 pagamentos e Pix oriundos dos extratos bancários de outubro, anteriormente registrados como despesas pagas, foram reclassificados em **outflow**. Junto ao Pix Durval Miranda, são 26 saídas avulsas que diminuem saldo bancário mas não aparecem como contas na planilha. As 138 contas/parcelas de cartões são preservadas e continuam na Planilha de contas/Faturas. Para pagamentos avulsos futuros, utilize **Movimentações > Saída / Pix**, não "Adicionar conta".
+
+## Resumo mensal de contas por caixa (novembro/2026)
+
+Em **Saldos por banco e caixa**, a área **Saldos e contas por caixa** mostra em cada cartão a disponibilidade bancária acumulada e, separadamente, as **contas do mês selecionado**. Cada caixa possui quantidade de contas/parcelas, **valor total líquido do mês**, **a pagar**, **já pago**, ajustes de fatura (se existirem) e o botão **Ver contas deste caixa**, que abre a Planilha de contas com o filtro daquele responsável.
+
+Uma conta ou parcela conta uma vez no seu mês. Entradas, Pix avulsos e transferências bancárias não são contabilizados como contas. Compras de cartão são consolidadas na fatura por caixa, sem reduzir o saldo antes da quitação; créditos/abatimentos reduzem o total devido, e pagamentos de fatura apenas transferem valores de "a pagar" para "já pago", sem criar uma segunda despesa. Contas bancárias pagas são somadas em "já pago". A análise respeita a competência mensal selecionada, inclusive meses passados/futuros, e atualiza quando o usuário altera o caixa da despesa. O cálculo integra `summarizeAccounting` e reutiliza as faturas consolidadas, sem necessidade de tabelas ou migrações.
+
+As informações sobre contas são diferentes de **saldo bancário acumulado**: o valor total de contas representa obrigações daquele mês e não deve ser novamente abatido dos saldos já pagos. O saldo "a pagar" permanece à parte.
