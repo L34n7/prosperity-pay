@@ -9,6 +9,7 @@ import {
 import { formatCents } from "@/lib/operational";
 import { shiftMonthlyDate } from "@/lib/accounting/installments";
 import { CashFlowPanel } from "./cash-flow-panel";
+import { MovementsReport } from "./movements-report";
 import { QuickInputCell, QuickSelectCell } from "./quick-edit-cell";
 import type { PlannerView } from "./cash-flow-panel";
 import { invoiceDueDate, brazilDate } from "@/lib/accounting/cash-flow";
@@ -16,7 +17,7 @@ import type { Bank, CashBox, Entry, MonthlySnapshot, Origin, Period } from "@/li
 import styles from "./accounting-view.module.css";
 
 type ViewData = MonthlySnapshot & PlannerView & {
-  origins: Origin[]; period: Period | null;
+  origins: Origin[]; period: Period | null; ledgerEntries: Entry[];
 };
 type EntryDraft = {
   id?: string; kind: Entry["kind"]; title: string; amount: string; cardId: string;
@@ -72,6 +73,7 @@ function entryToDraft(entry: Entry): EntryDraft {
 
 export function AccountingView() {
   const [month, setMonth] = useState(monthNow);
+  const [movementUntil,setMovementUntil] = useState(today);
   const [reload, setReload] = useState(0);
   const [view, setView] = useState<ViewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,7 +96,7 @@ export function AccountingView() {
 
   useEffect(() => {
     let live = true;
-    fetch("/api/contabilidade?mes=" + encodeURIComponent(month), { cache: "no-store" })
+    fetch("/api/contabilidade?mes=" + encodeURIComponent(month) + "&movAte=" + encodeURIComponent(movementUntil), { cache: "no-store" })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw Error(data.error || "Falha ao consultar o financeiro.");
@@ -103,7 +105,7 @@ export function AccountingView() {
       .catch((cause) => { if (live) { setError(cause instanceof Error ? cause.message : "Falha ao carregar."); setView(null); } })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [month, reload]);
+  }, [month, reload, movementUntil]);
 
   async function mutate(method: "POST" | "PATCH" | "DELETE", payload: Record<string, unknown>, message: string) {
     setSaving(true); setError(""); setNotice("");
@@ -128,7 +130,8 @@ export function AccountingView() {
   function showEntry(kind: Entry["kind"], bankId?: string, boxId?: string) {
     if (!view) return;
     if (!canRecord) { setSettingsOpen(true); return; }
-    setError(""); setEntryModal({...blankEntry(kind, month, view), ...(bankId ? {bankId} : {}), ...(boxId ? {boxId} : {})});
+    setError(""); setEntryModal({...blankEntry(kind, sheetTab==="other" ? monthNow() : month, view),
+      ...(bankId ? {bankId} : {}), ...(boxId ? {boxId} : {})});
   }
   function chooseSuggestion(name: string, current: EntryDraft) {
     const suggestion = view?.suggestions.find((item) => item.title.trim().toLocaleLowerCase("pt-BR") === name.trim().toLocaleLowerCase("pt-BR"));
@@ -256,7 +259,8 @@ export function AccountingView() {
       const safe = /^[=+@\-\t\r]/.test(value) ? "'" + value : value;
       return '"' + safe.replaceAll('"', '""') + '"';
     };
-    const csv = [headers, ...view.monthEntries.map(cells)].map((row) => row.map(escapeCsv).join(";")).join("\r\n");
+    const csv = [headers, ...view.monthEntries.filter(e=>e.kind==="expense").map(cells)]
+      .map((row) => row.map(escapeCsv).join(";")).join("\r\n");
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "contabilidade-" + month + ".csv";
@@ -335,8 +339,8 @@ export function AccountingView() {
           {closed ? <LockKeyhole size={14}/> : <CheckCircle2 size={14}/>}
           {closed ? "Mês fechado" : "Mês aberto"}
         </span>}
-        <button type="button" className={styles.outlineButton} disabled={loading || saving || !view}
-          onClick={exportCsv}><Download size={16}/> Exportar</button>
+        {sheetTab === "accounts" && <button type="button" className={styles.outlineButton} disabled={loading || saving || !view}
+          onClick={exportCsv}><Download size={16}/> Exportar contas</button>}
         <button type="button" className={styles.outlineButton} disabled={loading || saving || !view} onClick={toggleClose}>
           {closed ? "Reabrir mês" : "Fechar mês"}</button>
       </div>
@@ -377,11 +381,22 @@ export function AccountingView() {
         <button type="button" className={sheetTab === "balances" ? styles.activeTab : styles.tab}
           aria-current={sheetTab === "balances" ? "page" : undefined} onClick={() => setSheetTab("balances")}><Wallet size={17}/> Saldos por banco e caixa</button>
         <button type="button" className={sheetTab === "other" ? styles.activeTab : styles.tab}
-          aria-current={sheetTab === "other" ? "page" : undefined} onClick={() => setSheetTab("other")}><ArrowLeftRight size={17}/> Entradas e transferências</button>
+          aria-current={sheetTab === "other" ? "page" : undefined} onClick={() => setSheetTab("other")}><ArrowLeftRight size={17}/> Movimentações</button>
       </nav>
       {(sheetTab==="forecast"||sheetTab==="cards")&&<CashFlowPanel
         view={view} mode={sheetTab} closed={Boolean(closed)}
         onChanged={()=>setReload(x=>x+1)}/>}
+      {sheetTab==="other" && <MovementsReport
+        entries={view.ledgerEntries} payments={view.cardPayments}
+        receipts={view.expectedIncomes} cards={view.cards}
+        banks={view.banks} boxes={view.boxes}
+        onNew={(kind)=>showEntry(kind)}
+        onEdit={(id)=>{
+          const item=view.ledgerEntries.find(e=>e.id===id);
+          if(item){setError("");setEntryModal(entryToDraft(item));}
+        }}
+        onEndDateChange={setMovementUntil}/>}
+
       {sheetTab === "balances" && <section className={styles.panel}>
         <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha de saldos · {labelMonth(month)}</span>
           <h2>Distribuição do dinheiro</h2><p>Clique em uma célula para registrar saldo inicial ou aporte neste banco e caixa. Os valores exibidos são acumulados até o mês selecionado.</p></div>
@@ -433,7 +448,7 @@ export function AccountingView() {
       </div>
 
 </>}
-      {(sheetTab==="accounts"||sheetTab==="other") && <>      <section className={styles.panel} id="finance-origin-anchor">
+      {sheetTab==="accounts" && <>      <section className={styles.panel} id="finance-origin-anchor">
         <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha mensal · {labelMonth(month)}</span>
           <h2>{sheetTab === "accounts" ? "Contas do mês" : "Movimentações bancárias"}</h2>
           <p>{sheetTab === "accounts"
@@ -546,28 +561,6 @@ export function AccountingView() {
       </section>
 
       </>}
-      {sheetTab==="other" && <section className={styles.panel}>
-        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Fluxo efetivo</span>
-          <h2>Recebimentos confirmados e faturas pagas</h2>
-          <p>O histórico abaixo já faz parte dos saldos de banco e caixa. Não cadastre novamente as mesmas movimentações.</p></div></div>
-        <div className={styles.sheetTableWrap}><table className={styles.table}>
-          <thead><tr><th>Movimentação</th><th>Banco</th><th>Caixa</th><th>Data</th><th>Valor</th></tr></thead>
-          <tbody>
-            {view.expectedIncomes.filter(r=>r.status==="received"&&r.received_at&&brazilDate(r.received_at).slice(0,7)===month)
-              .map(r=><tr key={r.id}><td><strong>{r.title}</strong><small>Recebimento confirmado</small></td>
-                <td>{findBank(r.bank_id)}</td><td>{findBox(r.box_id)}</td>
-                <td>{shortDate(brazilDate(r.received_at!))}</td>
-                <td className={styles.income}>+{money(r.amount_cents)}</td></tr>)}
-            {view.cardPayments.filter(p=>brazilDate(p.paid_at).slice(0,7)===month).map(p=><tr key={p.id}>
-              <td><strong>{view.cards.find(c=>c.id===p.card_id)?.name??"Fatura de cartão"}</strong>
-                <small>Pagamento real da fatura {p.invoice_month.slice(0,7)}</small></td>
-              <td>{findBank(p.bank_id)}</td><td>{findBox(p.box_id)}</td>
-              <td>{shortDate(brazilDate(p.paid_at))}</td><td className={styles.expense}>−{money(p.amount_cents)}</td></tr>)}
-          </tbody></table></div>
-          {!view.expectedIncomes.some(r=>r.status==="received"&&r.received_at&&brazilDate(r.received_at).slice(0,7)===month)
-           &&!view.cardPayments.some(p=>brazilDate(p.paid_at).slice(0,7)===month)
-           &&<p className={styles.empty}>Nenhuma fatura paga ou previsão confirmada neste mês.</p>}
-      </section>}
       {view.origins.length > 0 && sheetTab === "accounts" && <section className={styles.originPanel}>
         <div><span className={styles.eyebrow}>Classificação mensal</span><h2>Gastos por origem</h2><p>Identifique o que cada origem consumiu no mês.</p></div>
         <div className={styles.originList}>{view.origins.map((origin) => <button key={origin.id}

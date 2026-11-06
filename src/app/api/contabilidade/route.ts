@@ -149,7 +149,9 @@ async function accountGet(request: Request) {
   const month = monthParam(url.searchParams.get("mes"));
   const currentDay=localParts(new Date()).date;
   const horizonDay=dayPlus(currentDay,125);
-  const maxMonth=[month+"-01",horizonDay.slice(0,7)+"-01"].sort().at(-1)!;
+  const movementUntil=url.searchParams.get("movAte");
+  const movementMonth=movementUntil ? date({movAte:movementUntil},"movAte").slice(0,7)+"-01" : currentDay.slice(0,7)+"-01";
+  const maxMonth=[month+"-01",horizonDay.slice(0,7)+"-01",movementMonth].sort().at(-1)!;
   const [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments] = await Promise.all([
     supabase.from("finance_banks").select("*").eq("owner_user_id",user.id).order("name"),
     supabase.from("finance_boxes").select("*").eq("owner_user_id",user.id).order("name"),
@@ -184,7 +186,8 @@ async function accountGet(request: Request) {
     banks:banks.data as Bank[],boxes:boxes.data as CashBox[],
     origins:origins.data as Origin[],period:(periods.data as Period[])?.[0]??null,
     cards:cardList,cardPayments:payments,expectedIncomes:receipts,cardAdjustments:adjustments,
-    invoices,forecast:{today:currentDay,balances:position,events},
+    invoices,ledgerEntries:entries.filter(e=>e.status==="paid"&&!e.card_id),
+    forecast:{today:currentDay,balances:position,events},
     ...summary,
   },{headers:{"Cache-Control":"private, no-store"}});
 }
