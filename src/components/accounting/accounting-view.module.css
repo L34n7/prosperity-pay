@@ -130,3 +130,50 @@
 @media(max-width:1400px){.totals{grid-template-columns:repeat(3,minmax(0,1fr))}.twoCols{grid-template-columns:1fr}}
 @media(max-width:800px){.header{flex-wrap:wrap}.totals{grid-template-columns:repeat(2,minmax(0,1fr))}.periodBar{align-items:flex-start}.periodActions{width:100%}.sectionHead{flex-wrap:wrap}.entryActions{justify-content:flex-start}.settingsGrid{grid-template-columns:1fr}.settingsGroup{min-width:0}.settingsList{max-height:140px}.originList{justify-content:flex-start}}
 @media(max-width:520px){.page{gap:13px}.header h1{font-size:1.55rem}.periodBar,.panel,.dialog,.originPanel{padding:15px}.totals{gap:9px}.statCard{min-height:152px;padding:13px}.statCard>strong{font-size:1.1rem}.statCard>span{font-size:.7rem}.statCard small{font-size:.64rem}.periodActions .outlineButton{flex:1}.entryActions{width:100%}.entryActions button{flex:1 1 42%}.filters{display:grid;grid-template-columns:1fr 1fr}.search{grid-column:1/-1}.filters select{width:100%;min-width:0}.formGrid{grid-template-columns:1fr}.settingForm{grid-template-columns:1fr}.dialogHead h2{font-size:1.13rem}.formActions button{flex:1}}
+
+/* Visão principal: planilha mensal, com grade densa e hierarquia mais clara */
+.sheetTabs{display:flex;align-items:center;gap:6px;padding:6px;border:1px solid #2c4b37;border-radius:14px;background:linear-gradient(135deg,#15271c,#0b1710);flex-wrap:wrap}
+.tab,.activeTab{display:flex;align-items:center;justify-content:center;gap:9px;min-height:43px;padding:9px 17px;border:1px solid transparent;border-radius:10px;background:transparent;color:#9fb5a7;font:inherit;font-size:.83rem;font-weight:740;cursor:pointer;transition:background .15s,color .15s}
+.tab:hover{color:#d8f0e1;background:#1b3424}
+.activeTab{color:#082417;background:var(--primary);border-color:#43e9a5;box-shadow:0 3px 12px #26d98b20}
+.sheetMetrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:15px}
+.sheetMetrics>div{display:grid;gap:5px;border:1px solid #304c3a;border-radius:10px;background:#0d1c13;padding:12px 14px}
+.sheetMetrics span{font-size:.71rem;color:var(--text-muted);font-weight:680}
+.sheetMetrics strong{font-size:1.11rem;letter-spacing:-.024em;overflow-wrap:anywhere;color:var(--text)}
+.sheetMetrics>div:last-child strong{color:#f1c496}
+.sheetTableWrap{overflow-x:auto;border:1px solid #395341;border-radius:11px;background:#0a150f}
+.sheetTableWrap .table{min-width:1100px;border-collapse:separate;border-spacing:0}
+.sheetTableWrap .table th{position:sticky;top:0;z-index:1;background:#1c3325;color:#b9d6c4;padding:13px 15px;border-bottom:1px solid #405c47}
+.sheetTableWrap .table td{padding:12px 15px;border-top:1px solid #264032}
+.sheetTableWrap .table tbody tr:nth-child(even) td{background:#10211755}
+.sheetTableWrap .table tbody tr:hover td{background:#1d3f2b7b}
+.sheetTableWrap .table tbody td:first-child{min-width:180px}
+.installmentBadge{display:inline-grid;place-items:center;min-width:43px;border-radius:7px;padding:5px 9px;background:#2c3750;color:#c5d7ff;border:1px solid #4c5e87;font-weight:790;font-size:.75rem}
+.noInstallment{color:#667b6d}
+.balanceMatrix{width:100%;min-width:680px;border-collapse:collapse;font-size:.79rem}
+.balanceMatrix th,.balanceMatrix td{padding:15px 13px;text-align:right;border-bottom:1px solid #29422f;white-space:nowrap}
+.balanceMatrix th:first-child{text-align:left}
+.balanceMatrix thead th{background:#1b3524;color:#a8d8bd;font-weight:750}
+.balanceMatrix thead th small{display:block;font-size:.59rem;color:#819f8b;margin-top:5px}
+.balanceMatrix tbody th{display:flex;align-items:center;gap:9px;color:var(--text);font-size:.8rem}
+.balanceMatrix tbody td button{display:inline-flex;align-items:center;gap:7px;background:transparent;color:#d6eee0;border:1px solid transparent;border-radius:7px;padding:7px 9px;font:inherit;cursor:pointer}
+.balanceMatrix tbody td button svg{opacity:0;color:#73f4bc}
+.balanceMatrix tbody td button:hover:not(:disabled){background:#204732;border-color:#377c54}
+.balanceMatrix tbody td button:hover svg,.balanceMatrix tbody td button:focus-visible svg{opacity:1}
+.balanceMatrix tbody td button:disabled{opacity:.75;cursor:default}
+.balanceMatrix .matrixTotal,.balanceMatrix tfoot td,.balanceMatrix tfoot th{font-weight:830;color:#98f2c3;background:#193928;font-size:.85rem}
+.balanceMatrix tfoot th{min-width:170px}
+.balanceNote{margin:12px 0 0;color:#a5bfb0;font-size:.74rem;line-height:1.6}
+.balanceNote strong{color:var(--text)}
+.installmentInfo{grid-column:1/-1;display:flex;align-items:flex-start;gap:10px;border:1px solid #445a70;border-radius:10px;background:#1c2b38;padding:12px 14px;color:#b7d0e7;font-size:.76rem;line-height:1.65}
+.installmentInfo svg{flex:0 0 auto;color:#91b9f0;margin-top:2px}
+.installmentInfo strong{color:#e1f0ff}
+.inputHelp{color:var(--text-muted);font-size:.68rem;font-weight:480;line-height:1.5}
+.deleteWarning{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:16px;background:#3b2321;border:1px solid #7e4441;padding:13px;border-radius:11px}
+.deleteWarning>div{display:grid;gap:4px}
+.deleteWarning strong{color:#ffd4cd;font-size:.8rem}
+.deleteWarning span{color:#ddb0aa;font-size:.72rem;line-height:1.5}
+.dangerButton{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #ab5a54;background:#6a302d;color:#ffe2d6;border-radius:9px;padding:10px 14px;font:inherit;font-size:.75rem;font-weight:750;cursor:pointer;white-space:nowrap}
+.dangerButton:hover{background:#853e39}.dangerButton:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:840px){.sheetTabs{display:grid;grid-template-columns:1fr 1fr;gap:6px}.sheetTabs button{min-width:0}.sheetMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.sheetTabs{grid-template-columns:1fr}.tab,.activeTab{justify-content:flex-start}.sheetMetrics{gap:7px}.sheetMetrics>div{padding:11px}.sheetMetrics strong{font-size:1rem}.deleteWarning{align-items:flex-start;flex-direction:column}.dangerButton{align-self:flex-end}.balanceMatrix th,.balanceMatrix td{padding:11px 9px}}

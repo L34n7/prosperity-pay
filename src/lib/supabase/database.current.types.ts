@@ -409,6 +409,8 @@ type FinanceEntryRow = {
   status: "pending" | "paid";
   title: string; amount_cents: number; competence_month: string;
   due_on: string | null; settled_on: string | null; notes: string | null;
+  movement_at: string | null;
+  installment_series_id: string | null; installment_number: number | null; installment_total: number | null;
   created_at: string; updated_at: string;
 };
 

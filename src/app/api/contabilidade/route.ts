@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { HttpError, asObject, jsonError, requiredInteger, requiredString } from "@/lib/api/http";
 import { requirePlatformAdmin } from "@/lib/auth/require-user";
 import { summarizeAccounting } from "@/lib/accounting/calculations";
+import { buildInstallmentSchedule } from "@/lib/accounting/installments";
 import type { Bank, CashBox, Entry, Origin, Period } from "@/lib/accounting/calculations";
 import type { Database } from "@/lib/supabase/database.current.types";
 
@@ -59,12 +61,42 @@ async function originFor(
   fromDb(inserted.error);
   return null;
 }
+function localParts(value: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(value);
+  const get = (key: string) => parts.find((part) => part.type === key)?.value ?? "";
+  return { date: get("year") + "-" + get("month") + "-" + get("day"),
+    input: get("year") + "-" + get("month") + "-" + get("day") + "T" + get("hour") + ":" + get("minute") };
+}
+function parseMovement(body: Record<string, unknown>, status: Entry["status"]) {
+  if (status === "pending") return { time: null, on: null };
+  const value = body.movementAt;
+  if (value !== undefined && value !== null && value !== "") {
+    if (typeof value !== "string" || !/^20\\d{2}-(0[1-9]|1[0-2])-[0-3]\\dT[0-2]\\d:[0-5]\\d$/.test(value))
+      throw new HttpError(400, "Data e hora inválidas.");
+    const on = value.slice(0, 10);
+    date({ on }, "on");
+    const parsed = new Date(value + ":00-03:00");
+    if (Number.isNaN(parsed.getTime()) || localParts(parsed).input !== value)
+      throw new HttpError(400, "Data e hora inválidas.");
+    return { time: parsed.toISOString(), on };
+  }
+  const suppliedDay = body.settledOn ? date(body, "settledOn") : null;
+  const now = new Date();
+  const on = suppliedDay ?? localParts(now).date;
+  if (!suppliedDay || suppliedDay === localParts(now).date) {
+    return { time: now.toISOString(), on };
+  }
+  return { time: new Date(on + "T12:00:00-03:00").toISOString(), on };
+}
 async function entryPayload(supabase: Client, owner: string, body: Record<string, unknown>) {
   const kind = requiredString(body, "kind", 20) as Entry["kind"];
   if (!["opening", "income", "expense", "transfer"].includes(kind)) throw new HttpError(400, "Tipo inválido.");
   const status: Entry["status"] = kind === "expense" && body.status === "pending" ? "pending" : "paid";
   const due = kind === "expense" ? date(body, "dueOn") : null;
-  const settled = status === "paid" ? date(body, "settledOn") : null;
+  const movement = parseMovement(body, status);
   const entry: Database["public"]["Tables"]["finance_entries"]["Insert"] = {
     owner_user_id: owner,
     bank_id: uuid(body, "bankId"),
@@ -74,8 +106,9 @@ async function entryPayload(supabase: Client, owner: string, body: Record<string
     title: requiredString(body, "title", 160),
     amount_cents: requiredInteger(body, "amountCents", 1),
     due_on: due,
-    settled_on: settled,
-    competence_month: (settled ?? due)!.slice(0, 7) + "-01",
+    settled_on: movement.on,
+    movement_at: movement.time,
+    competence_month: (movement.on ?? due)!.slice(0, 7) + "-01",
     target_bank_id: kind === "transfer" ? uuid(body, "targetBankId") : null,
     target_box_id: kind === "transfer" ? uuid(body, "targetBoxId") : null,
     origin_id: kind === "transfer" ? null : await originFor(supabase, owner, body),
@@ -85,6 +118,13 @@ async function entryPayload(supabase: Client, owner: string, body: Record<string
     throw new HttpError(400, "Escolha um banco ou caixa de destino diferente.");
   if (entry.title!.length < 2) throw new HttpError(400, "Informe uma descrição maior.");
   return entry;
+}
+function installmentConfig(body: Record<string, unknown>) {
+  const number = body.installmentNumber == null ? 1 : requiredInteger(body, "installmentNumber", 1);
+  const total = body.installmentTotal == null ? 1 : requiredInteger(body, "installmentTotal", 1);
+  if (total > 120 || number > total || (total === 1 && number !== 1))
+    throw new HttpError(400, "Informe parcela atual e total entre 1 e 120.");
+  return { number, total };
 }
 
 async function accountGet(request: Request) {
@@ -146,6 +186,32 @@ async function createRecord(request: Request) {
   }
   if (action === "entry") {
     const entry = await entryPayload(supabase, user.id, body);
+    const { number, total } = entry.kind === "expense" ? installmentConfig(body) : { number: 1, total: 1 };
+    if (total > 1) {
+      // Um único INSERT é transacional: se qualquer mês estiver fechado, nenhuma parcela será criada.
+      const seriesId = randomUUID();
+      const due = entry.due_on!;
+      const batch: Database["public"]["Tables"]["finance_entries"]["Insert"][] = [];
+      for (const scheduled of buildInstallmentSchedule(due, number, total)) {
+        const installment = scheduled.number;
+        const first = installment === number;
+        const installmentDue = scheduled.dueOn;
+        batch.push({
+          ...entry,
+          due_on: installmentDue,
+          status: first ? entry.status : "pending",
+          settled_on: first ? entry.settled_on : null,
+          movement_at: first ? entry.movement_at : null,
+          competence_month: first && entry.status === "paid" ? entry.competence_month : installmentDue.slice(0, 7) + "-01",
+          installment_series_id: seriesId,
+          installment_number: installment,
+          installment_total: total,
+        });
+      }
+      const result = await supabase.from("finance_entries").insert(batch).select("id,installment_number");
+      fromDb(result.error);
+      return NextResponse.json({ records: result.data, count: batch.length }, { status: 201 });
+    }
     const result = await supabase.from("finance_entries").insert(entry).select("*").single();
     fromDb(result.error);
     return NextResponse.json({ record: result.data }, { status: 201 });
@@ -236,7 +302,23 @@ async function modifyRecord(request: Request) {
 
 async function deleteRecord(request: Request) {
   const { supabase, user } = await requirePlatformAdmin();
-  const id = uuid(asObject(await request.json()), "id");
+  const body = asObject(await request.json());
+  const id = uuid(body, "id");
+  const action = body.action;
+  if (action === "bank" || action === "box") {
+    // Chaves estrangeiras sem cascata preservam o histórico contábil.
+    const table = action === "bank" ? "finance_banks" : "finance_boxes";
+    const result = await supabase.from(table).delete()
+      .eq("id", id).eq("owner_user_id", user.id).select("id").maybeSingle();
+    if (result.error?.code === "23503")
+      throw new HttpError(409, "Este " + (action === "bank" ? "banco" : "caixa") +
+        " possui lançamentos vinculados e não pode ser apagado. Desative-o para preservar o histórico.");
+    fromDb(result.error);
+    if (!result.data) throw new HttpError(404, "Cadastro não encontrado.");
+    return NextResponse.json({ ok: true });
+  }
+  if (action !== "entry" && action !== undefined)
+    throw new HttpError(400, "Ação inválida.");
   const result = await supabase.from("finance_entries").delete()
     .eq("id", id).eq("owner_user_id", user.id).select("id").maybeSingle();
   fromDb(result.error);

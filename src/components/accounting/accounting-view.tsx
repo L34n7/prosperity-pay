@@ -7,6 +7,7 @@ import {
   Pencil, Plus, ReceiptText, Search, Settings2, ShieldCheck, Trash2, Wallet, X,
 } from "lucide-react";
 import { formatCents } from "@/lib/operational";
+import { shiftMonthlyDate } from "@/lib/accounting/installments";
 import type { Bank, CashBox, Entry, MonthlySnapshot, Origin, Period } from "@/lib/accounting/calculations";
 import styles from "./accounting-view.module.css";
 
@@ -17,15 +18,20 @@ type EntryDraft = {
   id?: string; kind: Entry["kind"]; title: string; amount: string;
   bankId: string; boxId: string; targetBankId: string; targetBoxId: string;
   originId: string; originName: string; status: Entry["status"];
-  dueOn: string; settledOn: string; notes: string;
+  dueOn: string; settledOn: string; movementAt: string; notes: string;
+  installmentNumber: number; installmentTotal: number;
 };
 type SettingType = "bank" | "box" | "origin";
 type SettingDraft = { type: SettingType; id?: string; name: string; personType: "pf" | "pj"; active: boolean };
 
-const today = () => new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
-}).format(new Date());
+const today = () => localDateTime(new Date()).slice(0, 10);
 const monthNow = () => today().slice(0, 7);
+function localDateTime(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {timeZone:"America/Sao_Paulo",
+    year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(date);
+  const get = (key: string) => parts.find((part) => part.type === key)?.value ?? "";
+  return get("year") + "-" + get("month") + "-" + get("day") + "T" + get("hour") + ":" + get("minute");
+}
 const shortDate = (value: string | null) => value
   ? new Date(value + "T12:00:00Z").toLocaleDateString("pt-BR", { timeZone: "UTC" })
   : "—";
@@ -43,7 +49,9 @@ function blankEntry(kind: Entry["kind"], month: string, view: ViewData): EntryDr
     boxId: view.boxes.find((item) => item.active)?.id ?? "",
     targetBankId: view.banks.find((item) => item.active)?.id ?? "",
     targetBoxId: view.boxes.find((item) => item.active)?.id ?? "",
-    originId: "", originName: "", status: kind === "expense" ? "pending" : "paid", dueOn: date, settledOn: date, notes: "",
+    originId: "", originName: "", status: kind === "expense" ? "pending" : "paid", dueOn: date,
+    settledOn: kind === "opening" ? "" : date, movementAt: "", notes: "",
+    installmentNumber: 1, installmentTotal: 1,
   };
 }
 function entryToDraft(entry: Entry): EntryDraft {
@@ -52,7 +60,9 @@ function entryToDraft(entry: Entry): EntryDraft {
     amount: String(entry.amount_cents / 100), bankId: entry.bank_id, boxId: entry.box_id,
     targetBankId: entry.target_bank_id ?? "", targetBoxId: entry.target_box_id ?? "",
     originId: entry.origin_id ?? "", originName: "", status: entry.status,
-    dueOn: entry.due_on ?? today(), settledOn: entry.settled_on ?? today(), notes: entry.notes ?? "",
+    dueOn: entry.due_on ?? today(), settledOn: entry.settled_on ?? today(),
+    movementAt: entry.movement_at ? localDateTime(new Date(entry.movement_at)) : "", notes: entry.notes ?? "",
+    installmentNumber: entry.installment_number ?? 1, installmentTotal: entry.installment_total ?? 1,
   };
 }
 
@@ -72,6 +82,7 @@ export function AccountingView() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [originFilter, setOriginFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [sheetTab, setSheetTab] = useState<"accounts" | "balances" | "other">("accounts");
   const titleListId = useId();
 
   useEffect(() => {
@@ -107,10 +118,10 @@ export function AccountingView() {
   const closed = view?.period?.status === "closed";
   const canRecord = Boolean(view?.banks.some((item) => item.active) && view?.boxes.some((item) => item.active));
 
-  function showEntry(kind: Entry["kind"]) {
+  function showEntry(kind: Entry["kind"], bankId?: string, boxId?: string) {
     if (!view) return;
     if (!canRecord) { setSettingsOpen(true); return; }
-    setError(""); setEntryModal(blankEntry(kind, month, view));
+    setError(""); setEntryModal({...blankEntry(kind, month, view), ...(bankId ? {bankId} : {}), ...(boxId ? {boxId} : {})});
   }
   function chooseSuggestion(name: string, current: EntryDraft) {
     const suggestion = view?.suggestions.find((item) => item.title.trim().toLocaleLowerCase("pt-BR") === name.trim().toLocaleLowerCase("pt-BR"));
@@ -142,8 +153,13 @@ export function AccountingView() {
     const cents = Math.round(Number(entryModal.amount) * 100);
     if (!Number.isSafeInteger(cents) || cents <= 0) { setError("Informe um valor válido maior que zero."); return; }
     const dueOn = entryModal.kind === "expense" ? entryModal.dueOn : null;
-    const expectedMonth = (entryModal.status === "pending" && entryModal.kind === "expense"
-      ? entryModal.dueOn : entryModal.settledOn).slice(0, 7);
+    if (entryModal.kind === "expense" && (entryModal.installmentNumber > entryModal.installmentTotal || entryModal.installmentTotal > 120)) {
+      setError("A parcela atual deve ser menor ou igual ao total, limitado a 120.");
+      return;
+    }
+    const moment = entryModal.movementAt.trim();
+    const expectedMonth = (entryModal.kind === "expense" && entryModal.status === "pending"
+      ? entryModal.dueOn : moment ? moment.slice(0, 10) : entryModal.settledOn || today()).slice(0, 7);
     const payload = {
       action: "entry", id: entryModal.id,
       kind: entryModal.kind, title: entryModal.title.trim(), amountCents: cents,
@@ -152,25 +168,31 @@ export function AccountingView() {
       originId: entryModal.originId === "__new" ? null : entryModal.originId || null,
       originName: entryModal.originId === "__new" ? entryModal.originName.trim() : null,
       status: entryModal.kind === "expense" ? entryModal.status : "paid",
-      dueOn, settledOn: entryModal.status === "pending" && entryModal.kind === "expense" ? null : entryModal.settledOn,
+      dueOn, settledOn: entryModal.status === "pending" && entryModal.kind === "expense" ? null : entryModal.settledOn || null,
+      movementAt: entryModal.status === "pending" && entryModal.kind === "expense" ? null : moment || null,
+      installmentNumber: entryModal.id ? undefined : entryModal.installmentNumber,
+      installmentTotal: entryModal.id ? undefined : entryModal.installmentTotal,
       notes: entryModal.notes.trim(),
     };
     const moved = expectedMonth !== month;
     const successful = await mutate(entryModal.id ? "PATCH" : "POST", payload,
       moved ? "Lançamento salvo no mês " + labelMonth(expectedMonth) + ". Altere o filtro para visualizá-lo."
-        : entryModal.id ? "Lançamento atualizado." : "Lançamento registrado.");
+        : entryModal.id ? "Lançamento atualizado." : entryModal.kind === "expense" && entryModal.installmentTotal > 1
+          ? "Parcela " + entryModal.installmentNumber + "/" + entryModal.installmentTotal + " registrada. As parcelas restantes foram geradas nos próximos meses."
+          : "Lançamento registrado.");
     if (successful) setEntryModal(null);
   }
 
   function exportCsv() {
     if (!view) return;
-    const headers = ["Mês","Descrição","Tipo","Banco","Caixa","Origem","Valor (R$)","Situação","Vencimento","Pagamento","Observações"];
+    const headers = ["Mês","Descrição","Tipo","Banco","Caixa","Origem","Parcela","Valor (R$)","Situação","Vencimento","Pagamento","Data e hora","Observações"];
     const cells = (entry: Entry) => [
       month, entry.title, labelKind[entry.kind], view.banks.find((x) => x.id === entry.bank_id)?.name ?? "",
       view.boxes.find((x) => x.id === entry.box_id)?.name ?? "",
       view.origins.find((x) => x.id === entry.origin_id)?.name ?? "",
+      entry.installment_total ? entry.installment_number + "/" + entry.installment_total : "",
       (entry.amount_cents / 100).toFixed(2).replace(".", ","), entry.status === "paid" ? "Pago" : "Pendente",
-      entry.due_on ?? "", entry.settled_on ?? "", entry.notes ?? "",
+      entry.due_on ?? "", entry.settled_on ?? "", entry.movement_at ?? "", entry.notes ?? "",
     ];
     const escapeCsv = (value: string) => {
       const safe = /^[=+@\-\t\r]/.test(value) ? "'" + value : value;
@@ -200,7 +222,13 @@ export function AccountingView() {
   }
   async function deleteEntry(id: string) {
     if (!confirm("Excluir este lançamento? O saldo será recalculado imediatamente. Esta ação não pode ser desfeita.")) return;
-    await mutate("DELETE", { id }, "Lançamento excluído e saldos atualizados.");
+    await mutate("DELETE", { action: "entry", id }, "Lançamento excluído e saldos atualizados.");
+  }
+  async function deleteSetting() {
+    if (!setting?.id || setting.type === "origin") return;
+    if (!confirm("Apagar " + setting.name + " definitivamente?\nEsta ação só será permitida quando não houver contas, saldos ou transferências vinculadas a este cadastro.")) return;
+    await mutate("DELETE", { action: setting.type, id: setting.id },
+      (setting.type === "bank" ? "Banco" : "Caixa") + " apagado com sucesso.");
   }
   async function toggleClose() {
     if (!view) return;
@@ -215,6 +243,13 @@ export function AccountingView() {
   const findOrigin = (id: string | null) => view?.origins.find((b) => b.id === id)?.name ?? "Sem origem";
   const availableBanks = view?.banks.filter((b) => b.active || b.id === entryModal?.bankId || b.id === entryModal?.targetBankId) ?? [];
   const availableBoxes = view?.boxes.filter((b) => b.active || b.id === entryModal?.boxId || b.id === entryModal?.targetBoxId) ?? [];
+  const visibleRows = selectedEntries.filter((entry) => sheetTab === "accounts" ? entry.kind === "expense" : entry.kind !== "expense")
+    .sort((a,b) => sheetTab === "accounts"
+      ? (a.due_on ?? "").localeCompare(b.due_on ?? "") || a.title.localeCompare(b.title, "pt-BR")
+      : b.created_at.localeCompare(a.created_at));
+  const sheetTotal = visibleRows.reduce((total, row) => total + row.amount_cents, 0);
+  const sheetPaid = visibleRows.filter((row) => row.status === "paid").reduce((total,row) => total + row.amount_cents,0);
+  const sheetPending = sheetTotal - sheetPaid;
 
   return <div className={styles.page}>
     <header className={styles.header}>
@@ -270,7 +305,32 @@ export function AccountingView() {
         </article>; })}
       </section>
 
-      <div className={styles.twoCols}>
+      <nav className={styles.sheetTabs} aria-label="Áreas da planilha mensal">
+        <button type="button" className={sheetTab === "accounts" ? styles.activeTab : styles.tab}
+          aria-current={sheetTab === "accounts" ? "page" : undefined} onClick={() => setSheetTab("accounts")}><ReceiptText size={17}/> Planilha de contas</button>
+        <button type="button" className={sheetTab === "balances" ? styles.activeTab : styles.tab}
+          aria-current={sheetTab === "balances" ? "page" : undefined} onClick={() => setSheetTab("balances")}><Wallet size={17}/> Saldos por banco e caixa</button>
+        <button type="button" className={sheetTab === "other" ? styles.activeTab : styles.tab}
+          aria-current={sheetTab === "other" ? "page" : undefined} onClick={() => setSheetTab("other")}><ArrowLeftRight size={17}/> Entradas e transferências</button>
+      </nav>
+      {sheetTab === "balances" && <section className={styles.panel}>
+        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha de saldos · {labelMonth(month)}</span>
+          <h2>Distribuição do dinheiro</h2><p>Clique em uma célula para registrar saldo inicial ou aporte neste banco e caixa. Os valores exibidos são acumulados até o mês selecionado.</p></div>
+          <button className={styles.primaryButton} disabled={closed || !canRecord} onClick={() => showEntry("opening")}><Plus size={16}/> Registrar saldo / aporte</button>
+        </div>
+        <div className={styles.sheetTableWrap}><table className={styles.balanceMatrix}>
+          <thead><tr><th>Banco / Caixa</th>{view.boxes.map((box) => <th key={box.id}>{box.name}<small>{box.person_type.toUpperCase()}</small></th>)}<th>Total do banco</th></tr></thead>
+          <tbody>{view.banks.map((bank) => <tr key={bank.id}><th scope="row"><Landmark size={15}/> {bank.name}</th>
+            {view.boxes.map((box) => <td key={box.id}><button type="button" title={"Adicionar saldo no banco " + bank.name + ", caixa " + box.name}
+              disabled={closed || !bank.active || !box.active}
+              onClick={() => showEntry("opening", bank.id, box.id)}>{money(view.matrix[bank.id + ":" + box.id] ?? 0)} <Plus size={13}/></button></td>)}
+            <td className={styles.matrixTotal}>{money(view.bankBalances[bank.id] ?? 0)}</td></tr>)}</tbody>
+          <tfoot><tr><th>Total por caixa</th>{view.boxes.map((box) => <td key={box.id}>{money(view.boxBalances[box.id] ?? 0)}</td>)}
+            <td>{money(view.totals.balance)}</td></tr></tfoot>
+        </table></div>
+        <p className={styles.balanceNote}>Saldo / aporte <strong>soma</strong> ao saldo existente; não o substitui. O saldo de um mês passa automaticamente para o seguinte.</p>
+      </section>}
+{sheetTab === "balances" && <>      <div className={styles.twoCols}>
         <section className={styles.panel}>
           <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Disponibilidade real</span><h2>Saldo por banco</h2>
             <p>Dinheiro consolidado em cada instituição, distribuído pelos caixas.</p></div>
@@ -303,16 +363,27 @@ export function AccountingView() {
         </section>
       </div>
 
-      <section className={styles.panel} id="finance-origin-anchor">
-        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Controle de lançamentos</span>
-          <h2>Contas e movimentações</h2><p>Registre gastos, entradas e transferências. Contas pendentes não reduzem o saldo até serem pagas.</p></div>
+</>}
+      {sheetTab !== "balances" && <>      <section className={styles.panel} id="finance-origin-anchor">
+        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha mensal · {labelMonth(month)}</span>
+          <h2>{sheetTab === "accounts" ? "Contas do mês" : "Outras entradas e transferências"}</h2>
+          <p>{sheetTab === "accounts"
+            ? "Registre as contas de uma vez, no início ou no fim do mês. Cada parcela futura aparece automaticamente na sua competência."
+            : "Aportes, entradas e transferências que compõem os saldos do mês, sem misturar com as despesas."}</p></div>
           <div className={styles.entryActions}>
-            <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("opening")}><CircleDollarSign size={16}/> Saldo / aporte</button>
-            <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("income")}><ArrowUpCircle size={16}/> Entrada</button>
-            <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("transfer")}><ArrowLeftRight size={16}/> Transferência</button>
-            <button className={styles.primaryButton} disabled={closed || !canRecord} onClick={() => showEntry("expense")}><Plus size={17}/> Nova conta</button>
+            {sheetTab === "accounts" ? <button className={styles.primaryButton} disabled={closed || !canRecord} onClick={() => showEntry("expense")}><Plus size={17}/> Adicionar conta</button> : <>
+              <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("opening")}><CircleDollarSign size={16}/> Saldo / aporte</button>
+              <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("income")}><ArrowUpCircle size={16}/> Entrada</button>
+              <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("transfer")}><ArrowLeftRight size={16}/> Transferência</button>
+            </>}
           </div>
         </div>
+        {sheetTab === "accounts" && <div className={styles.sheetMetrics}>
+          <div><span>Contas na planilha</span><strong>{visibleRows.length}</strong></div>
+          <div><span>Valor previsto</span><strong>{money(sheetTotal)}</strong></div>
+          <div><span>Já pago</span><strong>{money(sheetPaid)}</strong></div>
+          <div><span>A pagar</span><strong>{money(sheetPending)}</strong></div>
+        </div>}
         <div className={styles.filters}>
           <label className={styles.search}><Search size={17}/><input placeholder="Buscar conta ou descrição" value={search} onChange={(e) => setSearch(e.target.value)}/></label>
           <select aria-label="Filtrar por banco" value={bankFilter} onChange={(e) => setBankFilter(e.target.value)}><option value="">Todos os bancos</option>{view.banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
@@ -320,18 +391,20 @@ export function AccountingView() {
           <select aria-label="Filtrar por origem" value={originFilter} onChange={(e) => setOriginFilter(e.target.value)}><option value="">Todas as origens</option>{view.origins.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
           <select aria-label="Filtrar por situação" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="all">Todas as movimentações</option><option value="pending">Pendentes</option><option value="paid">Efetivadas</option>
-            <option value="expenses">Somente despesas</option><option value="transfers">Transferências</option>
+            
           </select>
         </div>
-        <div className={styles.tableWrap}><table className={styles.table}><thead><tr>
-          <th>Conta / descrição</th><th>Origem</th><th>Banco</th><th>Caixa</th><th>Data</th><th>Situação</th><th>Valor</th><th>Ações</th>
+        <div className={styles.sheetTableWrap}><table className={styles.table}><thead><tr>
+          <th>Conta / descrição</th><th>Origem</th><th>Parcela</th><th>Banco</th><th>Caixa</th><th>Data</th><th>Situação</th><th>Valor</th><th>Ações</th>
         </tr></thead><tbody>
-          {selectedEntries.map((entry) => <tr key={entry.id}><td><strong>{entry.title}</strong><small>{labelKind[entry.kind]}</small></td>
+          {visibleRows.map((entry) => <tr key={entry.id}><td><strong>{entry.title}</strong><small>{labelKind[entry.kind]}</small></td>
             <td>{findOrigin(entry.origin_id)}</td>
+            <td>{entry.installment_total ? <span className={styles.installmentBadge}>{entry.installment_number}/{entry.installment_total}</span> : <span className={styles.noInstallment}>—</span>}</td>
             <td><strong>{findBank(entry.bank_id)}</strong>{entry.kind === "transfer" && <small>→ {findBank(entry.target_bank_id)}</small>}</td>
             <td><strong>{findBox(entry.box_id)}</strong>{entry.kind === "transfer" && <small>→ {findBox(entry.target_box_id)}</small>}</td>
-            <td>{shortDate(entry.status === "paid" ? entry.settled_on : entry.due_on)}
-              {entry.kind === "expense" && entry.status === "paid" && entry.due_on !== entry.settled_on && <small>Vence {shortDate(entry.due_on)}</small>}</td>
+            <td><strong>{shortDate(entry.kind === "expense" ? entry.due_on : entry.settled_on)}</strong>
+              {entry.kind === "expense" && entry.status === "paid" && <small>Pago {shortDate(entry.settled_on)}</small>}
+              {entry.kind !== "expense" && entry.movement_at && <small>{new Intl.DateTimeFormat("pt-BR",{hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"}).format(new Date(entry.movement_at))}</small>}</td>
             <td><span className={entry.status === "pending" ? styles.pendingBadge : styles.paidBadge}>{entry.status === "pending" ? "Pendente" : "Efetivado"}</span></td>
             <td className={entry.kind === "expense" ? styles.expense : entry.kind === "income" || entry.kind === "opening" ? styles.income : styles.transfer}>
               {entry.kind === "expense" ? "−" : entry.kind === "transfer" ? "↔" : "+"}{money(entry.amount_cents)}</td>
@@ -344,13 +417,14 @@ export function AccountingView() {
             </div></td>
           </tr>)}
         </tbody></table>
-        {!selectedEntries.length && <div className={styles.emptyTable}><ReceiptText size={27}/><strong>Nenhum lançamento neste período</strong><p>Altere os filtros ou adicione uma conta, entrada ou transferência.</p></div>}
+        {!visibleRows.length && <div className={styles.emptyTable}><ReceiptText size={27}/><strong>{sheetTab === "accounts" ? "Sua planilha está vazia" : "Nenhum lançamento neste período"}</strong><p>Altere os filtros ou cadastre a primeira conta deste mês.</p></div>}
         </div>
-        <footer className={styles.tableFooter}><span>{selectedEntries.length} lançamentos exibidos</span>
-          <span>Contas pendentes são apenas uma previsão e não abatem o saldo disponível.</span></footer>
+        <footer className={styles.tableFooter}><span>{visibleRows.length} linhas · {sheetTab === "accounts" ? "total da seleção: " + money(sheetTotal) : "entradas e transferências do mês"}</span>
+          <span>{sheetTab === "accounts" ? "Uma linha por conta ou parcela. Clique no lápis para editar." : "Valores efetivados já estão incluídos no saldo por banco e caixa."}</span></footer>
       </section>
 
-      {view.origins.length > 0 && <section className={styles.originPanel}>
+      </>}
+      {view.origins.length > 0 && sheetTab === "accounts" && <section className={styles.originPanel}>
         <div><span className={styles.eyebrow}>Classificação mensal</span><h2>Gastos por origem</h2><p>Identifique o que cada origem consumiu no mês.</p></div>
         <div className={styles.originList}>{view.origins.map((origin) => <button key={origin.id}
           className={originFilter === origin.id ? styles.originActive : styles.originItem}
@@ -384,6 +458,12 @@ export function AccountingView() {
           <label>Nome<input autoFocus required minLength={2} maxLength={100} value={setting.name} onChange={(e) => setSetting({...setting,name:e.target.value})}/></label>
           {setting.type === "box" && <label>Perfil do caixa<select value={setting.personType} onChange={(e) => setSetting({...setting,personType:e.target.value as "pf"|"pj"})}><option value="pf">Pessoa física</option><option value="pj">Pessoa jurídica / empresa</option></select></label>}
           {setting.id && setting.type !== "origin" && <label className={styles.switchRow}><input type="checkbox" checked={setting.active} onChange={(e) => setSetting({...setting,active:e.target.checked})}/> Cadastro ativo</label>}
+          {setting.id && setting.type !== "origin" && <div className={styles.deleteWarning}>
+            <div><strong>Excluir {setting.type === "bank" ? "banco" : "caixa"}</strong>
+              <span>Somente cadastros sem lançamentos vinculados podem ser apagados. Caso tenha histórico, desative-o.</span></div>
+            <button type="button" className={styles.dangerButton} disabled={saving}
+              onClick={() => void deleteSetting()}><Trash2 size={16}/> Apagar</button>
+          </div>}
           <div className={styles.formActions}><button type="button" className={styles.outlineButton} onClick={() => setSetting(null)}>Cancelar</button>
             <button className={styles.primaryButton} type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar cadastro"}</button></div>
         </form>}
@@ -424,17 +504,46 @@ export function AccountingView() {
             {entryModal.originId === "__new" && entryModal.kind !== "transfer" && <label>Nome da nova origem<input required minLength={2} maxLength={100}
               placeholder="Ex.: Cartão Inter, Internet..." value={entryModal.originName}
               onChange={(e) => setEntryModal({...entryModal,originName:e.target.value})}/></label>}
+            {entryModal.kind === "expense" && !entryModal.id && <label>Quantidade total de parcelas
+              <input type="number" min={1} max={120} required value={entryModal.installmentTotal}
+                onChange={(e) => {const total = Math.max(1,Math.min(120,Number(e.target.value)||1));setEntryModal({...entryModal,installmentTotal:total,installmentNumber:Math.min(entryModal.installmentNumber,total)});}}/>
+            </label>}
+            {entryModal.kind === "expense" && !entryModal.id && entryModal.installmentTotal > 1 && <>
+              <label>Parcela que está cadastrando
+                <input type="number" min={1} max={entryModal.installmentTotal} required value={entryModal.installmentNumber}
+                  onChange={(e) => setEntryModal({...entryModal,installmentNumber:Number(e.target.value)||1})}/>
+              </label>
+              <div className={styles.installmentInfo}>
+                <CalendarDays size={18}/>
+                <span>Esta será a parcela <strong>{entryModal.installmentNumber}/{entryModal.installmentTotal}</strong>.
+                  Serão criadas <strong>{entryModal.installmentTotal-entryModal.installmentNumber+1} linhas</strong>,
+                  uma por mês, até <strong>{entryModal.dueOn ? labelMonth(shiftMonthlyDate(entryModal.dueOn,entryModal.installmentTotal-entryModal.installmentNumber).slice(0,7)) : "mês a definir"}</strong>.
+                  As próximas parcelas começam pendentes.</span>
+              </div>
+            </>}
+            {entryModal.kind === "expense" && !!entryModal.id && entryModal.installmentTotal > 1 && <div className={styles.installmentInfo}>
+              <CalendarDays size={18}/><span>Parcela <strong>{entryModal.installmentNumber}/{entryModal.installmentTotal}</strong>.
+                As alterações deste registro não modificam as outras parcelas.</span>
+            </div>}
             {entryModal.kind === "expense" && <label>Situação<select value={entryModal.status}
               onChange={(e) => setEntryModal({...entryModal,status:e.target.value as Entry["status"]})}>
               <option value="pending">Pendente (não reduz o saldo)</option><option value="paid">Pago (reduz o saldo)</option></select></label>}
             {entryModal.kind === "expense" && <label>Vencimento<input required type="date" value={entryModal.dueOn}
               onChange={(e) => setEntryModal({...entryModal,dueOn:e.target.value})}/></label>}
-            {(entryModal.kind !== "expense" || entryModal.status === "paid") && <label>Data {entryModal.kind === "expense" ? "do pagamento" : "da movimentação"}
-              <input required type="date" value={entryModal.settledOn} onChange={(e) => setEntryModal({...entryModal,settledOn:e.target.value})}/></label>}
+            {entryModal.kind === "opening" && <label>Data e hora da movimentação (opcional)
+              <input type="datetime-local" value={entryModal.movementAt}
+                onChange={(e) => setEntryModal({...entryModal,movementAt:e.target.value,settledOn:e.target.value.slice(0,10)})}/>
+              <small className={styles.inputHelp}>Se ficar em branco, registra a data e a hora atuais.</small>
+            </label>}
+            {entryModal.kind !== "opening" && (entryModal.kind !== "expense" || entryModal.status === "paid") && <label>Data {entryModal.kind === "expense" ? "do pagamento" : "da movimentação"}
+              <input type="date" value={entryModal.settledOn} onChange={(e) => setEntryModal({...entryModal,settledOn:e.target.value,movementAt:""})}/>
+              <small className={styles.inputHelp}>Sem data, utiliza o momento do registro.</small>
+            </label>}
             <label className={styles.full}>Observações (opcional)<textarea rows={2} maxLength={1000} value={entryModal.notes}
               onChange={(e) => setEntryModal({...entryModal,notes:e.target.value})} placeholder="Detalhes deste lançamento"/></label>
           </div>
           {entryModal.kind === "expense" && <div className={styles.formInfo}>Ao marcar como pago, o valor será abatido somente do caixa <strong>{findBox(entryModal.boxId)}</strong> dentro do banco <strong>{findBank(entryModal.bankId)}</strong>. O mês contábil segue a data do pagamento; para contas pendentes, segue o vencimento.</div>}
+          {entryModal.kind === "opening" && <div className={styles.formInfo}>Registre o saldo inicial uma única vez para cada banco e caixa. Os meses seguintes herdam automaticamente o saldo; novos aportes somam ao valor anterior.</div>}
           {entryModal.kind === "transfer" && <div className={styles.formInfo}>A transferência debita o caixa de origem e credita o destino em uma única operação. Se o banco for o mesmo, o saldo consolidado dele não muda.</div>}
           {error && <div className={styles.formError} role="alert">{error}</div>}
           <div className={styles.formActions}><button type="button" className={styles.outlineButton} onClick={() => setEntryModal(null)}>Cancelar</button>
