@@ -2,6 +2,7 @@
 
 import {
   BadgeDollarSign,
+  BookOpenCheck,
   ChevronLeft,
   CreditCard,
   HandCoins,
@@ -83,6 +84,7 @@ export function Sidebar({ collapsed, mobileOpen, onCollapse, onMobileClose, admi
           <div className="nav-group">
             {!collapsed && <p>Visão financeira</p>}
             {primaryItems.map(renderItem)}
+            {platformAdmin && renderItem({ label: "Contabilidade", href: "/contabilidade", icon: BookOpenCheck })}
             {producer && renderItem({ label: "Credenciados", href: "/credenciados/gestao", icon: UserRoundCheck })}
             {accreditedPartner && renderItem({ label: "Meu credenciamento", href: "/credenciados", icon: UserRoundCheck })}
           </div>

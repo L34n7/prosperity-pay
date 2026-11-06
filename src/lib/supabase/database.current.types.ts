@@ -389,6 +389,29 @@ type FirstAccessPasswordReservation = {
   email: string | null;
 };
 
+
+type FinanceBankRow = {
+  id: string; owner_user_id: string; name: string; active: boolean; created_at: string;
+};
+type FinanceBoxRow = {
+  id: string; owner_user_id: string; name: string; person_type: "pf" | "pj"; active: boolean; created_at: string;
+};
+type FinanceOriginRow = {
+  id: string; owner_user_id: string; name: string; created_at: string;
+};
+type FinancePeriodRow = {
+  owner_user_id: string; month: string; status: "open" | "closed"; closed_at: string | null;
+};
+type FinanceEntryRow = {
+  id: string; owner_user_id: string; bank_id: string; box_id: string;
+  target_bank_id: string | null; target_box_id: string | null; origin_id: string | null;
+  kind: "opening" | "income" | "expense" | "transfer";
+  status: "pending" | "paid";
+  title: string; amount_cents: number; competence_month: string;
+  due_on: string | null; settled_on: string | null; notes: string | null;
+  created_at: string; updated_at: string;
+};
+
 type PublicSchema = GeneratedDatabase["public"];
 type GeneratedTables = PublicSchema["Tables"];
 type GeneratedFunctions = PublicSchema["Functions"];
@@ -436,6 +459,11 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       affiliate_offer_commission_overrides: LooseTable<AffiliateOfferCommissionOverrideRow>;
       affiliate_addon_commission_overrides: LooseTable<AffiliateAddonCommissionOverrideRow>;
       product_accredited_settings: LooseTable<ProductAccreditedSettingsRow>;
+      finance_banks: LooseTable<FinanceBankRow>;
+      finance_boxes: LooseTable<FinanceBoxRow>;
+      finance_origins: LooseTable<FinanceOriginRow>;
+      finance_periods: LooseTable<FinancePeriodRow>;
+      finance_entries: LooseTable<FinanceEntryRow>;
     };
     Functions: GeneratedFunctions & {
       bootstrap_initial_platform_admin: {
