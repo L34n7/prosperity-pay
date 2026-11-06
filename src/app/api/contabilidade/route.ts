@@ -4,6 +4,8 @@ import { HttpError, asObject, jsonError, requiredInteger, requiredString } from 
 import { requirePlatformAdmin } from "@/lib/auth/require-user";
 import { summarizeAccounting } from "@/lib/accounting/calculations";
 import { buildInstallmentSchedule } from "@/lib/accounting/installments";
+import { bankBoxActualBalances, forecastEvents, groupCardInvoices, dayPlus } from "@/lib/accounting/cash-flow";
+import type { Card, CardPayment, CardAdjustment, ExpectedIncome } from "@/lib/accounting/cash-flow";
 import type { Bank, CashBox, Entry, Origin, Period } from "@/lib/accounting/calculations";
 import type { Database } from "@/lib/supabase/database.current.types";
 
@@ -74,7 +76,7 @@ function parseMovement(body: Record<string, unknown>, status: Entry["status"]) {
   if (status === "pending") return { time: null, on: null };
   const value = body.movementAt;
   if (value !== undefined && value !== null && value !== "") {
-    if (typeof value !== "string" || !/^20\\d{2}-(0[1-9]|1[0-2])-[0-3]\\dT[0-2]\\d:[0-5]\\d$/.test(value))
+    if (typeof value !== "string" || !/^20\d{2}-(0[1-9]|1[0-2])-[0-3]\dT[0-2]\d:[0-5]\d$/.test(value))
       throw new HttpError(400, "Data e hora inválidas.");
     const on = value.slice(0, 10);
     date({ on }, "on");
@@ -94,12 +96,26 @@ function parseMovement(body: Record<string, unknown>, status: Entry["status"]) {
 async function entryPayload(supabase: Client, owner: string, body: Record<string, unknown>) {
   const kind = requiredString(body, "kind", 20) as Entry["kind"];
   if (!["opening", "income", "expense", "transfer"].includes(kind)) throw new HttpError(400, "Tipo inválido.");
-  const status: Entry["status"] = kind === "expense" && body.status === "pending" ? "pending" : "paid";
+  const cardId = body.cardId ? uuid(body,"cardId") : null;
+  if (cardId && kind!=="expense") throw new HttpError(400, "Cartão só pode ser usado em despesas.");
+  if (cardId && body.status==="paid")
+    throw new HttpError(400, "Compras de cartão não são pagas individualmente. Registre o pagamento da fatura.");
+  const status: Entry["status"] = kind === "expense" && (cardId || body.status === "pending") ? "pending" : "paid";
+  let card: Card | null = null;
+  if(cardId){
+    const found=await supabase.from("finance_cards").select("*")
+      .eq("owner_user_id",owner).eq("id",cardId).maybeSingle();
+    fromDb(found.error);
+    if(!found.data)throw new HttpError(404,"Cartão não encontrado.");
+    if(!found.data.active)throw new HttpError(400,"Cartão inativo.");
+    card=found.data;
+  }
   const due = kind === "expense" ? date(body, "dueOn") : null;
   const movement = parseMovement(body, status);
   const entry: Database["public"]["Tables"]["finance_entries"]["Insert"] = {
     owner_user_id: owner,
-    bank_id: uuid(body, "bankId"),
+    bank_id: card ? card.legacy_bank_id : uuid(body, "bankId"),
+    card_id: cardId,
     box_id: uuid(body, "boxId"),
     kind,
     status,
@@ -131,31 +147,46 @@ async function accountGet(request: Request) {
   const { supabase, user } = await requirePlatformAdmin();
   const url = new URL(request.url);
   const month = monthParam(url.searchParams.get("mes"));
-  const [banks, boxes, origins, periods] = await Promise.all([
-    supabase.from("finance_banks").select("*").eq("owner_user_id", user.id).order("name"),
-    supabase.from("finance_boxes").select("*").eq("owner_user_id", user.id).order("name"),
-    supabase.from("finance_origins").select("*").eq("owner_user_id", user.id).order("name"),
-    supabase.from("finance_periods").select("*").eq("owner_user_id", user.id).eq("month", month + "-01"),
+  const currentDay=localParts(new Date()).date;
+  const horizonDay=dayPlus(currentDay,125);
+  const maxMonth=[month+"-01",horizonDay.slice(0,7)+"-01"].sort().at(-1)!;
+  const [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments] = await Promise.all([
+    supabase.from("finance_banks").select("*").eq("owner_user_id",user.id).order("name"),
+    supabase.from("finance_boxes").select("*").eq("owner_user_id",user.id).order("name"),
+    supabase.from("finance_origins").select("*").eq("owner_user_id",user.id).order("name"),
+    supabase.from("finance_periods").select("*").eq("owner_user_id",user.id).eq("month",month+"-01"),
+    supabase.from("finance_cards").select("*").eq("owner_user_id",user.id).order("name"),
+    supabase.from("finance_card_payments").select("*").eq("owner_user_id",user.id).order("paid_at",{ascending:false}).limit(3000),
+    supabase.from("finance_expected_incomes").select("*").eq("owner_user_id",user.id).order("expected_on").limit(3000),
+    supabase.from("finance_card_adjustments").select("*").eq("owner_user_id",user.id).limit(3000),
   ]);
-  [banks, boxes, origins, periods].forEach((item) => fromDb(item.error));
-  const entries: Entry[] = [];
-  // Paginação completa: o saldo histórico nunca depende de um LIMIT arbitrário.
-  for (let offset = 0; ; offset += 500) {
-    const result = await supabase.from("finance_entries").select("*")
-      .eq("owner_user_id", user.id).lte("competence_month", month + "-01")
-      .order("created_at", { ascending: false }).order("id")
-      .range(offset, offset + 499);
+  [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments].forEach(result=>fromDb(result.error));
+  // Os saldos e a previsao usam o historico completo ate o horizonte projetado.
+  const entries:Entry[]=[];
+  for(let offset=0;;offset+=500){
+    const result=await supabase.from("finance_entries").select("*")
+      .eq("owner_user_id",user.id).lte("competence_month",maxMonth)
+      .order("created_at",{ascending:false}).order("id").range(offset,offset+499);
     fromDb(result.error);
-    const batch = result.data ?? [];
+    const batch=result.data??[];
     entries.push(...batch);
-    if (batch.length < 500) break;
+    if(batch.length<500)break;
   }
-  const summary = summarizeAccounting(month, banks.data ?? [], boxes.data ?? [], entries);
+  const cardList=cards.data as Card[];
+  const payments=cardPayments.data as CardPayment[];
+  const receipts=expectedIncomes.data as ExpectedIncome[];
+  const adjustments=cardAdjustments.data as CardAdjustment[];
+  const invoices=groupCardInvoices(cardList,entries,payments,adjustments);
+  const summary=summarizeAccounting(month,banks.data??[],boxes.data??[],entries,cardList,payments,receipts,adjustments);
+  const position=bankBoxActualBalances(entries,payments,receipts,currentDay);
+  const events=forecastEvents(entries,invoices,receipts,currentDay);
   return NextResponse.json({
-    banks: banks.data as Bank[], boxes: boxes.data as CashBox[],
-    origins: origins.data as Origin[], period: (periods.data as Period[])?.[0] ?? null,
+    banks:banks.data as Bank[],boxes:boxes.data as CashBox[],
+    origins:origins.data as Origin[],period:(periods.data as Period[])?.[0]??null,
+    cards:cardList,cardPayments:payments,expectedIncomes:receipts,cardAdjustments:adjustments,
+    invoices,forecast:{today:currentDay,balances:position,events},
     ...summary,
-  }, { headers: { "Cache-Control": "private, no-store" } });
+  },{headers:{"Cache-Control":"private, no-store"}});
 }
 
 async function createRecord(request: Request) {

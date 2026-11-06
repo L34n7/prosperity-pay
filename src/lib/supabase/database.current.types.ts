@@ -411,7 +411,30 @@ type FinanceEntryRow = {
   due_on: string | null; settled_on: string | null; notes: string | null;
   movement_at: string | null;
   installment_series_id: string | null; installment_number: number | null; installment_total: number | null;
+  card_id: string | null;
   created_at: string; updated_at: string;
+};
+
+type FinanceCardRow = {
+  id: string; owner_user_id: string; name: string; legacy_bank_id: string;
+  default_payment_bank_id: string | null; due_day: number; closing_day: number | null;
+  active: boolean; created_at: string;
+};
+type FinanceCardPaymentRow = {
+  id: string; owner_user_id: string; card_id: string; invoice_month: string;
+  bank_id: string; box_id: string; amount_cents: number; paid_at: string;
+  notes: string | null; client_token: string; created_at: string;
+};
+type FinanceCardAdjustmentRow = {
+  id:string; owner_user_id:string; card_id:string; invoice_month:string;
+  box_id:string; kind:"credit"|"debit"; title:string; amount_cents:number;
+  notes:string|null; created_at:string;
+};
+type FinanceExpectedIncomeRow = {
+  id: string; owner_user_id: string; bank_id: string; box_id: string;
+  title: string; amount_cents: number; expected_on: string;
+  status: "expected" | "received" | "cancelled"; received_at: string | null;
+  notes: string | null; created_at: string; updated_at: string;
 };
 
 type PublicSchema = GeneratedDatabase["public"];
@@ -466,6 +489,10 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       finance_origins: LooseTable<FinanceOriginRow>;
       finance_periods: LooseTable<FinancePeriodRow>;
       finance_entries: LooseTable<FinanceEntryRow>;
+      finance_cards: LooseTable<FinanceCardRow>;
+      finance_card_payments: LooseTable<FinanceCardPaymentRow>;
+      finance_card_adjustments: LooseTable<FinanceCardAdjustmentRow>;
+      finance_expected_incomes: LooseTable<FinanceExpectedIncomeRow>;
     };
     Functions: GeneratedFunctions & {
       bootstrap_initial_platform_admin: {

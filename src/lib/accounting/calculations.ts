@@ -1,4 +1,6 @@
 import type { Database } from "@/lib/supabase/database.current.types";
+import { brazilDate, groupCardInvoices } from "./cash-flow";
+import type { Card, CardPayment, CardAdjustment, ExpectedIncome } from "./cash-flow";
 
 export type Bank = Database["public"]["Tables"]["finance_banks"]["Row"];
 export type CashBox = Database["public"]["Tables"]["finance_boxes"]["Row"];
@@ -17,6 +19,10 @@ export function summarizeAccounting(
   banks: Bank[],
   boxes: CashBox[],
   entries: Entry[],
+  cards: Card[] = [],
+  cardPayments: CardPayment[] = [],
+  expectedIncomes: ExpectedIncome[] = [],
+  adjustments: CardAdjustment[] = [],
 ) {
   const selected = month + "-01";
   const bankBalances: Record<string, number> = {};
@@ -46,9 +52,10 @@ export function summarizeAccounting(
     const isCurrent = entry.competence_month === selected;
     if (isCurrent) monthEntries.push(entry);
     if (entry.status === "pending") {
-      if (isCurrent && entry.kind === "expense") pending += entry.amount_cents;
+      if (isCurrent && entry.kind === "expense" && !entry.card_id) pending += entry.amount_cents;
       continue;
     }
+    if (entry.card_id) continue;
 
     const effects: Array<{ bank: string; box: string; amount: number }> = [];
     if (entry.kind === "transfer") {
@@ -76,6 +83,34 @@ export function summarizeAccounting(
       }
     }
   }
+  // Cartao e passivo, nao banco. O pagamento da fatura e a unica saida real.
+  for (const payment of cardPayments) {
+    const date = brazilDate(payment.paid_at);
+    if (date.slice(0,7)>month) continue;
+    increment(bankBalances,payment.bank_id,-payment.amount_cents);
+    increment(boxBalances,payment.box_id,-payment.amount_cents);
+    increment(matrix,payment.bank_id+":"+payment.box_id,-payment.amount_cents);
+    if(date.slice(0,7)===month)paid+=payment.amount_cents;
+    else {
+      increment(bankOpening,payment.bank_id,-payment.amount_cents);
+      increment(boxOpening,payment.box_id,-payment.amount_cents);
+    }
+  }
+  for(const receipt of expectedIncomes) {
+    if(receipt.status!=="received"||!receipt.received_at)continue;
+    const date=brazilDate(receipt.received_at);
+    if(date.slice(0,7)>month)continue;
+    increment(bankBalances,receipt.bank_id,receipt.amount_cents);
+    increment(boxBalances,receipt.box_id,receipt.amount_cents);
+    increment(matrix,receipt.bank_id+":"+receipt.box_id,receipt.amount_cents);
+    if(date.slice(0,7)===month)received+=receipt.amount_cents;
+    else {
+      increment(bankOpening,receipt.bank_id,receipt.amount_cents);
+      increment(boxOpening,receipt.box_id,receipt.amount_cents);
+    }
+  }
+  const invoices=groupCardInvoices(cards,entries,cardPayments,adjustments);
+  pending+=invoices.filter(i=>i.invoice_month===selected).reduce((sum,i)=>sum+i.remaining_cents,0);
   const balance = Object.values(bankBalances).reduce((sum, item) => sum + item, 0);
   const initialBalance = Object.values(bankOpening).reduce((sum, item) => sum + item, 0);
   return {

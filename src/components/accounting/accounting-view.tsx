@@ -8,14 +8,17 @@ import {
 } from "lucide-react";
 import { formatCents } from "@/lib/operational";
 import { shiftMonthlyDate } from "@/lib/accounting/installments";
+import { CashFlowPanel } from "./cash-flow-panel";
+import type { PlannerView } from "./cash-flow-panel";
+import { invoiceDueDate, brazilDate } from "@/lib/accounting/cash-flow";
 import type { Bank, CashBox, Entry, MonthlySnapshot, Origin, Period } from "@/lib/accounting/calculations";
 import styles from "./accounting-view.module.css";
 
-type ViewData = MonthlySnapshot & {
-  banks: Bank[]; boxes: CashBox[]; origins: Origin[]; period: Period | null;
+type ViewData = MonthlySnapshot & PlannerView & {
+  origins: Origin[]; period: Period | null;
 };
 type EntryDraft = {
-  id?: string; kind: Entry["kind"]; title: string; amount: string;
+  id?: string; kind: Entry["kind"]; title: string; amount: string; cardId: string;
   bankId: string; boxId: string; targetBankId: string; targetBoxId: string;
   originId: string; originName: string; status: Entry["status"];
   dueOn: string; settledOn: string; movementAt: string; notes: string;
@@ -45,7 +48,7 @@ function blankEntry(kind: Entry["kind"], month: string, view: ViewData): EntryDr
   const date = month === monthNow() ? today() : month + "-01";
   return {
     kind, title: kind === "opening" ? "Saldo inicial" : kind === "transfer" ? "Transferência entre caixas" : "",
-    amount: "", bankId: view.banks.find((item) => item.active)?.id ?? "",
+    amount: "", cardId:"", bankId: view.banks.find((item) => item.active)?.id ?? "",
     boxId: view.boxes.find((item) => item.active)?.id ?? "",
     targetBankId: view.banks.find((item) => item.active)?.id ?? "",
     targetBoxId: view.boxes.find((item) => item.active)?.id ?? "",
@@ -56,7 +59,7 @@ function blankEntry(kind: Entry["kind"], month: string, view: ViewData): EntryDr
 }
 function entryToDraft(entry: Entry): EntryDraft {
   return {
-    id: entry.id, kind: entry.kind, title: entry.title,
+    id: entry.id, kind: entry.kind, title: entry.title, cardId:entry.card_id??"",
     amount: String(entry.amount_cents / 100), bankId: entry.bank_id, boxId: entry.box_id,
     targetBankId: entry.target_bank_id ?? "", targetBoxId: entry.target_box_id ?? "",
     originId: entry.origin_id ?? "", originName: "", status: entry.status,
@@ -82,7 +85,7 @@ export function AccountingView() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [originFilter, setOriginFilter] = useState("");
   const [search, setSearch] = useState("");
-  const [sheetTab, setSheetTab] = useState<"accounts" | "balances" | "other">("accounts");
+  const [sheetTab, setSheetTab] = useState<"forecast" | "accounts" | "cards" | "balances" | "other">("forecast");
   const titleListId = useId();
 
   useEffect(() => {
@@ -153,6 +156,10 @@ export function AccountingView() {
     const cents = Math.round(Number(entryModal.amount) * 100);
     if (!Number.isSafeInteger(cents) || cents <= 0) { setError("Informe um valor válido maior que zero."); return; }
     const dueOn = entryModal.kind === "expense" ? entryModal.dueOn : null;
+    if(entryModal.cardId&&entryModal.status==="paid") {
+      setError("Compra no cartão não é pagamento bancário. Vá à aba Faturas para registrar a quitação.");
+      return;
+    }
     if (entryModal.kind === "expense" && (entryModal.installmentNumber > entryModal.installmentTotal || entryModal.installmentTotal > 120)) {
       setError("A parcela atual deve ser menor ou igual ao total, limitado a 120.");
       return;
@@ -163,6 +170,7 @@ export function AccountingView() {
     const payload = {
       action: "entry", id: entryModal.id,
       kind: entryModal.kind, title: entryModal.title.trim(), amountCents: cents,
+      cardId: entryModal.kind==="expense" ? entryModal.cardId||null : null,
       bankId: entryModal.bankId, boxId: entryModal.boxId,
       targetBankId: entryModal.targetBankId, targetBoxId: entryModal.targetBoxId,
       originId: entryModal.originId === "__new" ? null : entryModal.originId || null,
@@ -185,13 +193,14 @@ export function AccountingView() {
 
   function exportCsv() {
     if (!view) return;
-    const headers = ["Mês","Descrição","Tipo","Banco","Caixa","Origem","Parcela","Valor (R$)","Situação","Vencimento","Pagamento","Data e hora","Observações"];
+    const headers = ["Mês","Descrição","Tipo","Banco","Cartão","Caixa","Origem","Parcela","Valor (R$)","Situação","Vencimento","Pagamento","Data e hora","Observações"];
     const cells = (entry: Entry) => [
       month, entry.title, labelKind[entry.kind], view.banks.find((x) => x.id === entry.bank_id)?.name ?? "",
+      view.cards.find(c=>c.id===entry.card_id)?.name??"",
       view.boxes.find((x) => x.id === entry.box_id)?.name ?? "",
       view.origins.find((x) => x.id === entry.origin_id)?.name ?? "",
       entry.installment_total ? entry.installment_number + "/" + entry.installment_total : "",
-      (entry.amount_cents / 100).toFixed(2).replace(".", ","), entry.status === "paid" ? "Pago" : "Pendente",
+      (entry.amount_cents / 100).toFixed(2).replace(".", ","), entry.card_id?"Na fatura":entry.status==="paid"?"Pago":"Pendente",
       entry.due_on ?? "", entry.settled_on ?? "", entry.movement_at ?? "", entry.notes ?? "",
     ];
     const escapeCsv = (value: string) => {
@@ -248,8 +257,9 @@ export function AccountingView() {
       ? (a.due_on ?? "").localeCompare(b.due_on ?? "") || a.title.localeCompare(b.title, "pt-BR")
       : b.created_at.localeCompare(a.created_at));
   const sheetTotal = visibleRows.reduce((total, row) => total + row.amount_cents, 0);
-  const sheetPaid = visibleRows.filter((row) => row.status === "paid").reduce((total,row) => total + row.amount_cents,0);
-  const sheetPending = sheetTotal - sheetPaid;
+  const sheetPending = visibleRows.filter(row=>row.status==="pending"&&!row.card_id).reduce((total,row)=>total+row.amount_cents,0);
+  const sheetInvoices = view?.invoices.filter(i=>i.invoice_month===month+"-01")
+    .reduce((sum,i)=>sum+i.remaining_cents,0)??0;
 
   return <div className={styles.page}>
     <header className={styles.header}>
@@ -294,25 +304,32 @@ export function AccountingView() {
 
       <section className={styles.totals}>
         {[
-          { icon: Wallet, label: "Saldo consolidado", value: view.totals.balance, help: "Soma de todos os bancos até o fim do mês", kind: "main" },
+          { icon: Wallet, label: "Saldo consolidado", value: view.totals.balance, help: "Dinheiro contabilizado até o mês selecionado", kind: "main" },
           { icon: Landmark, label: "Saldo anterior", value: view.totals.initialBalance, help: "Transportado do mês anterior", kind: "neutral" },
           { icon: ArrowUpCircle, label: "Entradas no mês", value: view.totals.received + view.totals.opening, help: "Receitas e aportes efetivados", kind: "green" },
           { icon: ArrowDownCircle, label: "Despesas pagas", value: view.totals.paid, help: "Débitos efetivamente pagos", kind: "orange" },
-          { icon: ReceiptText, label: "Contas a pagar", value: view.totals.pending, help: "Ainda não descontadas do saldo", kind: "purple" },
+          { icon: ReceiptText, label: "Contas a pagar", value: view.totals.pending, help: "Inclui faturas líquidas em aberto neste mês", kind: "purple" },
         ].map((card) => { const Icon = card.icon; return <article key={card.label} className={styles.statCard} data-kind={card.kind}>
           <div className={styles.statIcon}><Icon size={19}/></div><span>{card.label}</span>
           <strong className={card.value < 0 ? styles.negative : ""}>{money(card.value)}</strong><small>{card.help}</small>
         </article>; })}
       </section>
 
-      <nav className={styles.sheetTabs} aria-label="Áreas da planilha mensal">
+      <nav className={styles.sheetTabs} aria-label="Áreas da contabilidade">
+        <button type="button" className={sheetTab==="forecast"?styles.activeTab:styles.tab}
+          onClick={()=>setSheetTab("forecast")}><CalendarDays size={17}/> Fluxo de caixa</button>
         <button type="button" className={sheetTab === "accounts" ? styles.activeTab : styles.tab}
           aria-current={sheetTab === "accounts" ? "page" : undefined} onClick={() => setSheetTab("accounts")}><ReceiptText size={17}/> Planilha de contas</button>
+        <button type="button" className={sheetTab==="cards"?styles.activeTab:styles.tab}
+          onClick={()=>setSheetTab("cards")}><ReceiptText size={17}/> Faturas de cartões</button>
         <button type="button" className={sheetTab === "balances" ? styles.activeTab : styles.tab}
           aria-current={sheetTab === "balances" ? "page" : undefined} onClick={() => setSheetTab("balances")}><Wallet size={17}/> Saldos por banco e caixa</button>
         <button type="button" className={sheetTab === "other" ? styles.activeTab : styles.tab}
           aria-current={sheetTab === "other" ? "page" : undefined} onClick={() => setSheetTab("other")}><ArrowLeftRight size={17}/> Entradas e transferências</button>
       </nav>
+      {(sheetTab==="forecast"||sheetTab==="cards")&&<CashFlowPanel
+        view={view} mode={sheetTab} closed={Boolean(closed)}
+        onChanged={()=>setReload(x=>x+1)}/>}
       {sheetTab === "balances" && <section className={styles.panel}>
         <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha de saldos · {labelMonth(month)}</span>
           <h2>Distribuição do dinheiro</h2><p>Clique em uma célula para registrar saldo inicial ou aporte neste banco e caixa. Os valores exibidos são acumulados até o mês selecionado.</p></div>
@@ -320,7 +337,7 @@ export function AccountingView() {
         </div>
         <div className={styles.sheetTableWrap}><table className={styles.balanceMatrix}>
           <thead><tr><th>Banco / Caixa</th>{view.boxes.map((box) => <th key={box.id}>{box.name}<small>{box.person_type.toUpperCase()}</small></th>)}<th>Total do banco</th></tr></thead>
-          <tbody>{view.banks.map((bank) => <tr key={bank.id}><th scope="row"><Landmark size={15}/> {bank.name}</th>
+          <tbody>{view.banks.filter(bank=>bank.active).map((bank) => <tr key={bank.id}><th scope="row"><Landmark size={15}/> {bank.name}</th>
             {view.boxes.map((box) => <td key={box.id}><button type="button" title={"Adicionar saldo no banco " + bank.name + ", caixa " + box.name}
               disabled={closed || !bank.active || !box.active}
               onClick={() => showEntry("opening", bank.id, box.id)}>{money(view.matrix[bank.id + ":" + box.id] ?? 0)} <Plus size={13}/></button></td>)}
@@ -337,7 +354,7 @@ export function AccountingView() {
             <button className={styles.iconButton} title="Novo banco" onClick={() => { setSettingsOpen(true); startSetting("bank"); }}><Plus size={18}/></button>
           </div>
           <div className={styles.bankGrid}>
-          {view.banks.length ? view.banks.map((bank) => <article className={styles.bankCard} key={bank.id}>
+          {view.banks.some(b=>b.active) ? view.banks.filter(b=>b.active).map((bank) => <article className={styles.bankCard} key={bank.id}>
             <div className={styles.bankTop}><span className={styles.bankIcon}><Landmark size={19}/></span><div><h3>{bank.name}</h3><small>{bank.active ? "Conta ativa" : "Arquivado"}</small></div>
               <button className={styles.miniEdit} title="Editar banco" onClick={() => {setSettingsOpen(true);startSetting("bank",bank);}}><Pencil size={14}/></button></div>
             <strong className={(view.bankBalances[bank.id] ?? 0) < 0 ? styles.negative : ""}>{money(view.bankBalances[bank.id] ?? 0)}</strong>
@@ -357,14 +374,14 @@ export function AccountingView() {
                 <button className={styles.miniEdit} title="Editar caixa" onClick={() => {setSettingsOpen(true);startSetting("box",box);}}><Pencil size={14}/></button>
               </div>
               <strong className={styles.boxAmount}>{money(view.boxBalances[box.id] ?? 0)}</strong>
-              <div className={styles.boxSources}>{view.banks.map((bank) => <span key={bank.id}>{bank.name}<b>{money(view.matrix[bank.id + ":" + box.id] ?? 0)}</b></span>)}</div>
+              <div className={styles.boxSources}>{view.banks.filter(bank=>bank.active).map((bank) => <span key={bank.id}>{bank.name}<b>{money(view.matrix[bank.id + ":" + box.id] ?? 0)}</b></span>)}</div>
             </article>) : <p className={styles.empty}>Nenhum caixa cadastrado.</p>}
           </div>
         </section>
       </div>
 
 </>}
-      {sheetTab !== "balances" && <>      <section className={styles.panel} id="finance-origin-anchor">
+      {(sheetTab==="accounts"||sheetTab==="other") && <>      <section className={styles.panel} id="finance-origin-anchor">
         <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha mensal · {labelMonth(month)}</span>
           <h2>{sheetTab === "accounts" ? "Contas do mês" : "Outras entradas e transferências"}</h2>
           <p>{sheetTab === "accounts"
@@ -381,8 +398,8 @@ export function AccountingView() {
         {sheetTab === "accounts" && <div className={styles.sheetMetrics}>
           <div><span>Contas na planilha</span><strong>{visibleRows.length}</strong></div>
           <div><span>Valor previsto</span><strong>{money(sheetTotal)}</strong></div>
-          <div><span>Já pago</span><strong>{money(sheetPaid)}</strong></div>
-          <div><span>A pagar</span><strong>{money(sheetPending)}</strong></div>
+          <div><span>Contas diretas pendentes</span><strong>{money(sheetPending)}</strong></div>
+          <div><span>Faturas líquidas em aberto</span><strong>{money(sheetInvoices)}</strong></div>
         </div>}
         <div className={styles.filters}>
           <label className={styles.search}><Search size={17}/><input placeholder="Buscar conta ou descrição" value={search} onChange={(e) => setSearch(e.target.value)}/></label>
@@ -395,21 +412,26 @@ export function AccountingView() {
           </select>
         </div>
         <div className={styles.sheetTableWrap}><table className={styles.table}><thead><tr>
-          <th>Conta / descrição</th><th>Origem</th><th>Parcela</th><th>Banco</th><th>Caixa</th><th>Data</th><th>Situação</th><th>Valor</th><th>Ações</th>
+          <th>Conta / descrição</th><th>Origem</th><th>Parcela</th><th>Banco / Cartão</th><th>Caixa</th><th>Data</th><th>Situação</th><th>Valor</th><th>Ações</th>
         </tr></thead><tbody>
           {visibleRows.map((entry) => <tr key={entry.id}><td><strong>{entry.title}</strong><small>{labelKind[entry.kind]}</small></td>
             <td>{findOrigin(entry.origin_id)}</td>
             <td>{entry.installment_total ? <span className={styles.installmentBadge}>{entry.installment_number}/{entry.installment_total}</span> : <span className={styles.noInstallment}>—</span>}</td>
-            <td><strong>{findBank(entry.bank_id)}</strong>{entry.kind === "transfer" && <small>→ {findBank(entry.target_bank_id)}</small>}</td>
+            <td><strong>{entry.card_id?view.cards.find(c=>c.id===entry.card_id)?.name??"Cartão":findBank(entry.bank_id)}</strong>
+              {entry.card_id&&<small>Fatura · não debitado do banco</small>}
+              {entry.kind === "transfer" && <small>→ {findBank(entry.target_bank_id)}</small>}</td>
             <td><strong>{findBox(entry.box_id)}</strong>{entry.kind === "transfer" && <small>→ {findBox(entry.target_box_id)}</small>}</td>
             <td><strong>{shortDate(entry.kind === "expense" ? entry.due_on : entry.settled_on)}</strong>
               {entry.kind === "expense" && entry.status === "paid" && <small>Pago {shortDate(entry.settled_on)}</small>}
               {entry.kind !== "expense" && entry.movement_at && <small>{new Intl.DateTimeFormat("pt-BR",{hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"}).format(new Date(entry.movement_at))}</small>}</td>
-            <td><span className={entry.status === "pending" ? styles.pendingBadge : styles.paidBadge}>{entry.status === "pending" ? "Pendente" : "Efetivado"}</span></td>
+            <td><span className={entry.status === "pending" ? styles.pendingBadge : styles.paidBadge}>
+              {entry.card_id?"Na fatura":entry.status === "pending" ? "Pendente" : "Efetivado"}</span></td>
             <td className={entry.kind === "expense" ? styles.expense : entry.kind === "income" || entry.kind === "opening" ? styles.income : styles.transfer}>
               {entry.kind === "expense" ? "−" : entry.kind === "transfer" ? "↔" : "+"}{money(entry.amount_cents)}</td>
             <td><div className={styles.rowActions}>
-              {entry.status === "pending" && !closed && <button type="button" className={styles.payAction}
+              {entry.card_id && !closed && <button type="button" className={styles.payAction}
+                onClick={()=>setSheetTab("cards")}>Ver fatura</button>}
+              {entry.status === "pending" && !entry.card_id && !closed && <button type="button" className={styles.payAction}
                 onClick={() => setEntryModal({ ...entryToDraft(entry), status: "paid", settledOn: today() })}>Pagar</button>}
               {!closed && <><button type="button" title="Editar lançamento" onClick={() => setEntryModal(entryToDraft(entry))}><Pencil size={15}/></button>
                 <button type="button" title="Excluir lançamento" onClick={() => void deleteEntry(entry.id)}><Trash2 size={15}/></button></>}
@@ -424,6 +446,28 @@ export function AccountingView() {
       </section>
 
       </>}
+      {sheetTab==="other" && <section className={styles.panel}>
+        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Fluxo efetivo</span>
+          <h2>Recebimentos confirmados e faturas pagas</h2>
+          <p>O histórico abaixo já faz parte dos saldos de banco e caixa. Não cadastre novamente as mesmas movimentações.</p></div></div>
+        <div className={styles.sheetTableWrap}><table className={styles.table}>
+          <thead><tr><th>Movimentação</th><th>Banco</th><th>Caixa</th><th>Data</th><th>Valor</th></tr></thead>
+          <tbody>
+            {view.expectedIncomes.filter(r=>r.status==="received"&&r.received_at&&brazilDate(r.received_at).slice(0,7)===month)
+              .map(r=><tr key={r.id}><td><strong>{r.title}</strong><small>Recebimento confirmado</small></td>
+                <td>{findBank(r.bank_id)}</td><td>{findBox(r.box_id)}</td>
+                <td>{shortDate(brazilDate(r.received_at!))}</td>
+                <td className={styles.income}>+{money(r.amount_cents)}</td></tr>)}
+            {view.cardPayments.filter(p=>brazilDate(p.paid_at).slice(0,7)===month).map(p=><tr key={p.id}>
+              <td><strong>{view.cards.find(c=>c.id===p.card_id)?.name??"Fatura de cartão"}</strong>
+                <small>Pagamento real da fatura {p.invoice_month.slice(0,7)}</small></td>
+              <td>{findBank(p.bank_id)}</td><td>{findBox(p.box_id)}</td>
+              <td>{shortDate(brazilDate(p.paid_at))}</td><td className={styles.expense}>−{money(p.amount_cents)}</td></tr>)}
+          </tbody></table></div>
+          {!view.expectedIncomes.some(r=>r.status==="received"&&r.received_at&&brazilDate(r.received_at).slice(0,7)===month)
+           &&!view.cardPayments.some(p=>brazilDate(p.paid_at).slice(0,7)===month)
+           &&<p className={styles.empty}>Nenhuma fatura paga ou previsão confirmada neste mês.</p>}
+      </section>}
       {view.origins.length > 0 && sheetTab === "accounts" && <section className={styles.originPanel}>
         <div><span className={styles.eyebrow}>Classificação mensal</span><h2>Gastos por origem</h2><p>Identifique o que cada origem consumiu no mês.</p></div>
         <div className={styles.originList}>{view.origins.map((origin) => <button key={origin.id}
@@ -485,8 +529,21 @@ export function AccountingView() {
             <datalist id={titleListId}>{view.suggestions.map((item) => <option value={item.title} key={item.title}/>)}</datalist>
             <label>Valor (R$)<input required min="0.01" step="0.01" type="number" inputMode="decimal" value={entryModal.amount}
               onChange={(e) => setEntryModal({...entryModal,amount:e.target.value})} placeholder="0,00"/></label>
-            <label>Banco de {entryModal.kind === "transfer" ? "origem" : "pagamento"}<select required value={entryModal.bankId} onChange={(e) => setEntryModal({...entryModal,bankId:e.target.value})}>
-              <option value="">Selecione o banco</option>{availableBanks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+            {entryModal.kind==="expense"&&<label className={styles.full}>Como será paga a conta?
+              <select value={entryModal.cardId} onChange={e=>{
+                const cardId=e.target.value;
+                const selected=view.cards.find(c=>c.id===cardId);
+                setEntryModal({...entryModal,cardId,status:cardId?"pending":entryModal.status,
+                  dueOn:selected?invoiceDueDate(entryModal.dueOn.slice(0,7)+"-01",selected.due_day):entryModal.dueOn,
+                  bankId:selected?.legacy_bank_id??entryModal.bankId});
+              }}>
+                <option value="">Diretamente por banco (Pix, boleto, débito)</option>
+                {view.cards.filter(c=>c.active||c.id===entryModal.cardId).map(c=><option value={c.id} key={c.id}>{c.name}</option>)}
+              </select>
+              <small className={styles.inputHelp}>No cartão, a compra compõe a fatura; o saldo sai do banco somente no pagamento da fatura.</small>
+            </label>}
+            {(!entryModal.cardId||entryModal.kind!=="expense")&&<label>Banco de {entryModal.kind === "transfer" ? "origem" : "pagamento"}<select required value={entryModal.bankId} onChange={(e) => setEntryModal({...entryModal,bankId:e.target.value})}>
+              <option value="">Selecione o banco</option>{availableBanks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
             <label>Caixa responsável<select required value={entryModal.boxId} onChange={(e) => setEntryModal({...entryModal,boxId:e.target.value})}>
               <option value="">Selecione o caixa</option>{availableBoxes.map((b) => <option key={b.id} value={b.id}>{b.name} · {b.person_type.toUpperCase()}</option>)}</select></label>
 
@@ -525,10 +582,10 @@ export function AccountingView() {
               <CalendarDays size={18}/><span>Parcela <strong>{entryModal.installmentNumber}/{entryModal.installmentTotal}</strong>.
                 As alterações deste registro não modificam as outras parcelas.</span>
             </div>}
-            {entryModal.kind === "expense" && <label>Situação<select value={entryModal.status}
+            {entryModal.kind === "expense" && !entryModal.cardId && <label>Situação<select value={entryModal.status}
               onChange={(e) => setEntryModal({...entryModal,status:e.target.value as Entry["status"]})}>
               <option value="pending">Pendente (não reduz o saldo)</option><option value="paid">Pago (reduz o saldo)</option></select></label>}
-            {entryModal.kind === "expense" && <label>Vencimento<input required type="date" value={entryModal.dueOn}
+            {entryModal.kind === "expense" && <label>{entryModal.cardId?"Vencimento da fatura":"Vencimento"}<input required type="date" value={entryModal.dueOn}
               onChange={(e) => setEntryModal({...entryModal,dueOn:e.target.value})}/></label>}
             {entryModal.kind === "opening" && <label>Data e hora da movimentação (opcional)
               <input type="datetime-local" value={entryModal.movementAt}
@@ -542,7 +599,8 @@ export function AccountingView() {
             <label className={styles.full}>Observações (opcional)<textarea rows={2} maxLength={1000} value={entryModal.notes}
               onChange={(e) => setEntryModal({...entryModal,notes:e.target.value})} placeholder="Detalhes deste lançamento"/></label>
           </div>
-          {entryModal.kind === "expense" && <div className={styles.formInfo}>Ao marcar como pago, o valor será abatido somente do caixa <strong>{findBox(entryModal.boxId)}</strong> dentro do banco <strong>{findBank(entryModal.bankId)}</strong>. O mês contábil segue a data do pagamento; para contas pendentes, segue o vencimento.</div>}
+          {entryModal.kind === "expense" && !!entryModal.cardId && <div className={styles.formInfo}>A compra entrará como obrigação no cartão. Para pagar, abra a aba <strong>Faturas de cartões</strong> e registre a saída do banco e caixa responsáveis. Não marque compras individuais como pagas.</div>}
+          {entryModal.kind === "expense" && !entryModal.cardId && <div className={styles.formInfo}>Ao marcar como pago, o valor será abatido somente do caixa <strong>{findBox(entryModal.boxId)}</strong> dentro do banco <strong>{findBank(entryModal.bankId)}</strong>. O mês contábil segue a data do pagamento; para contas pendentes, segue o vencimento.</div>}
           {entryModal.kind === "opening" && <div className={styles.formInfo}>Registre o saldo inicial uma única vez para cada banco e caixa. Os meses seguintes herdam automaticamente o saldo; novos aportes somam ao valor anterior.</div>}
           {entryModal.kind === "transfer" && <div className={styles.formInfo}>A transferência debita o caixa de origem e credita o destino em uma única operação. Se o banco for o mesmo, o saldo consolidado dele não muda.</div>}
           {error && <div className={styles.formError} role="alert">{error}</div>}

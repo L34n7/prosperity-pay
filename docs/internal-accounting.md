@@ -42,3 +42,33 @@ Exemplo: Inter com R$ 1.000 atribuídos ao caixa Leandro e R$ 1.000 ao caixa CRM
 Os dados ficam em tabelas `finance_*` com RLS e acesso apenas ao próprio usuário administrador da plataforma. As referências banco/caixa/origem são validadas por chaves estrangeiras compostas, o que impede associação a registros de outro dono. Ações de edição em mês fechado são bloqueadas por *triggers* transacionais, inclusive fora da interface.
 
 Este é um **controle gerencial manual de saldos**, não uma integração Open Finance, não substitui demonstrações contábeis oficiais e não deve ser tratado como conciliação bancária automática.
+
+
+## Fluxo de caixa projetado e cartões (novembro de 2026)
+
+A navegação começa em **Fluxo de caixa** e inclui **Planilha de contas**, **Faturas de cartões**, **Saldos por banco e caixa** e **Entradas e transferências**. O filtro de competência continua disponível, mas a projeção sempre parte do dia real corrente, em horário de São Paulo.
+
+### Duas camadas de dinheiro
+- **Saldo real:** entradas e aportes efetivados, transferências reais entre bancos/caixas, pagamentos diretos, recebimentos previstos confirmados e pagamentos de fatura registrados.
+- **Saldo projetado:** saldo real + recebimentos previstos (ainda não realizados) − contas bancárias pendentes − faturas líquidas por vencer. Mostrar projeção não registra dinheiro no banco; previsões em atraso aparecem no dia de hoje com aviso. A previsão pode ser vista por banco, por caixa e em horizontes de 15/30/60/90/120 dias.
+- Alertas de insuficiência devem ser interpretados **por caixa**. Dinheiro reservado a Lucas ou Leandro não é disponível para pagamentos do CRM; para alterar titularidade, registre uma transferência real e documentada.
+
+### Cartões não são contas bancárias
+
+Os cartões **Inter, Mercado Pago, Carrefour, Sicredi e Bradesco** possuem cadastro e vencimento independentes (7, 9, 10, 5, 10, respectivamente). Inter e Mercado Pago são também bancos reais ativos, mas seus cartões ficam em outra entidade. Os pseudo-bancos legados dos cartões permanecem arquivados somente para integridade das referências antigas, sem aparecer como bancos reais disponíveis na grade de saldos.
+
+Os 138 lançamentos já importados foram associados a seus respectivos cartões via `finance_entries.card_id` sem apagar dados ou gerar saídas de caixa. As compras continuam pendentes enquanto obrigações; elas não podem ser marcadas como pagas individualmente. A **fatura** agrupa compras por cartão, mês e caixa, admite créditos e débitos de ajuste, e um ou mais pagamentos parciais, que são os únicos débitos efetivos da conta bancária. É possível pagar com Inter ou Mercado Pago e escolher o caixa dono da obrigação. Um pagamento de fatura recebe token de idempotência, é protegido por competência fechada e não pode ultrapassar o saldo da fatura do caixa. Para corrigir pagamento, use **Estornar** e registre o correto; a operação original deixa de abater o banco.
+
+A fatura de novembro do cartão Inter possui R$ 3.037,26 em compras e R$ 503,76 em créditos/abatimentos, portanto projeção líquida de R$ 2.533,50, antes de pagamentos posteriores. O extrato Bradesco estava em aberto; não presumir que o valor dos lançamentos detalhados corresponda ao total final.
+
+**Ponto de atenção:** o caixa de todas as compras importadas ainda foi atribuído provisoriamente a *Leandro*. Ajuste compras/parcelas para CRM ou outros caixas antes de registrar pagamentos. Os ajustes de fatura também são associados a um caixa e devem acompanhar a classificação correta da obrigação. Para mudar caixa/valor/mês de compras após pagamentos de fatura, primeiro estorne os pagamentos que dependem daquele agrupamento.
+
+### Recebimentos previstos
+
+Cadastre **título, valor, data esperada, banco e caixa**. Na aba de fluxo, aparecem como entrada **prevista**, mas não afetam o saldo disponível. Clique **Confirmar entrada** quando o dinheiro for de fato recebido, informando data/hora reais; o registro passa a ser receita confirmada e sai da previsão. Não deve ser recadastrado também como uma entrada manual. É possível editar/cancelar previsões não realizadas e excluir registros quando o mês está aberto. Na aba **Entradas e transferências**, os recebimentos previstos já confirmados e os pagamentos efetivos das faturas entram no histórico de caixa.
+
+### Fechamento e integridade
+
+A competência do relatório de contas continua sendo o mês do vencimento (passivo), e a baixa bancária real pertence à data do pagamento. Uma fatura pode permanecer em aberto ao fechar um mês, pois não é caixa gasto, mas uma conta a pagar. O fechamento bloqueia alterações retroativas em compras, ajustes, previsões e pagamentos efetivados em período encerrado; pagamentos de faturas antigas continuam possíveis num mês atual aberto. Tabelas criadas/alteradas: `finance_cards`, `finance_entries.card_id`, `finance_card_payments`, `finance_card_adjustments`, `finance_expected_incomes`, com RLS de proprietário e administrador e validação de consistência em gatilhos PostgreSQL.
+
+Não há integração automática com extratos nem envio de Pix: toda movimentação confirmada é um registro manual, a ser conciliado com o aplicativo bancário.
