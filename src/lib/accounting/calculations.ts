@@ -38,6 +38,7 @@ export function summarizeAccounting(
   let paid = 0;
   let pending = 0;
   let transferred = 0;
+  let outflow = 0;
   let opening = 0;
   const monthEntries: Entry[] = [];
   const titles = new Map<string, Pick<Entry, "title" | "bank_id" | "box_id" | "origin_id">>();
@@ -63,13 +64,14 @@ export function summarizeAccounting(
       effects.push({ bank: entry.target_bank_id!, box: entry.target_box_id!, amount: entry.amount_cents });
       if (isCurrent) transferred += entry.amount_cents;
     } else {
-      const signed = entry.kind === "expense" ? -entry.amount_cents : entry.amount_cents;
+      const signed = entry.kind === "expense" || entry.kind === "outflow" ? -entry.amount_cents : entry.amount_cents;
       effects.push({ bank: entry.bank_id, box: entry.box_id, amount: signed });
       if (isCurrent) {
         if (entry.kind === "expense") {
           paid += entry.amount_cents;
           if (entry.origin_id) increment(originExpenses, entry.origin_id, entry.amount_cents);
-        } else if (entry.kind === "opening") opening += entry.amount_cents;
+        } else if (entry.kind === "outflow") outflow += entry.amount_cents;
+        else if (entry.kind === "opening") opening += entry.amount_cents;
         else received += entry.amount_cents;
       }
     }
@@ -116,7 +118,7 @@ export function summarizeAccounting(
   return {
     month,
     bankBalances, boxBalances, matrix, bankOpening, boxOpening, originExpenses,
-    totals: { balance, initialBalance, received, paid, pending, transferred, opening },
+    totals: { balance, initialBalance, received, paid, pending, transferred, opening, outflow },
     monthEntries: monthEntries.sort((a, b) => b.created_at.localeCompare(a.created_at)),
     suggestions: [...titles.values()].slice(0, 100),
   };

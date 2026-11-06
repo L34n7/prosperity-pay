@@ -9,7 +9,13 @@ const js = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const moduleObj = { exports: {} };
-vm.runInNewContext(js, { module: moduleObj, exports: moduleObj.exports });
+vm.runInNewContext(js, {
+  module: moduleObj, exports: moduleObj.exports,
+  require: (name) => {
+    if (name === "./cash-flow") return { groupCardInvoices: () => [], brazilDate: (value) => value.slice(0, 10) };
+    throw new Error("Unexpected require: " + name);
+  },
+});
 const { summarizeAccounting } = moduleObj.exports;
 const banks = [
   { id: "inter", name: "Inter" },
@@ -83,4 +89,28 @@ test("fechamento mensal carrega saldos anteriores sem duplicar receita", () => {
   assert.equal(view.totals.balance,105000);
   assert.equal(view.totals.received,20000);
   assert.equal(view.totals.paid,15000);
+});
+
+test("Pix de saída avulsa diminui saldo sem ser conta a pagar ou despesa paga", () => {
+  const view = summarizeAccounting("2026-11",banks,boxes,[
+    entry("opening",100000,"inter","crm","2026-10-01"),
+    entry("outflow",1100,"inter","crm"),
+    entry("expense",35000,"inter","crm","2026-11-01",{status:"pending"}),
+  ]);
+  assert.equal(view.bankBalances.inter,98900);
+  assert.equal(view.boxBalances.crm,98900);
+  assert.equal(view.totals.outflow,1100);
+  assert.equal(view.totals.paid,0);
+  assert.equal(view.totals.pending,35000);
+  assert.equal(view.monthEntries.filter(e=>e.kind==="expense").length,1);
+});
+test("saídas avulsas históricas são transportadas e não duplicadas no mês seguinte", () => {
+  const ledger = [
+    entry("opening",100000,"inter","crm","2026-10-01"),
+    entry("outflow",1100,"inter","crm","2026-11-01"),
+  ];
+  const view = summarizeAccounting("2026-12",banks,boxes,ledger);
+  assert.equal(view.totals.initialBalance,98900);
+  assert.equal(view.totals.balance,98900);
+  assert.equal(view.totals.outflow,0);
 });

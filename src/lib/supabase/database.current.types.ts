@@ -405,7 +405,7 @@ type FinancePeriodRow = {
 type FinanceEntryRow = {
   id: string; owner_user_id: string; bank_id: string; box_id: string;
   target_bank_id: string | null; target_box_id: string | null; origin_id: string | null;
-  kind: "opening" | "income" | "expense" | "transfer";
+  kind: "opening" | "income" | "expense" | "transfer" | "outflow";
   status: "pending" | "paid";
   title: string; amount_cents: number; competence_month: string;
   due_on: string | null; settled_on: string | null; notes: string | null;

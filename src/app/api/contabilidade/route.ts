@@ -36,7 +36,7 @@ function fromDb(error: { code?: string; message: string } | null) {
   if (error.code === "23505") throw new HttpError(409, "Esse nome já está cadastrado.");
   if (error.code === "23503") throw new HttpError(400, "O banco, caixa ou origem selecionado não existe.");
   if (error.code === "23514") throw new HttpError(400, "Dados incompatíveis com as regras financeiras.");
-  if (/Mes fechado|Existem contas pendentes/.test(error.message)) throw new HttpError(409, error.message);
+  if (/Mes fechado|Existem contas pendentes|Fatura com pagamentos|pagamentos antes de alterar/.test(error.message)) throw new HttpError(409, error.message);
   throw error;
 }
 async function originFor(
@@ -95,7 +95,7 @@ function parseMovement(body: Record<string, unknown>, status: Entry["status"]) {
 }
 async function entryPayload(supabase: Client, owner: string, body: Record<string, unknown>) {
   const kind = requiredString(body, "kind", 20) as Entry["kind"];
-  if (!["opening", "income", "expense", "transfer"].includes(kind)) throw new HttpError(400, "Tipo inválido.");
+  if (!["opening", "income", "expense", "transfer", "outflow"].includes(kind)) throw new HttpError(400, "Tipo inválido.");
   const cardId = body.cardId ? uuid(body,"cardId") : null;
   if (cardId && kind!=="expense") throw new HttpError(400, "Cartão só pode ser usado em despesas.");
   if (cardId && body.status==="paid")
@@ -277,6 +277,97 @@ async function createRecord(request: Request) {
   throw new HttpError(400, "Ação não suportada.");
 }
 
+/**
+ * Alteração pontual para a planilha: somente um campo por vez e com checagem
+ * de versão, sem regravar observações, horário ou parcelas de outras células.
+ * Respeita os gatilhos de mês fechado e de faturas com pagamento.
+ */
+async function quickEditEntry(supabase: Client, owner: string, body: Record<string, unknown>) {
+  const id = uuid(body, "id");
+  const updatedAt = requiredString(body,"updatedAt",50);
+  const field = requiredString(body,"field",30);
+  const result = await supabase.from("finance_entries").select("*")
+    .eq("owner_user_id",owner).eq("id",id).maybeSingle();
+  fromDb(result.error);
+  const original=result.data;
+  if (!original) throw new HttpError(404,"Conta não encontrada.");
+  if (original.kind!=="expense") throw new HttpError(400,"A edição rápida é exclusiva da planilha de contas.");
+  if (original.updated_at!==updatedAt) throw new HttpError(409,"Esta conta foi alterada em outra operação. Atualize a planilha.");
+  const changes:Database["public"]["Tables"]["finance_entries"]["Update"]={};
+  if(field==="originId"){
+    changes.origin_id=body.value?uuid({originId:body.value},"originId"):null;
+  } else if(field==="title"){
+    changes.title=requiredString({title:body.value},"title",160);
+    if(changes.title.trim().length<2)throw new HttpError(400,"Descrição muito curta.");
+  } else if(field==="amountCents"){
+    const amount=requiredInteger({amountCents:body.value},"amountCents",1);
+    if(amount>999999999999)throw new HttpError(400,"Valor muito alto.");
+    changes.amount_cents=amount;
+  } else if(field==="boxId"){
+    changes.box_id=uuid({boxId:body.value},"boxId");
+    const box=await supabase.from("finance_boxes").select("active")
+      .eq("owner_user_id",owner).eq("id",changes.box_id).maybeSingle();
+    fromDb(box.error);
+    if(!box.data?.active && changes.box_id!==original.box_id)
+      throw new HttpError(400,"Caixa inativo ou não encontrado.");
+  } else if(field==="dueOn"){
+    changes.due_on=date({dueOn:body.value},"dueOn");
+    if(original.status==="pending")changes.competence_month=changes.due_on.slice(0,7)+"-01";
+  } else if(field==="paymentSource"){
+    if(typeof body.value!=="string" || !/^(bank|card):[0-9a-f-]{36}$/i.test(body.value))
+      throw new HttpError(400,"Banco ou cartão inválido.");
+    const [kind,identifier]=body.value.split(":");
+    if(!idPattern.test(identifier))throw new HttpError(400,"Identificador inválido.");
+    if(kind==="card"){
+      if(original.status==="paid")
+        throw new HttpError(409,"Para converter uma conta já paga em compra de cartão, estorne o pagamento no editor completo.");
+      const card=await supabase.from("finance_cards").select("id,active,legacy_bank_id,due_day")
+        .eq("owner_user_id",owner).eq("id",identifier).maybeSingle();
+      fromDb(card.error);
+      if(!card.data?.active)throw new HttpError(400,"Cartão inativo ou não encontrado.");
+      changes.card_id=card.data.id;
+      changes.bank_id=card.data.legacy_bank_id;
+      const due=original.due_on;
+      if(!due)throw new HttpError(400,"A conta precisa de vencimento.");
+      const [year,month]=due.split("-").map(Number);
+      const maxDay=new Date(Date.UTC(year,month,0)).getUTCDate();
+      changes.due_on=due.slice(0,7)+"-"+String(Math.min(card.data.due_day,maxDay)).padStart(2,"0");
+      changes.competence_month=changes.due_on.slice(0,7)+"-01";
+    } else {
+      const bank=await supabase.from("finance_banks").select("id,active")
+        .eq("owner_user_id",owner).eq("id",identifier).maybeSingle();
+      fromDb(bank.error);
+      if(!bank.data?.active && identifier!==original.bank_id)
+        throw new HttpError(400,"Banco inativo ou não encontrado.");
+      changes.bank_id=identifier;
+      changes.card_id=null;
+    }
+  } else if(field==="status"){
+    if(original.card_id)throw new HttpError(400,"Compras de cartão são quitadas pela fatura.");
+    if(body.value!=="paid"&&body.value!=="pending")
+      throw new HttpError(400,"Situação inválida.");
+    if(body.value==="paid"&&original.status==="pending"){
+      const now=new Date();
+      const current=localParts(now).date;
+      changes.status="paid";
+      changes.settled_on=current;
+      changes.movement_at=now.toISOString();
+      changes.competence_month=current.slice(0,7)+"-01";
+    } else if(body.value==="pending"&&original.status==="paid"){
+      changes.status="pending";
+      changes.settled_on=null;
+      changes.movement_at=null;
+      changes.competence_month=original.due_on!.slice(0,7)+"-01";
+    } else return NextResponse.json({record:original});
+  } else throw new HttpError(400,"Campo não permitido para edição rápida.");
+  const updated=await supabase.from("finance_entries").update(changes)
+    .eq("id",id).eq("owner_user_id",owner).eq("updated_at",updatedAt)
+    .select("*").maybeSingle();
+  fromDb(updated.error);
+  if(!updated.data)throw new HttpError(409,"A conta mudou durante a edição. Atualize a planilha.");
+  return NextResponse.json({record:updated.data});
+}
+
 async function modifyRecord(request: Request) {
   const { supabase, user } = await requirePlatformAdmin();
   const body = asObject(await request.json());
@@ -291,6 +382,7 @@ async function modifyRecord(request: Request) {
     fromDb(result.error);
     return NextResponse.json({ period: result.data });
   }
+  if (action === "quick_entry") return quickEditEntry(supabase,user.id,body);
   if (action === "entry") {
     const id = uuid(body, "id");
     const payload = await entryPayload(supabase, user.id, body);

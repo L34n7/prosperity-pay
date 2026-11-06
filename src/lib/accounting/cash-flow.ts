@@ -87,7 +87,7 @@ export function bankBoxActualBalances(
     if(e.kind==="transfer"){
       change(e.bank_id,e.box_id,-e.amount_cents);
       if(e.target_bank_id&&e.target_box_id)change(e.target_bank_id,e.target_box_id,e.amount_cents);
-    }else change(e.bank_id,e.box_id,(e.kind==="expense"?-1:1)*e.amount_cents);
+    }else change(e.bank_id,e.box_id,((e.kind==="expense"||e.kind==="outflow")?-1:1)*e.amount_cents);
   }
   for(const p of payments)if(brazilDate(p.paid_at)<=upTo)change(p.bank_id,p.box_id,-p.amount_cents);
   for(const r of receipts)if(r.status==="received"&&r.received_at&&brazilDate(r.received_at)<=upTo)

@@ -4,11 +4,12 @@ import { useEffect, useId, useMemo, useState } from "react";
 import {
   ArrowDownCircle, ArrowLeftRight, ArrowUpCircle, Building2, CalendarDays,
   CheckCircle2, CircleDollarSign, Download, Landmark, LockKeyhole,
-  Pencil, Plus, ReceiptText, Search, Settings2, ShieldCheck, Trash2, Wallet, X,
+  Pencil, Plus, ReceiptText, Search, Settings2, ShieldCheck, Trash2, Wallet, X, Save, Loader2,
 } from "lucide-react";
 import { formatCents } from "@/lib/operational";
 import { shiftMonthlyDate } from "@/lib/accounting/installments";
 import { CashFlowPanel } from "./cash-flow-panel";
+import { QuickInputCell, QuickSelectCell } from "./quick-edit-cell";
 import type { PlannerView } from "./cash-flow-panel";
 import { invoiceDueDate, brazilDate } from "@/lib/accounting/cash-flow";
 import type { Bank, CashBox, Entry, MonthlySnapshot, Origin, Period } from "@/lib/accounting/calculations";
@@ -42,12 +43,12 @@ const money = (cents: number) => formatCents(cents);
 const labelMonth = (month: string) => new Date(month + "-01T12:00:00Z")
   .toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 const labelKind: Record<Entry["kind"], string> = {
-  expense: "Conta / despesa", income: "Entrada", opening: "Saldo inicial / aporte", transfer: "Transferência",
+  expense: "Conta / despesa", income: "Entrada", opening: "Saldo inicial / aporte", transfer: "Transferência", outflow: "Saída bancária / Pix",
 };
 function blankEntry(kind: Entry["kind"], month: string, view: ViewData): EntryDraft {
   const date = month === monthNow() ? today() : month + "-01";
   return {
-    kind, title: kind === "opening" ? "Saldo inicial" : kind === "transfer" ? "Transferência entre caixas" : "",
+    kind, title: kind === "opening" ? "Saldo inicial" : kind === "transfer" ? "Transferência entre caixas" : kind === "outflow" ? "Pix enviado" : "",
     amount: "", cardId:"", bankId: view.banks.find((item) => item.active)?.id ?? "",
     boxId: view.boxes.find((item) => item.active)?.id ?? "",
     targetBankId: view.banks.find((item) => item.active)?.id ?? "",
@@ -86,6 +87,9 @@ export function AccountingView() {
   const [originFilter, setOriginFilter] = useState("");
   const [search, setSearch] = useState("");
   const [sheetTab, setSheetTab] = useState<"forecast" | "accounts" | "cards" | "balances" | "other">("forecast");
+  const [quickEditing, setQuickEditing] = useState(false);
+  const [quickSaving, setQuickSaving] = useState<string | null>(null);
+  const [quickSaved, setQuickSaved] = useState<string | null>(null);
   const titleListId = useId();
 
   useEffect(() => {
@@ -191,6 +195,51 @@ export function AccountingView() {
     if (successful) setEntryModal(null);
   }
 
+  async function quickSave(entry: Entry, field: string, raw: string): Promise<boolean> {
+    if (closed || quickSaving) return false;
+    let value: string | number = raw;
+    if (field === "amountCents") {
+      const normalized = raw.trim().replace(",", ".");
+      if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
+        setError("Informe um valor em reais com até duas casas decimais.");
+        return false;
+      }
+      value = Math.round(Number(normalized) * 100);
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        setError("O valor da conta precisa ser maior que zero."); return false;
+      }
+    }
+    if (field === "title" && raw.trim().length < 2) {
+      setError("A descrição precisa ter pelo menos dois caracteres."); return false;
+    }
+    if (field === "status") {
+      if (!confirm(raw === "paid"
+        ? "Confirmar que esta conta foi paga agora? O saldo será reduzido e a data do pagamento será hoje."
+        : "Reverter esta conta para pendente? O valor voltará ao saldo e o pagamento será desfeito.")) return false;
+    }
+    setQuickSaving(entry.id); setQuickSaved(null); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/contabilidade", {
+        method:"PATCH",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:"quick_entry",id:entry.id,updatedAt:entry.updated_at,field,value}),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Não foi possível salvar a alteração.");
+      const record = result.record as Entry;
+      setView(current=>current?{
+        ...current,monthEntries:current.monthEntries.map(item=>item.id===entry.id?record:item),
+      }:current);
+      setQuickSaved(entry.id);
+      setReload(n=>n+1);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível alterar a conta.");
+      return false;
+    } finally {
+      setQuickSaving(null);
+    }
+  }
+
   function exportCsv() {
     if (!view) return;
     const headers = ["Mês","Descrição","Tipo","Banco","Cartão","Caixa","Origem","Parcela","Valor (R$)","Situação","Vencimento","Pagamento","Data e hora","Observações"];
@@ -258,6 +307,8 @@ export function AccountingView() {
       : b.created_at.localeCompare(a.created_at));
   const sheetTotal = visibleRows.reduce((total, row) => total + row.amount_cents, 0);
   const sheetPending = visibleRows.filter(row=>row.status==="pending"&&!row.card_id).reduce((total,row)=>total+row.amount_cents,0);
+  const quickEnabled = quickEditing && sheetTab === "accounts" && !closed;
+  const quickBusy = quickSaving !== null;
   const sheetInvoices = view?.invoices.filter(i=>i.invoice_month===month+"-01")
     .reduce((sum,i)=>sum+i.remaining_cents,0)??0;
 
@@ -265,7 +316,7 @@ export function AccountingView() {
     <header className={styles.header}>
       <div><span className={styles.eyebrow}>Gestão interna · financeiro</span>
         <h1>Contabilidade financeira</h1>
-        <p>Um banco, vários caixas. Controle o saldo de cada pessoa e empresa sem misturar responsabilidades.</p>
+        <p>Um banco, vários caixas. Separe contas a pagar das entradas, transferências e saídas bancárias avulsas.</p>
       </div>
       <button type="button" className={styles.secondaryButton} onClick={() => setSettingsOpen(true)}>
         <Settings2 size={17} /> Bancos, caixas e origens
@@ -307,7 +358,8 @@ export function AccountingView() {
           { icon: Wallet, label: "Saldo consolidado", value: view.totals.balance, help: "Dinheiro contabilizado até o mês selecionado", kind: "main" },
           { icon: Landmark, label: "Saldo anterior", value: view.totals.initialBalance, help: "Transportado do mês anterior", kind: "neutral" },
           { icon: ArrowUpCircle, label: "Entradas no mês", value: view.totals.received + view.totals.opening, help: "Receitas e aportes efetivados", kind: "green" },
-          { icon: ArrowDownCircle, label: "Despesas pagas", value: view.totals.paid, help: "Débitos efetivamente pagos", kind: "orange" },
+          { icon: ArrowDownCircle, label: "Despesas pagas", value: view.totals.paid, help: "Contas e faturas pagas", kind: "orange" },
+          { icon: ArrowLeftRight, label: "Saídas avulsas", value: view.totals.outflow, help: "Pix e débitos sem conta a pagar", kind: "neutral" },
           { icon: ReceiptText, label: "Contas a pagar", value: view.totals.pending, help: "Inclui faturas líquidas em aberto neste mês", kind: "purple" },
         ].map((card) => { const Icon = card.icon; return <article key={card.label} className={styles.statCard} data-kind={card.kind}>
           <div className={styles.statIcon}><Icon size={19}/></div><span>{card.label}</span>
@@ -383,18 +435,31 @@ export function AccountingView() {
 </>}
       {(sheetTab==="accounts"||sheetTab==="other") && <>      <section className={styles.panel} id="finance-origin-anchor">
         <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha mensal · {labelMonth(month)}</span>
-          <h2>{sheetTab === "accounts" ? "Contas do mês" : "Outras entradas e transferências"}</h2>
+          <h2>{sheetTab === "accounts" ? "Contas do mês" : "Movimentações bancárias"}</h2>
           <p>{sheetTab === "accounts"
             ? "Registre as contas de uma vez, no início ou no fim do mês. Cada parcela futura aparece automaticamente na sua competência."
-            : "Aportes, entradas e transferências que compõem os saldos do mês, sem misturar com as despesas."}</p></div>
+            : "Pix enviados, saídas avulsas, aportes, entradas e transferências do mês; sem misturar com contas pendentes."}</p></div>
           <div className={styles.entryActions}>
-            {sheetTab === "accounts" ? <button className={styles.primaryButton} disabled={closed || !canRecord} onClick={() => showEntry("expense")}><Plus size={17}/> Adicionar conta</button> : <>
+            {sheetTab === "accounts" ? <>
+              <button type="button" className={quickEditing ? styles.editModeActive : styles.outlineButton}
+                disabled={closed || quickBusy} aria-pressed={quickEditing}
+                onClick={() => {setQuickEditing(v=>!v);setQuickSaved(null);}}>
+                <Pencil size={16}/> {quickEditing ? "Concluir edição" : "Habilitar edição"}
+              </button>
+              <button className={styles.primaryButton} disabled={closed || !canRecord || quickBusy} onClick={() => showEntry("expense")}><Plus size={17}/> Adicionar conta</button>
+            </> : <>
               <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("opening")}><CircleDollarSign size={16}/> Saldo / aporte</button>
               <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("income")}><ArrowUpCircle size={16}/> Entrada</button>
               <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("transfer")}><ArrowLeftRight size={16}/> Transferência</button>
+              <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("outflow")}><ArrowDownCircle size={16}/> Saída / Pix</button>
             </>}
           </div>
         </div>
+        {sheetTab === "accounts" && quickEnabled && <div className={styles.quickHelp}>
+          <Save size={16}/> Edição rápida habilitada. Selecione uma opção para salvar; textos, valores e datas
+          são salvos ao sair do campo ou pressionar Enter. Cada parcela é independente.
+          {quickBusy && <span><Loader2 size={15} className={styles.quickSpin}/> Salvando…</span>}
+        </div>}
         {sheetTab === "accounts" && <div className={styles.sheetMetrics}>
           <div><span>Contas na planilha</span><strong>{visibleRows.length}</strong></div>
           <div><span>Valor previsto</span><strong>{money(sheetTotal)}</strong></div>
@@ -414,21 +479,56 @@ export function AccountingView() {
         <div className={styles.sheetTableWrap}><table className={styles.table}><thead><tr>
           <th>Conta / descrição</th><th>Origem</th><th>Parcela</th><th>Banco / Cartão</th><th>Caixa</th><th>Data</th><th>Situação</th><th>Valor</th><th>Ações</th>
         </tr></thead><tbody>
-          {visibleRows.map((entry) => <tr key={entry.id}><td><strong>{entry.title}</strong><small>{labelKind[entry.kind]}</small></td>
-            <td>{findOrigin(entry.origin_id)}</td>
+          {visibleRows.map((entry) => <tr key={entry.id} className={quickEnabled ? styles.quickRow : undefined}>
+            <td>{quickEnabled ? <QuickInputCell label={"Descrição de "+entry.title} value={entry.title}
+              disabled={quickBusy} saving={quickSaving===entry.id}
+              onCommit={value=>quickSave(entry,"title",value)}/> : <strong>{entry.title}</strong>}
+              <small>{labelKind[entry.kind]}</small></td>
+            <td>{quickEnabled ? <QuickSelectCell label={"Origem de "+entry.title} value={entry.origin_id??""}
+              disabled={quickBusy} saving={quickSaving===entry.id}
+              onCommit={value=>quickSave(entry,"originId",value)}
+              onCreate={()=>{setSettingsOpen(true);startSetting("origin");}}
+              options={[{value:"",label:"Sem origem"},
+                ...view.origins.map(o=>({value:o.id,label:o.name})),
+                {value:"__new__",label:"+ Nova origem"}]}/> : findOrigin(entry.origin_id)}</td>
             <td>{entry.installment_total ? <span className={styles.installmentBadge}>{entry.installment_number}/{entry.installment_total}</span> : <span className={styles.noInstallment}>—</span>}</td>
-            <td><strong>{entry.card_id?view.cards.find(c=>c.id===entry.card_id)?.name??"Cartão":findBank(entry.bank_id)}</strong>
-              {entry.card_id&&<small>Fatura · não debitado do banco</small>}
-              {entry.kind === "transfer" && <small>→ {findBank(entry.target_bank_id)}</small>}</td>
-            <td><strong>{findBox(entry.box_id)}</strong>{entry.kind === "transfer" && <small>→ {findBox(entry.target_box_id)}</small>}</td>
-            <td><strong>{shortDate(entry.kind === "expense" ? entry.due_on : entry.settled_on)}</strong>
-              {entry.kind === "expense" && entry.status === "paid" && <small>Pago {shortDate(entry.settled_on)}</small>}
-              {entry.kind !== "expense" && entry.movement_at && <small>{new Intl.DateTimeFormat("pt-BR",{hour:"2-digit",minute:"2-digit",timeZone:"America/Sao_Paulo"}).format(new Date(entry.movement_at))}</small>}</td>
-            <td><span className={entry.status === "pending" ? styles.pendingBadge : styles.paidBadge}>
-              {entry.card_id?"Na fatura":entry.status === "pending" ? "Pendente" : "Efetivado"}</span></td>
-            <td className={entry.kind === "expense" ? styles.expense : entry.kind === "income" || entry.kind === "opening" ? styles.income : styles.transfer}>
-              {entry.kind === "expense" ? "−" : entry.kind === "transfer" ? "↔" : "+"}{money(entry.amount_cents)}</td>
+            <td>{quickEnabled ? <QuickSelectCell label={"Banco ou cartão de "+entry.title}
+              value={entry.card_id ? "card:"+entry.card_id : "bank:"+entry.bank_id}
+              disabled={quickBusy} saving={quickSaving===entry.id}
+              onCommit={value=>quickSave(entry,"paymentSource",value)}
+              options={[
+                ...view.banks.filter(b=>b.active||(!entry.card_id&&b.id===entry.bank_id))
+                  .map(b=>({value:"bank:"+b.id,label:"Banco · "+b.name})),
+                ...view.cards.filter(c=>(c.active||c.id===entry.card_id)&&entry.status!=="paid")
+                  .map(c=>({value:"card:"+c.id,label:c.name})),
+              ]}/> : <><strong>{entry.card_id?view.cards.find(c=>c.id===entry.card_id)?.name??"Cartão":findBank(entry.bank_id)}</strong>
+                {entry.card_id&&<small>Fatura · não debitado do banco</small>}
+                {entry.kind==="transfer"&&<small>→ {findBank(entry.target_bank_id)}</small>}</>}</td>
+            <td>{quickEnabled ? <QuickSelectCell label={"Caixa de "+entry.title} value={entry.box_id}
+              disabled={quickBusy} saving={quickSaving===entry.id}
+              onCommit={value=>quickSave(entry,"boxId",value)}
+              options={view.boxes.filter(b=>b.active||b.id===entry.box_id)
+                .map(b=>({value:b.id,label:b.name}))}/> : <strong>{findBox(entry.box_id)}</strong>}</td>
+            <td>{quickEnabled ? <QuickInputCell type="date" label={"Vencimento de "+entry.title}
+              value={entry.due_on??""} disabled={quickBusy} saving={quickSaving===entry.id}
+              onCommit={value=>quickSave(entry,"dueOn",value)}/> :
+              <strong>{shortDate(entry.due_on)}</strong>}
+              {entry.status==="paid"&&<small>Pago {shortDate(entry.settled_on)}</small>}</td>
+            <td>{quickEnabled && !entry.card_id ? <QuickSelectCell label={"Situação de "+entry.title}
+              value={entry.status} disabled={quickBusy} saving={quickSaving===entry.id}
+              onCommit={value=>quickSave(entry,"status",value)}
+              options={[{value:"pending",label:"Pendente"},{value:"paid",label:"Pago"}]}/> :
+              <span className={entry.status==="pending"?styles.pendingBadge:styles.paidBadge}>
+                {entry.card_id?"Na fatura":entry.status==="pending"?"Pendente":"Efetivado"}
+              </span>}</td>
+            <td className={styles.expense}>{quickEnabled ? <QuickInputCell label={"Valor de "+entry.title}
+              value={(entry.amount_cents/100).toFixed(2)} inputMode="decimal"
+              disabled={quickBusy} saving={quickSaving===entry.id}
+              onCommit={value=>quickSave(entry,"amountCents",value)}/> :
+              "−"+money(entry.amount_cents)}</td>
             <td><div className={styles.rowActions}>
+              {quickSaving===entry.id && <span className={styles.quickStatus}><Loader2 size={14} className={styles.quickSpin}/> Salvando</span>}
+              {quickSaved===entry.id && !quickBusy && <span className={styles.quickSaved}><CheckCircle2 size={14}/> Salvo</span>}
               {entry.card_id && !closed && <button type="button" className={styles.payAction}
                 onClick={()=>setSheetTab("cards")}>Ver fatura</button>}
               {entry.status === "pending" && !entry.card_id && !closed && <button type="button" className={styles.payAction}
@@ -442,7 +542,7 @@ export function AccountingView() {
         {!visibleRows.length && <div className={styles.emptyTable}><ReceiptText size={27}/><strong>{sheetTab === "accounts" ? "Sua planilha está vazia" : "Nenhum lançamento neste período"}</strong><p>Altere os filtros ou cadastre a primeira conta deste mês.</p></div>}
         </div>
         <footer className={styles.tableFooter}><span>{visibleRows.length} linhas · {sheetTab === "accounts" ? "total da seleção: " + money(sheetTotal) : "entradas e transferências do mês"}</span>
-          <span>{sheetTab === "accounts" ? "Uma linha por conta ou parcela. Clique no lápis para editar." : "Valores efetivados já estão incluídos no saldo por banco e caixa."}</span></footer>
+          <span>{sheetTab === "accounts" ? quickEditing ? "Edição ativa: alterações salvas automaticamente, uma por vez." : "Clique em Habilitar edição para alterar as células diretamente." : "Valores efetivados já estão incluídos no saldo por banco e caixa."}</span></footer>
       </section>
 
       </>}
