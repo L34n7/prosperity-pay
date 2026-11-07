@@ -23,10 +23,12 @@ create index if not exists subscription_billing_notices_status_idx
 alter table public.subscription_billing_notices enable row level security;
 alter table public.subscription_billing_notices force row level security;
 
+drop policy if exists subscription_billing_notices_select_related on public.subscription_billing_notices;
 create policy subscription_billing_notices_select_related
   on public.subscription_billing_notices for select to authenticated
   using (public.owns_product(product_id) or public.is_finance_admin());
 grant select on public.subscription_billing_notices to authenticated;
+drop trigger if exists subscription_billing_notices_set_updated_at on public.subscription_billing_notices;
 create trigger subscription_billing_notices_set_updated_at
   before update on public.subscription_billing_notices
   for each row execute function public.set_updated_at();
