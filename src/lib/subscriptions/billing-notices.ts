@@ -31,7 +31,7 @@ export async function processSubscriptionBillingNotices(limit = 150) {
   if (!subscriptions?.length) return { analyzed: 0, sent: 0, skipped: 0, failed: 0 };
 
   const productIds = [...new Set(subscriptions.map((s) => s.product_id))];
-  const { data: products, error: productsError } = await admin
+  const { data: products, error: productsError } = await (admin as any)
     .from("products")
     .select("id,name,status,automatic_due_billing_enabled")
     .in("id", productIds);
