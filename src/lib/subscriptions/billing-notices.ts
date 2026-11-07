@@ -65,7 +65,7 @@ export async function processSubscriptionBillingNotices(limit = 150) {
     let checkoutUrl: string | null = null;
     let amountCents = Number(subscription.current_amount_cents || 0);
     if (noticeType !== "pre_due_3d") {
-      const { data: delivery, error: deliveryError } = await admin
+      const { data: delivery, error: deliveryError } = await (admin as any)
         .from("subscription_billing_deliveries")
         .select("status,order_id,checkout_url")
         .eq("subscription_id", subscription.id)
@@ -154,7 +154,7 @@ export async function processSubscriptionBillingNotices(limit = 150) {
       }
       if (noticeType !== "pre_due_3d") {
         // Não reenviar lembrete quando o pedido já estiver pago.
-        const { data: delivery } = await admin.from("subscription_billing_deliveries")
+        const { data: delivery } = await (admin as any).from("subscription_billing_deliveries")
           .select("order_id").eq("subscription_id", subscription.id).eq("due_at", dueAt).maybeSingle();
         const { data: order } = await admin.from("orders").select("status")
           .eq("id", delivery?.order_id || "00000000-0000-0000-0000-000000000000").maybeSingle();
