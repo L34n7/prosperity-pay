@@ -1070,3 +1070,72 @@ export async function sendFinancialReviewDecisionEmail(params: {
   });
 }
 
+
+/**
+ * Avisos financeiros preventivos e pós-vencimento.
+ * Não gera PIX novo: os lembretes só apontam para o pedido já existente.
+ */
+export async function sendSubscriptionBillingNoticeEmail(params: {
+  to: string;
+  name: string;
+  productName: string;
+  noticeType: "pre_due_3d" | "overdue_3d" | "overdue_6d";
+  dueAt: string;
+  amountCents: number;
+  checkoutUrl: string | null;
+}) {
+  const pre = params.noticeType === "pre_due_3d";
+  const subject = pre
+    ? "Sua mensalidade vence em 3 dias • CRM Prosperity"
+    : "Lembrete: sua mensalidade está pendente • CRM Prosperity";
+  const title = pre ? "Sua mensalidade está próxima" : "Pagamento da mensalidade pendente";
+  const due = formatBillingDate(params.dueAt);
+  const amount = formatBillingCurrency(params.amountCents);
+  const message = pre
+    ? "Sua assinatura está próxima da renovação. No vencimento, enviaremos a cobrança com PIX e opção de cartão por e-mail."
+    : "Identificamos que a cobrança enviada no vencimento ainda está pendente. Utilize o mesmo checkout para regularizar sua assinatura.";
+  const safeUrl = params.checkoutUrl && /^https:\/\//i.test(params.checkoutUrl)
+    ? params.checkoutUrl : null;
+  const actionHtml = !pre && safeUrl
+    ? `<p style="margin:24px 0;"><a href="${escapeHtml(safeUrl)}" style="background:#128b70;color:#fff;padding:14px 24px;text-decoration:none;border-radius:10px;font-weight:800;display:inline-block">Abrir cobrança existente</a></p>`
+    : "";
+  const html = `<div style="background:#eef4f2;padding:32px 15px;font-family:Arial,Helvetica,sans-serif">
+    <div style="max-width:560px;background:#fff;margin:auto;border:1px solid #dce7e4;border-radius:18px;overflow:hidden">
+      <div style="padding:26px;background:linear-gradient(115deg,#20b486,#07131a);color:#fff">
+        <div style="font-size:12px;letter-spacing:1px;font-weight:800">CRM PROSPERITY · FINANCEIRO</div>
+        <h1 style="font-size:24px;line-height:1.25;margin:12px 0 0">${title}</h1>
+      </div>
+      <div style="padding:28px;color:#344c47;line-height:1.65;font-size:15px">
+        <p>Olá, <strong>${escapeHtml(params.name)}</strong>.</p>
+        <p>${message}</p>
+        <div style="background:#f6f9f8;padding:18px;border-radius:12px;border:1px solid #dce7e4">
+          <div><strong>Produto:</strong> ${escapeHtml(params.productName)}</div>
+          <div><strong>Vencimento:</strong> ${escapeHtml(due)}</div>
+          <div><strong>Mensalidade:</strong> ${escapeHtml(amount)}</div>
+        </div>
+        ${actionHtml}
+        <p style="font-size:13px;color:#647d76">${pre
+          ? "Este aviso é apenas informativo e não constitui uma nova cobrança."
+          : "Se já efetuou o pagamento, desconsidere este lembrete. Não é gerada uma segunda cobrança."}</p>
+      </div>
+      <div style="border-top:1px solid #dce7e4;background:#f6f9f8;padding:16px 28px;color:#78908b;font-size:12px">
+        Mensagem automática do CRM Prosperity, enviada pela Prosperity Pay.
+      </div>
+    </div>
+  </div>`;
+  await sendEmail({
+    to: params.to,
+    subject,
+    html,
+    text: [
+      `Olá, ${params.name}.`,
+      title,
+      message,
+      `Produto: ${params.productName}`,
+      `Vencimento: ${due}`,
+      `Mensalidade: ${amount}`,
+      ...(!pre && safeUrl ? [`Cobrança existente: ${safeUrl}`] : []),
+      "Mensagem automática da Prosperity Pay para o CRM Prosperity.",
+    ].join("\n"),
+  });
+}

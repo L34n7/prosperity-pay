@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { processAutomaticDueBilling } from "@/lib/subscriptions/automatic-due-billing";
+import { processSubscriptionBillingNotices } from "@/lib/subscriptions/billing-notices";
 import { expireStalePayments } from "@/lib/payments/expire-stale-payments";
 import { reconcileRecentMercadoPagoOperationIds } from "@/lib/payments/mercado-pago-operation-reconciliation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -32,6 +33,12 @@ export async function GET(request: Request) {
     const admin = createAdminClient();
     const expiredPayments = await expireStalePayments(admin);
     const result = await processAutomaticDueBilling(100);
+    // Primeiro gera e registra o pedido do vencimento, depois envia avisos.
+    // Falha em um aviso não altera a cobrança ou o pagamento.
+    const notices = await processSubscriptionBillingNotices(150).catch((error) => {
+      console.error("[CRON BILLING NOTICES] Falha ao processar avisos", error);
+      return { analyzed: 0, sent: 0, skipped: 0, failed: 1 };
+    });
     const operationReconciliation = await reconcileRecentMercadoPagoOperationIds(admin, {
       paymentLimit: 150,
       groupLimit: 6,
@@ -45,6 +52,7 @@ export async function GET(request: Request) {
       expiredPayments,
       operationReconciliation,
       ...result,
+      notices,
     });
   } catch (error) {
     console.error("[CRON AUTOMATIC DUE BILLING] Falha geral", error);
