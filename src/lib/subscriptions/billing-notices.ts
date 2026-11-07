@@ -36,7 +36,7 @@ export async function processSubscriptionBillingNotices(limit = 150) {
     .select("id,name,status,automatic_due_billing_enabled")
     .in("id", productIds);
   if (productsError) throw productsError;
-  const productById = new Map((products ?? []).map((p) => [p.id, p]));
+  const productById = new Map<string, any>((products ?? []).map((p: any) => [String(p.id), p]));
 
   let sent = 0;
   let skipped = 0;
