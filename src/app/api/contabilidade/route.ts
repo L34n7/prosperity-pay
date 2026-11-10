@@ -147,6 +147,8 @@ async function accountGet(request: Request) {
   const { supabase, user } = await requirePlatformAdmin();
   const url = new URL(request.url);
   const month = monthParam(url.searchParams.get("mes"));
+  const [year,monthNumber]=month.split("-").map(Number);
+  const previousMonth=new Date(Date.UTC(year,monthNumber-2,1)).toISOString().slice(0,7);
   const currentDay=localParts(new Date()).date;
   const horizonDay=dayPlus(currentDay,125);
   const movementUntil=url.searchParams.get("movAte");
@@ -156,7 +158,7 @@ async function accountGet(request: Request) {
     supabase.from("finance_banks").select("*").eq("owner_user_id",user.id).order("name"),
     supabase.from("finance_boxes").select("*").eq("owner_user_id",user.id).order("name"),
     supabase.from("finance_origins").select("*").eq("owner_user_id",user.id).order("name"),
-    supabase.from("finance_periods").select("*").eq("owner_user_id",user.id).eq("month",month+"-01"),
+    supabase.from("finance_periods").select("*").eq("owner_user_id",user.id).in("month",[month+"-01",previousMonth+"-01"]),
     supabase.from("finance_cards").select("*").eq("owner_user_id",user.id).order("name"),
     supabase.from("finance_card_payments").select("*").eq("owner_user_id",user.id).order("paid_at",{ascending:false}).limit(3000),
     supabase.from("finance_expected_incomes").select("*").eq("owner_user_id",user.id).order("expected_on").limit(3000),
@@ -184,7 +186,10 @@ async function accountGet(request: Request) {
   const events=forecastEvents(entries,invoices,receipts,currentDay);
   return NextResponse.json({
     banks:banks.data as Bank[],boxes:boxes.data as CashBox[],
-    origins:origins.data as Origin[],period:(periods.data as Period[])?.[0]??null,
+    origins:origins.data as Origin[],
+    period:(periods.data as Period[])?.find(p=>p.month===month+"-01")??null,
+    previousMonth,
+    previousPeriod:(periods.data as Period[])?.find(p=>p.month===previousMonth+"-01")??null,
     cards:cardList,cardPayments:payments,expectedIncomes:receipts,cardAdjustments:adjustments,
     invoices,ledgerEntries:entries.filter(e=>e.status==="paid"&&!e.card_id),
     forecast:{today:currentDay,balances:position,events},
