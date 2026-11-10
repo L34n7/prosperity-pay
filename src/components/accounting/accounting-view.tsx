@@ -17,7 +17,7 @@ import type { Bank, CashBox, Entry, MonthlySnapshot, Origin, Period } from "@/li
 import styles from "./accounting-view.module.css";
 
 type ViewData = MonthlySnapshot & PlannerView & {
-  origins: Origin[]; period: Period | null; previousMonth:string; previousPeriod:Period|null; ledgerEntries: Entry[];
+  origins: Origin[]; period: Period | null; ledgerEntries: Entry[];
 };
 type EntryDraft = {
   id?: string; kind: Entry["kind"]; title: string; amount: string; cardId: string;
@@ -88,7 +88,7 @@ export function AccountingView() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [originFilter, setOriginFilter] = useState("");
   const [search, setSearch] = useState("");
-
+  const [sheetTab, setSheetTab] = useState<"forecast" | "accounts" | "cards" | "balances" | "other">("accounts");
   const [quickEditing, setQuickEditing] = useState(false);
   const [quickSaving, setQuickSaving] = useState<string | null>(null);
   const [quickSaved, setQuickSaved] = useState<string | null>(null);
@@ -130,7 +130,7 @@ export function AccountingView() {
   function showEntry(kind: Entry["kind"], bankId?: string, boxId?: string) {
     if (!view) return;
     if (!canRecord) { setSettingsOpen(true); return; }
-    setError(""); setEntryModal({...blankEntry(kind, kind==="expense" ? month : monthNow(), view),
+    setError(""); setEntryModal({...blankEntry(kind, sheetTab==="other" ? monthNow() : month, view),
       ...(bankId ? {bankId} : {}), ...(boxId ? {boxId} : {})});
   }
   function chooseSuggestion(name: string, current: EntryDraft) {
@@ -292,38 +292,26 @@ export function AccountingView() {
     await mutate("DELETE", { action: setting.type, id: setting.id },
       (setting.type === "bank" ? "Banco" : "Caixa") + " apagado com sucesso.");
   }
-  async function toggleClose(targetMonth=month) {
+  async function toggleClose() {
     if (!view) return;
-    const targetClosed=targetMonth===month ? closed : view.previousMonth===targetMonth && view.previousPeriod?.status==="closed";
-    if (!confirm(targetClosed
-      ? "Reabrir " + labelMonth(targetMonth) + " para permitir alterações?"
-      : "Fechar " + labelMonth(targetMonth) + "? Movimentações do período ficam protegidas e o saldo será transportado.")) return;
-    await mutate("PATCH", { action:"period", month:targetMonth, status:targetClosed?"open":"closed" },
-      targetClosed ? "Mês reaberto." : "Mês fechado e protegido.");
+    if (!confirm(closed
+      ? "Reabrir " + labelMonth(month) + " para permitir alterações?"
+      : "Fechar " + labelMonth(month) + "? Os lançamentos ficarão bloqueados até a reabertura.")) return;
+    await mutate("PATCH", { action: "period", month, status: closed ? "open" : "closed" },
+      closed ? "Mês reaberto." : "Mês fechado e protegido.");
   }
   const findBank = (id: string | null) => view?.banks.find((b) => b.id === id)?.name ?? "—";
   const findBox = (id: string | null) => view?.boxes.find((b) => b.id === id)?.name ?? "—";
   const findOrigin = (id: string | null) => view?.origins.find((b) => b.id === id)?.name ?? "Sem origem";
   const availableBanks = view?.banks.filter((b) => b.active || b.id === entryModal?.bankId || b.id === entryModal?.targetBankId) ?? [];
   const availableBoxes = view?.boxes.filter((b) => b.active || b.id === entryModal?.boxId || b.id === entryModal?.targetBoxId) ?? [];
-  const visibleRows = selectedEntries.filter((entry)=>entry.kind==="expense")
-    .sort((a,b)=>(a.due_on??"").localeCompare(b.due_on??"")||a.title.localeCompare(b.title,"pt-BR"));
-  const groupMap=new Map<string,{key:string;boxName:string;sourceName:string;rows:Entry[];totalCents:number}>();
-  for(const entry of visibleRows){
-    const boxName=findBox(entry.box_id);
-    const sourceName=entry.card_id
-      ? view?.cards.find(c=>c.id===entry.card_id)?.name??"Cartão"
-      : "Pagamento direto · "+findBank(entry.bank_id);
-    const key=entry.box_id+"|"+(entry.card_id??"bank:"+entry.bank_id);
-    let group=groupMap.get(key);
-    if(!group){group={key,boxName,sourceName,rows:[],totalCents:0};groupMap.set(key,group);}
-    group.rows.push(entry);group.totalCents+=entry.amount_cents;
-  }
-  const accountGroups=[...groupMap.values()].sort((a,b)=>
-    a.boxName.localeCompare(b.boxName,"pt-BR")||a.sourceName.localeCompare(b.sourceName,"pt-BR"));
+  const visibleRows = selectedEntries.filter((entry) => sheetTab === "accounts" ? entry.kind === "expense" : entry.kind !== "expense")
+    .sort((a,b) => sheetTab === "accounts"
+      ? (a.due_on ?? "").localeCompare(b.due_on ?? "") || a.title.localeCompare(b.title, "pt-BR")
+      : b.created_at.localeCompare(a.created_at));
   const sheetTotal = visibleRows.reduce((total, row) => total + row.amount_cents, 0);
   const sheetPending = visibleRows.filter(row=>row.status==="pending"&&!row.card_id).reduce((total,row)=>total+row.amount_cents,0);
-  const quickEnabled = quickEditing && !closed;
+  const quickEnabled = quickEditing && sheetTab === "accounts" && !closed;
   const quickBusy = quickSaving !== null;
   const sheetInvoices = view?.invoices.filter(i=>i.invoice_month===month+"-01")
     .reduce((sum,i)=>sum+i.remaining_cents,0)??0;
@@ -351,9 +339,9 @@ export function AccountingView() {
           {closed ? <LockKeyhole size={14}/> : <CheckCircle2 size={14}/>}
           {closed ? "Mês fechado" : "Mês aberto"}
         </span>}
-        {<button type="button" className={styles.outlineButton} disabled={loading || saving || !view}
+        {sheetTab === "accounts" && <button type="button" className={styles.outlineButton} disabled={loading || saving || !view}
           onClick={exportCsv}><Download size={16}/> Exportar contas</button>}
-        <button type="button" className={styles.outlineButton} disabled={loading || saving || !view} onClick={()=>void toggleClose()}>
+        <button type="button" className={styles.outlineButton} disabled={loading || saving || !view} onClick={toggleClose}>
           {closed ? "Reabrir mês" : "Fechar mês"}</button>
       </div>
     </section>
@@ -369,53 +357,200 @@ export function AccountingView() {
         <button className={styles.primaryButton} disabled={saving} onClick={() => void mutate("POST", { action: "setup" }, "Bancos e caixas iniciais cadastrados.")}>Criar estrutura inicial</button></div>
       </div>}
 
-<section className={styles.panel} id="finance-origin-anchor">
+      <section className={styles.totals}>
+        {[
+          { icon: Wallet, label: "Saldo consolidado", value: view.totals.balance, help: "Dinheiro contabilizado até o mês selecionado", kind: "main" },
+          { icon: Landmark, label: "Saldo anterior", value: view.totals.initialBalance, help: "Transportado do mês anterior", kind: "neutral" },
+          { icon: ArrowUpCircle, label: "Entradas no mês", value: view.totals.received + view.totals.opening, help: "Receitas e aportes efetivados", kind: "green" },
+          { icon: ArrowDownCircle, label: "Despesas pagas", value: view.totals.paid, help: "Contas e faturas pagas", kind: "orange" },
+          { icon: ArrowLeftRight, label: "Saídas avulsas", value: view.totals.outflow, help: "Pix e débitos sem conta a pagar", kind: "neutral" },
+          { icon: ReceiptText, label: "Contas a pagar", value: view.totals.pending, help: "Inclui faturas líquidas em aberto neste mês", kind: "purple" },
+        ].map((card) => { const Icon = card.icon; return <article key={card.label} className={styles.statCard} data-kind={card.kind}>
+          <div className={styles.statIcon}><Icon size={19}/></div><span>{card.label}</span>
+          <strong className={card.value < 0 ? styles.negative : ""}>{money(card.value)}</strong><small>{card.help}</small>
+        </article>; })}
+      </section>
+
+      <section className={styles.fixedBoxTotals} aria-label="Saldos e contas por caixa">
+        <div className={styles.fixedBoxTotalsHead}>
+          <div><span className={styles.eyebrow}>Distribuição por responsável · {labelMonth(month)}</span>
+            <h2>Saldos e contas por caixa</h2></div>
+          <span>Os saldos são acumulados. As contas correspondem ao mês selecionado.</span>
+        </div>
+        <div className={styles.fixedBoxGrid}>
+          {view.boxes.filter(box=>box.active || (view.boxAccounts[box.id]?.count??0)>0 ||
+            (view.boxBalances[box.id]??0)!==0).map(box=>{
+            const bill=view.boxAccounts[box.id];
+            return <article key={box.id} className={styles.fixedBoxCard}>
+              <div className={styles.fixedBoxTitle}>
+                <span className={styles.fixedBoxIcon}>{box.person_type==="pj"?<Building2 size={17}/>:<Wallet size={17}/>}</span>
+                <strong>{box.name}</strong>
+              </div>
+              <div className={styles.fixedBoxMoney}>
+                <span>Saldo do caixa</span>
+                <strong className={(view.boxBalances[box.id]??0)<0?styles.negative:""}>{money(view.boxBalances[box.id]??0)}</strong>
+              </div>
+              <div className={styles.fixedBoxMoney}>
+                <span>Contas do mês <small>({bill?.count??0})</small></span>
+                <strong>{money(bill?.totalCents??0)}</strong>
+              </div>
+              <div className={styles.fixedBoxFoot}>
+                <span>A pagar</span><strong>{money(bill?.pendingCents??0)}</strong>
+              </div>
+              <button type="button" className={styles.fixedBoxLink} onClick={()=>{
+                setSheetTab("accounts"); setBoxFilter(box.id); setBankFilter(""); setOriginFilter(""); setStatusFilter("all");setSearch("");
+                document.getElementById("finance-origin-anchor")?.scrollIntoView({behavior:"smooth",block:"start"});
+              }}>Ver contas <ArrowRight size={14}/></button>
+            </article>;
+          })}
+        </div>
+      </section>
+
+      <nav className={styles.sheetTabs} aria-label="Áreas da contabilidade">
+        <button type="button" className={sheetTab === "accounts" ? styles.activeTab : styles.tab}
+          aria-current={sheetTab === "accounts" ? "page" : undefined} onClick={() => setSheetTab("accounts")}><ReceiptText size={17}/> Planilha mensal</button>
+        <button type="button" className={sheetTab==="forecast"?styles.activeTab:styles.tab}
+          onClick={()=>setSheetTab("forecast")}><CalendarDays size={17}/> Fluxo de caixa</button>
+        <button type="button" className={sheetTab==="cards"?styles.activeTab:styles.tab}
+          onClick={()=>setSheetTab("cards")}><ReceiptText size={17}/> Faturas de cartões</button>
+        <button type="button" className={sheetTab === "balances" ? styles.activeTab : styles.tab}
+          aria-current={sheetTab === "balances" ? "page" : undefined} onClick={() => setSheetTab("balances")}><Wallet size={17}/> Saldos por banco e caixa</button>
+        <button type="button" className={sheetTab === "other" ? styles.activeTab : styles.tab}
+          aria-current={sheetTab === "other" ? "page" : undefined} onClick={() => setSheetTab("other")}><ArrowLeftRight size={17}/> Movimentações</button>
+      </nav>
+      {(sheetTab==="forecast"||sheetTab==="cards")&&<CashFlowPanel
+        view={view} mode={sheetTab} closed={Boolean(closed)}
+        onChanged={()=>setReload(x=>x+1)}/>}
+      {sheetTab==="other" && <MovementsReport
+        entries={view.ledgerEntries} payments={view.cardPayments}
+        receipts={view.expectedIncomes} cards={view.cards}
+        banks={view.banks} boxes={view.boxes}
+        onNew={(kind)=>showEntry(kind)}
+        onEdit={(id)=>{
+          const item=view.ledgerEntries.find(e=>e.id===id);
+          if(item){setError("");setEntryModal(entryToDraft(item));}
+        }}
+        onEndDateChange={setMovementUntil}/>}
+
+      {sheetTab === "balances" && <section className={styles.panel}>
+        <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha de saldos · {labelMonth(month)}</span>
+          <h2>Distribuição do dinheiro</h2><p>Clique em uma célula para registrar saldo inicial ou aporte neste banco e caixa. Os valores exibidos são acumulados até o mês selecionado.</p></div>
+          <button className={styles.primaryButton} disabled={closed || !canRecord} onClick={() => showEntry("opening")}><Plus size={16}/> Registrar saldo / aporte</button>
+        </div>
+        <div className={styles.sheetTableWrap}><table className={styles.balanceMatrix}>
+          <thead><tr><th>Banco / Caixa</th>{view.boxes.map((box) => <th key={box.id}>{box.name}<small>{box.person_type.toUpperCase()}</small></th>)}<th>Total do banco</th></tr></thead>
+          <tbody>{view.banks.filter(bank=>bank.active).map((bank) => <tr key={bank.id}><th scope="row"><Landmark size={15}/> {bank.name}</th>
+            {view.boxes.map((box) => <td key={box.id}><button type="button" title={"Adicionar saldo no banco " + bank.name + ", caixa " + box.name}
+              disabled={closed || !bank.active || !box.active}
+              onClick={() => showEntry("opening", bank.id, box.id)}>{money(view.matrix[bank.id + ":" + box.id] ?? 0)} <Plus size={13}/></button></td>)}
+            <td className={styles.matrixTotal}>{money(view.bankBalances[bank.id] ?? 0)}</td></tr>)}</tbody>
+          <tfoot><tr><th>Total por caixa</th>{view.boxes.map((box) => <td key={box.id}>{money(view.boxBalances[box.id] ?? 0)}</td>)}
+            <td>{money(view.totals.balance)}</td></tr></tfoot>
+        </table></div>
+        <p className={styles.balanceNote}>Saldo / aporte <strong>soma</strong> ao saldo existente; não o substitui. O saldo de um mês passa automaticamente para o seguinte.</p>
+      </section>}
+{sheetTab === "balances" && <>      <div className={styles.twoCols}>
+        <section className={styles.panel}>
+          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Disponibilidade real</span><h2>Saldo por banco</h2>
+            <p>Dinheiro consolidado em cada instituição, distribuído pelos caixas.</p></div>
+            <button className={styles.iconButton} title="Novo banco" onClick={() => { setSettingsOpen(true); startSetting("bank"); }}><Plus size={18}/></button>
+          </div>
+          <div className={styles.bankGrid}>
+          {view.banks.some(b=>b.active) ? view.banks.filter(b=>b.active).map((bank) => <article className={styles.bankCard} key={bank.id}>
+            <div className={styles.bankTop}><span className={styles.bankIcon}><Landmark size={19}/></span><div><h3>{bank.name}</h3><small>{bank.active ? "Conta ativa" : "Arquivado"}</small></div>
+              <button className={styles.miniEdit} title="Editar banco" onClick={() => {setSettingsOpen(true);startSetting("bank",bank);}}><Pencil size={14}/></button></div>
+            <strong className={(view.bankBalances[bank.id] ?? 0) < 0 ? styles.negative : ""}>{money(view.bankBalances[bank.id] ?? 0)}</strong>
+            <div className={styles.splits}>{view.boxes.map((box) => <div key={box.id}><span>{box.name}</span><b>{money(view.matrix[bank.id + ":" + box.id] ?? 0)}</b></div>)}</div>
+          </article>) : <p className={styles.empty}>Nenhum banco cadastrado.</p>}
+          </div>
+        </section>
+        <section className={styles.panel}>
+          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Distribuição interna · {labelMonth(month)}</span><h2>Saldos e contas por caixa</h2>
+            <p>Compare o saldo de cada responsável com as contas do mês selecionado. Compras de cartão entram na fatura e não são descontadas do banco antes do pagamento.</p></div>
+            <button className={styles.iconButton} title="Novo caixa" onClick={() => {setSettingsOpen(true);startSetting("box");}}><Plus size={18}/></button>
+          </div>
+          <div className={styles.boxGrid}>
+            {view.boxes.length ? view.boxes.map((box) => <article key={box.id} className={styles.boxCard}>
+              <div className={styles.boxHead}><span className={styles.boxIcon}>{box.person_type === "pj" ? <Building2 size={19}/> : <Wallet size={19}/>}</span>
+                <div><strong>{box.name}</strong><small>{box.person_type === "pj" ? "Pessoa jurídica" : "Pessoa física"}{!box.active ? " · Arquivado" : ""}</small></div>
+                <button className={styles.miniEdit} title="Editar caixa" onClick={() => {setSettingsOpen(true);startSetting("box",box);}}><Pencil size={14}/></button>
+              </div>
+              <div className={styles.boxBalanceLabel}>Saldo bancário acumulado</div>
+              <strong className={styles.boxAmount}>{money(view.boxBalances[box.id] ?? 0)}</strong>
+              <div className={styles.boxSources}>{view.banks.filter(bank=>bank.active).map((bank) => <span key={bank.id}>{bank.name}<b>{money(view.matrix[bank.id + ":" + box.id] ?? 0)}</b></span>)}</div>
+              <div className={styles.boxBills}>
+                <div className={styles.boxBillsHeading}>
+                  <div>
+                    <span>Contas de {labelMonth(month)}</span>
+                    <strong>{money(view.boxAccounts[box.id]?.totalCents ?? 0)}</strong>
+                  </div>
+                  <span className={styles.boxBillsCount}>{view.boxAccounts[box.id]?.count ?? 0} {(view.boxAccounts[box.id]?.count ?? 0) === 1 ? "conta" : "contas"}</span>
+                </div>
+                <div className={styles.boxBillsBreakdown}>
+                  <div><span>A pagar</span><strong className={styles.boxBillsPending}>{money(view.boxAccounts[box.id]?.pendingCents ?? 0)}</strong></div>
+                  <div><span>Já pago</span><strong className={styles.boxBillsPaid}>{money(view.boxAccounts[box.id]?.paidCents ?? 0)}</strong></div>
+                </div>
+                {(view.boxAccounts[box.id]?.adjustmentCents ?? 0) !== 0 && <div className={styles.boxBillsAdjustment}>
+                  Ajustes de fatura incluídos: {money(view.boxAccounts[box.id]?.adjustmentCents ?? 0)}
+                </div>}
+                <button type="button" className={styles.boxBillsLink} onClick={() => {
+                  setBoxFilter(box.id); setBankFilter(""); setOriginFilter(""); setStatusFilter("all"); setSearch("");
+                  setSheetTab("accounts");
+                }}>Ver contas deste caixa <ArrowRight size={15}/></button>
+              </div>
+            </article>) : <p className={styles.empty}>Nenhum caixa cadastrado.</p>}
+          </div>
+        </section>
+      </div>
+
+</>}
+      {sheetTab==="accounts" && <>      <section className={styles.panel} id="finance-origin-anchor">
         <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha mensal · {labelMonth(month)}</span>
-          <h2>Contas do mês</h2>
-          <p>Contas separadas por caixa e cartão. As parcelas são organizadas automaticamente por mês; entradas e Pix ficam nas movimentações.</p></div>
+          <h2>{sheetTab === "accounts" ? "Contas do mês" : "Movimentações bancárias"}</h2>
+          <p>{sheetTab === "accounts"
+            ? "Registre as contas de uma vez, no início ou no fim do mês. Cada parcela futura aparece automaticamente na sua competência."
+            : "Pix enviados, saídas avulsas, aportes, entradas e transferências do mês; sem misturar com contas pendentes."}</p></div>
           <div className={styles.entryActions}>
-            <button type="button" className={quickEditing ? styles.editModeActive : styles.outlineButton}
-              disabled={closed || quickBusy} aria-pressed={quickEditing}
-              onClick={() => {setQuickEditing(v=>!v);setQuickSaved(null);}}>
-              <Pencil size={16}/> {quickEditing ? "Concluir edição" : "Habilitar edição"}
-            </button>
-            <button className={styles.primaryButton} disabled={closed || !canRecord || quickBusy}
-              onClick={() => showEntry("expense")}><Plus size={17}/> Adicionar conta</button>
+            {sheetTab === "accounts" ? <>
+              <button type="button" className={quickEditing ? styles.editModeActive : styles.outlineButton}
+                disabled={closed || quickBusy} aria-pressed={quickEditing}
+                onClick={() => {setQuickEditing(v=>!v);setQuickSaved(null);}}>
+                <Pencil size={16}/> {quickEditing ? "Concluir edição" : "Habilitar edição"}
+              </button>
+              <button className={styles.primaryButton} disabled={closed || !canRecord || quickBusy} onClick={() => showEntry("expense")}><Plus size={17}/> Adicionar conta</button>
+            </> : <>
+              <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("opening")}><CircleDollarSign size={16}/> Saldo / aporte</button>
+              <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("income")}><ArrowUpCircle size={16}/> Entrada</button>
+              <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("transfer")}><ArrowLeftRight size={16}/> Transferência</button>
+              <button className={styles.outlineButton} disabled={closed || !canRecord} onClick={() => showEntry("outflow")}><ArrowDownCircle size={16}/> Saída / Pix</button>
+            </>}
           </div>
         </div>
-        {quickEnabled && <div className={styles.quickHelp}>
+        {sheetTab === "accounts" && quickEnabled && <div className={styles.quickHelp}>
           <Save size={16}/> Edição rápida habilitada. Selecione uma opção para salvar; textos, valores e datas
           são salvos ao sair do campo ou pressionar Enter. Cada parcela é independente.
           {quickBusy && <span><Loader2 size={15} className={styles.quickSpin}/> Salvando…</span>}
         </div>}
-        <div className={styles.sheetMetrics}>
+        {sheetTab === "accounts" && <div className={styles.sheetMetrics}>
           <div><span>Contas na planilha</span><strong>{visibleRows.length}</strong></div>
           <div><span>Valor previsto</span><strong>{money(sheetTotal)}</strong></div>
           <div><span>Contas diretas pendentes</span><strong>{money(sheetPending)}</strong></div>
           <div><span>Faturas líquidas em aberto</span><strong>{money(sheetInvoices)}</strong></div>
-        </div>
+        </div>}
         <div className={styles.filters}>
           <label className={styles.search}><Search size={17}/><input placeholder="Buscar conta ou descrição" value={search} onChange={(e) => setSearch(e.target.value)}/></label>
           <select aria-label="Filtrar por banco" value={bankFilter} onChange={(e) => setBankFilter(e.target.value)}><option value="">Todos os bancos</option>{view.banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
           <select aria-label="Filtrar por caixa" value={boxFilter} onChange={(e) => setBoxFilter(e.target.value)}><option value="">Todos os caixas</option>{view.boxes.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
           <select aria-label="Filtrar por origem" value={originFilter} onChange={(e) => setOriginFilter(e.target.value)}><option value="">Todas as origens</option>{view.origins.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
           <select aria-label="Filtrar por situação" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="all">Todas as contas</option><option value="pending">Pendentes</option><option value="paid">Efetivadas</option>
+            <option value="all">Todas as movimentações</option><option value="pending">Pendentes</option><option value="paid">Efetivadas</option>
             
           </select>
         </div>
         <div className={styles.sheetTableWrap}><table className={styles.table}><thead><tr>
           <th>Conta / descrição</th><th>Origem</th><th>Parcela</th><th>Banco / Cartão</th><th>Caixa</th><th>Data</th><th>Situação</th><th>Valor</th><th>Ações</th>
         </tr></thead><tbody>
-          {accountGroups.flatMap((group)=>[
-  <tr key={"group:"+group.key} className={styles.accountGroupRow}>
-    <td colSpan={9}>
-      <span className={styles.groupBoxName}>{group.boxName}</span>
-      <strong>{group.sourceName}</strong>
-      <small>{group.rows.length} {group.rows.length===1?"conta":"contas"} · {money(group.totalCents)} em lançamentos</small>
-    </td>
-  </tr>,
-  ...group.rows.map((entry) => <tr key={entry.id} className={quickEnabled ? styles.quickRow : undefined}>
+          {visibleRows.map((entry) => <tr key={entry.id} className={quickEnabled ? styles.quickRow : undefined}>
             <td>{quickEnabled ? <QuickInputCell label={"Descrição de "+entry.title} value={entry.title}
               disabled={quickBusy} saving={quickSaving===entry.id}
               onCommit={value=>quickSave(entry,"title",value)}/> : <strong>{entry.title}</strong>}
@@ -466,129 +601,23 @@ export function AccountingView() {
               {quickSaving===entry.id && <span className={styles.quickStatus}><Loader2 size={14} className={styles.quickSpin}/> Salvando</span>}
               {quickSaved===entry.id && !quickBusy && <span className={styles.quickSaved}><CheckCircle2 size={14}/> Salvo</span>}
               {entry.card_id && !closed && <button type="button" className={styles.payAction}
-                onClick={()=>{
-  const el=document.getElementById("finance-card-tools") as HTMLDetailsElement | null;
-  if(el){el.open=true;el.scrollIntoView({behavior:"smooth",block:"start"});}
-}}>Ver fatura</button>}
+                onClick={()=>setSheetTab("cards")}>Ver fatura</button>}
               {entry.status === "pending" && !entry.card_id && !closed && <button type="button" className={styles.payAction}
                 onClick={() => setEntryModal({ ...entryToDraft(entry), status: "paid", settledOn: today() })}>Pagar</button>}
               {!closed && <><button type="button" title="Editar lançamento" onClick={() => setEntryModal(entryToDraft(entry))}><Pencil size={15}/></button>
                 <button type="button" title="Excluir lançamento" onClick={() => void deleteEntry(entry.id)}><Trash2 size={15}/></button></>}
               {closed && <LockKeyhole size={16} className={styles.lock}/>}
             </div></td>
-          </tr>)])}
+          </tr>)}
         </tbody></table>
-        {!visibleRows.length && <div className={styles.emptyTable}><ReceiptText size={27}/><strong>Sua planilha está vazia</strong><p>Altere os filtros ou cadastre a primeira conta deste mês.</p></div>}
+        {!visibleRows.length && <div className={styles.emptyTable}><ReceiptText size={27}/><strong>{sheetTab === "accounts" ? "Sua planilha está vazia" : "Nenhum lançamento neste período"}</strong><p>Altere os filtros ou cadastre a primeira conta deste mês.</p></div>}
         </div>
-        <footer className={styles.tableFooter}><span>{visibleRows.length} linhas · {"total da seleção: " + money(sheetTotal)}</span>
-          <span>{quickEditing ? "Edição ativa: alterações salvas automaticamente." : "Habilite a edição para alterar os campos diretamente."}</span></footer>
+        <footer className={styles.tableFooter}><span>{visibleRows.length} linhas · {sheetTab === "accounts" ? "total da seleção: " + money(sheetTotal) : "entradas e transferências do mês"}</span>
+          <span>{sheetTab === "accounts" ? quickEditing ? "Edição ativa: alterações salvas automaticamente, uma por vez." : "Clique em Habilitar edição para alterar as células diretamente." : "Valores efetivados já estão incluídos no saldo por banco e caixa."}</span></footer>
       </section>
 
-      <section className={styles.monthReports} aria-label="Relatórios financeiros mensais">
-        <div className={styles.reportHeader}>
-          <div><span className={styles.eyebrow}>Relatórios · {labelMonth(month)}</span>
-            <h2>Saldos e contas por caixa</h2>
-            <p>Disponíveis sempre abaixo da planilha. O saldo anterior é transportado automaticamente dos meses anteriores.</p></div>
-        </div>
-        {view.previousPeriod?.status==="open" && <div className={styles.previousOpenNotice}>
-          <CalendarDays size={19}/>
-          <div><strong>{labelMonth(view.previousMonth)} ainda está aberto</strong>
-            <p>O saldo anterior é provisório e incorpora automaticamente as movimentações daquele mês. Após fechá-lo, o saldo transportado fica protegido.</p></div>
-          <button type="button" className={styles.outlineButton} disabled={saving} onClick={()=>void toggleClose(view.previousMonth)}>
-            Fechar {labelMonth(view.previousMonth)}</button>
-        </div>}
-        <div className={styles.totals}>
-          {[
-            {icon:Wallet,label:"Saldo consolidado",value:view.totals.balance,help:"Saldo acumulado incluindo meses anteriores",kind:"main"},
-            {icon:Landmark,label:"Saldo anterior",value:view.totals.initialBalance,help:view.previousPeriod?.status==="open"?"Provisório: mês anterior ainda aberto":"Transportado do mês anterior",kind:"neutral"},
-            {icon:ReceiptText,label:"Total de contas",value:Object.values(view.boxAccounts).reduce((v,b)=>v+b.totalCents,0),help:"Contas líquidas de "+labelMonth(month),kind:"purple"},
-            {icon:ArrowDownCircle,label:"A pagar",value:Object.values(view.boxAccounts).reduce((v,b)=>v+b.pendingCents,0),help:"Despesas e faturas pendentes",kind:"orange"},
-            {icon:CheckCircle2,label:"Já pago",value:Object.values(view.boxAccounts).reduce((v,b)=>v+b.paidCents,0),help:"Pagamentos registrados",kind:"green"},
-          ].map(card=>{const Icon=card.icon;return <article key={card.label} className={styles.statCard} data-kind={card.kind}>
-            <div className={styles.statIcon}><Icon size={19}/></div>
-            <span>{card.label}</span><strong className={card.value<0?styles.negative:""}>{money(card.value)}</strong>
-            <small>{card.help}</small>
-          </article>;})}
-        </div>
-        <div className={styles.twoCols}>
-        <section className={styles.panel}>
-          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Disponibilidade real</span><h2>Saldo por banco</h2>
-            <p>Dinheiro consolidado em cada instituição, distribuído pelos caixas.</p></div>
-            <button className={styles.iconButton} title="Novo banco" onClick={() => { setSettingsOpen(true); startSetting("bank"); }}><Plus size={18}/></button>
-          </div>
-          <div className={styles.bankGrid}>
-          {view.banks.some(b=>b.active) ? view.banks.filter(b=>b.active).map((bank) => <article className={styles.bankCard} key={bank.id}>
-            <div className={styles.bankTop}><span className={styles.bankIcon}><Landmark size={19}/></span><div><h3>{bank.name}</h3><small>{bank.active ? "Conta ativa" : "Arquivado"}</small></div>
-              <button className={styles.miniEdit} title="Editar banco" onClick={() => {setSettingsOpen(true);startSetting("bank",bank);}}><Pencil size={14}/></button></div>
-            <strong className={(view.bankBalances[bank.id] ?? 0) < 0 ? styles.negative : ""}>{money(view.bankBalances[bank.id] ?? 0)}</strong>
-            <div className={styles.splits}>{view.boxes.map((box) => <div key={box.id}><span>{box.name}</span><b>{money(view.matrix[bank.id + ":" + box.id] ?? 0)}</b></div>)}</div>
-          </article>) : <p className={styles.empty}>Nenhum banco cadastrado.</p>}
-          </div>
-        </section>
-        <section className={styles.panel}>
-          <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Distribuição interna · {labelMonth(month)}</span><h2>Saldos e contas por caixa</h2>
-            <p>Compare o saldo de cada responsável com as contas do mês selecionado. Compras de cartão entram na fatura e não são descontadas do banco antes do pagamento.</p></div>
-            <button className={styles.iconButton} title="Novo caixa" onClick={() => {setSettingsOpen(true);startSetting("box");}}><Plus size={18}/></button>
-          </div>
-          <div className={styles.boxGrid}>
-            {view.boxes.length ? view.boxes.map((box) => <article key={box.id} className={styles.boxCard}>
-              <div className={styles.boxHead}><span className={styles.boxIcon}>{box.person_type === "pj" ? <Building2 size={19}/> : <Wallet size={19}/>}</span>
-                <div><strong>{box.name}</strong><small>{box.person_type === "pj" ? "Pessoa jurídica" : "Pessoa física"}{!box.active ? " · Arquivado" : ""}</small></div>
-                <button className={styles.miniEdit} title="Editar caixa" onClick={() => {setSettingsOpen(true);startSetting("box",box);}}><Pencil size={14}/></button>
-              </div>
-              <div className={styles.boxBalanceLabel}>Saldo bancário acumulado</div>
-              <strong className={styles.boxAmount}>{money(view.boxBalances[box.id] ?? 0)}</strong>
-              <div className={styles.boxSources}>{view.banks.filter(bank=>bank.active).map((bank) => <span key={bank.id}>{bank.name}<b>{money(view.matrix[bank.id + ":" + box.id] ?? 0)}</b></span>)}</div>
-              <div className={styles.boxBills}>
-                <div className={styles.boxBillsHeading}>
-                  <div>
-                    <span>Contas de {labelMonth(month)}</span>
-                    <strong>{money(view.boxAccounts[box.id]?.totalCents ?? 0)}</strong>
-                  </div>
-                  <span className={styles.boxBillsCount}>{view.boxAccounts[box.id]?.count ?? 0} {(view.boxAccounts[box.id]?.count ?? 0) === 1 ? "conta" : "contas"}</span>
-                </div>
-                <div className={styles.boxBillsBreakdown}>
-                  <div><span>A pagar</span><strong className={styles.boxBillsPending}>{money(view.boxAccounts[box.id]?.pendingCents ?? 0)}</strong></div>
-                  <div><span>Já pago</span><strong className={styles.boxBillsPaid}>{money(view.boxAccounts[box.id]?.paidCents ?? 0)}</strong></div>
-                </div>
-                {(view.boxAccounts[box.id]?.adjustmentCents ?? 0) !== 0 && <div className={styles.boxBillsAdjustment}>
-                  Ajustes de fatura incluídos: {money(view.boxAccounts[box.id]?.adjustmentCents ?? 0)}
-                </div>}
-                <button type="button" className={styles.boxBillsLink} onClick={() => {
-                  setBoxFilter(box.id); setBankFilter(""); setOriginFilter(""); setStatusFilter("all"); setSearch("");
-                  document.getElementById("finance-origin-anchor")?.scrollIntoView({behavior:"smooth",block:"start"});
-                }}>Ver contas deste caixa <ArrowRight size={15}/></button>
-              </div>
-            </article>) : <p className={styles.empty}>Nenhum caixa cadastrado.</p>}
-          </div>
-        </section>
-      </div>
-      </section>
-
-
-      <section className={styles.additionalTools}>
-        <div className={styles.reportHeader}><div><span className={styles.eyebrow}>Operações complementares</span><h2>Outras ferramentas</h2>
-          <p>Recolhidas para manter a planilha e os resumos em primeiro plano.</p></div></div>
-        <details className={styles.toolDisclosure} id="finance-card-tools">
-          <summary><ReceiptText size={17}/> Faturas e pagamentos <span>Conferir e pagar as faturas</span></summary>
-          <CashFlowPanel view={view} mode="cards" closed={Boolean(closed)} onChanged={()=>setReload(x=>x+1)}/>
-        </details>
-        <details className={styles.toolDisclosure}>
-          <summary><ArrowLeftRight size={17}/> Movimentações bancárias <span>Entradas, saídas, Pix e transferências</span></summary>
-          <MovementsReport entries={view.ledgerEntries} payments={view.cardPayments}
-            receipts={view.expectedIncomes} cards={view.cards} banks={view.banks} boxes={view.boxes}
-            onNew={(kind)=>showEntry(kind)} onEdit={(id)=>{
-              const item=view.ledgerEntries.find(e=>e.id===id);
-              if(item){setError("");setEntryModal(entryToDraft(item));}
-            }} onEndDateChange={setMovementUntil}/>
-        </details>
-        <details className={styles.toolDisclosure}>
-          <summary><CalendarDays size={17}/> Previsão de caixa <span>Recebimentos e despesas futuras</span></summary>
-          <CashFlowPanel view={view} mode="forecast" closed={Boolean(closed)} onChanged={()=>setReload(x=>x+1)}/>
-        </details>
-        {view.origins.length>0 && <details className={styles.toolDisclosure}>
-          <summary><CircleDollarSign size={17}/> Gastos por origem <span>Classificação das despesas</span></summary>
-                {view.origins.length > 0 && <section className={styles.originPanel}>
+      </>}
+      {view.origins.length > 0 && sheetTab === "accounts" && <section className={styles.originPanel}>
         <div><span className={styles.eyebrow}>Classificação mensal</span><h2>Gastos por origem</h2><p>Identifique o que cada origem consumiu no mês.</p></div>
         <div className={styles.originList}>{view.origins.map((origin) => <button key={origin.id}
           className={originFilter === origin.id ? styles.originActive : styles.originItem}
@@ -596,10 +625,6 @@ export function AccountingView() {
           <span>{origin.name}</span><strong>{money(view.originExpenses[origin.id] ?? 0)}</strong>
         </button>)}</div>
       </section>}
-
-        </details>}
-      </section>
-
       <p className={styles.disclaimer}><ShieldCheck size={16}/> Controle interno e manual, separado das vendas e comissões da plataforma. Transferências entre caixas do mesmo banco não alteram o saldo total do banco.</p>
     </>}
 
