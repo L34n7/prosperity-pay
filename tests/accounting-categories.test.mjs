@@ -16,10 +16,11 @@ function expense(id,category,box,month,amount){
  return {id,kind:"expense",category,box_id:box,competence_month:month+"-01",amount_cents:amount};
 }
 
-test("19 categorias distintas, nomes estáveis e outras para casos incertos",()=>{
- assert.equal(CATEGORY_OPTIONS.length,19);
- assert.equal(new Set(CATEGORY_OPTIONS.map(x=>x.key)).size,19);
+test("20 categorias distintas, incluindo Produto",()=>{
+ assert.equal(CATEGORY_OPTIONS.length,20);
+ assert.equal(new Set(CATEGORY_OPTIONS.map(x=>x.key)).size,20);
  assert.ok(isFinanceCategory("alimentacao"));
+ assert.ok(isFinanceCategory("produto"));
  assert.ok(!isFinanceCategory("not_category"));
  assert.equal(suggestCategory("JIM.COM* TATIANA FERR"),"outros");
  assert.equal(suggestCategory("MERCADOLIVRE*MERCADOLIVRE"),"compras");

@@ -5,7 +5,7 @@ import {
   UtensilsCrossed, Fuel, CarFront, House, Laptop, Repeat2, Plane,
   HeartPulse, Gamepad2, Shirt, Sofa, ShoppingBag, Megaphone,
   Landmark, ReceiptText, BriefcaseBusiness, GraduationCap, ShieldCheck,
-  LayoutGrid, Undo2, Search, CalendarDays, Layers3, Wallet,
+  LayoutGrid, Undo2, Search, CalendarDays, Layers3, Wallet, Package,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { CashBox, Entry } from "@/lib/accounting/calculations";
@@ -21,7 +21,7 @@ const icons:Record<SummaryCategory,LucideIcon>={
   lazer:Gamepad2,vestuario:Shirt,casa:Sofa,compras:ShoppingBag,
   marketing:Megaphone,impostos:Landmark,taxas:ReceiptText,
   servicos:BriefcaseBusiness,educacao:GraduationCap,seguros:ShieldCheck,
-  outros:LayoutGrid,ajustes:Undo2,
+  produto:Package,outros:LayoutGrid,ajustes:Undo2,
 };
 export function CategoryIcon({category,size=16}:{category:SummaryCategory;size?:number}){
   const Icon=icons[category]??LayoutGrid;

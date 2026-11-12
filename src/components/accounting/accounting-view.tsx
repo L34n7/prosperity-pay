@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import {
   ArrowDownCircle, ArrowLeftRight, ArrowRight, ArrowUpCircle, Building2, CalendarDays,
   CheckCircle2, CircleDollarSign, Download, Landmark, LockKeyhole, Layers3,
-  Pencil, Plus, ReceiptText, Search, Settings2, ShieldCheck, Trash2, Wallet, X, Save, Loader2,
+  Pencil, Plus, ReceiptText, Search, Settings2, ShieldCheck, Trash2, Wallet, X, Save, Loader2, History, Repeat2,
 } from "lucide-react";
 import { formatCents } from "@/lib/operational";
 import { shiftMonthlyDate } from "@/lib/accounting/installments";
@@ -21,6 +21,7 @@ import styles from "./accounting-view.module.css";
 
 type ViewData = MonthlySnapshot & PlannerView & {
   origins: Origin[]; period: Period | null; ledgerEntries: Entry[]; generalBalanceCents:number;
+  subscriptionRules:{id:string;active:boolean;due_day:number;start_on:string}[];
 };
 type EntryDraft = {
   id?: string; kind: Entry["kind"]; title: string; amount: string; cardId: string;
@@ -28,6 +29,13 @@ type EntryDraft = {
   originId: string; originName: string; category: FinanceCategory; categoryTouched:boolean; status: Entry["status"];
   dueOn: string; settledOn: string; movementAt: string; notes: string;
   installmentNumber: number; installmentTotal: number;
+  isSubscription:boolean;wasSubscription:boolean;
+  subscriptionSeriesId:string|null;installmentSeriesId:string|null;applyPast:boolean;
+};
+type HistoryItem={
+  id:number;operation:"INSERT"|"UPDATE"|"DELETE";changed_at:string;
+  previous_data:Record<string,unknown>|null;next_data:Record<string,unknown>|null;
+  source:string;
 };
 type SettingType = "bank" | "box" | "origin";
 type SettingDraft = { type: SettingType; id?: string; name: string; personType: "pf" | "pj"; active: boolean };
@@ -60,9 +68,12 @@ function blankEntry(kind: Entry["kind"], month: string, view: ViewData): EntryDr
     originId: "", originName: "", category:"outros",categoryTouched:false,status: kind === "expense" ? "pending" : "paid", dueOn: date,
     settledOn: kind === "opening" ? "" : date, movementAt: "", notes: "",
     installmentNumber: 1, installmentTotal: 1,
+    isSubscription:false,wasSubscription:false,subscriptionSeriesId:null,installmentSeriesId:null,applyPast:false,
   };
 }
-function entryToDraft(entry: Entry): EntryDraft {
+function entryToDraft(entry:Entry,rules?:ViewData["subscriptionRules"]):EntryDraft {
+  const active=entry.is_subscription&&(!entry.subscription_series_id||
+    rules?.find(r=>r.id===entry.subscription_series_id)?.active!==false);
   return {
     id: entry.id, kind: entry.kind, title: entry.title, cardId:entry.card_id??"",
     amount: String(entry.amount_cents / 100), bankId: entry.bank_id, boxId: entry.box_id,
@@ -71,9 +82,24 @@ function entryToDraft(entry: Entry): EntryDraft {
     dueOn: entry.due_on ?? today(), settledOn: entry.settled_on ?? today(),
     movementAt: entry.movement_at ? localDateTime(new Date(entry.movement_at)) : "", notes: entry.notes ?? "",
     installmentNumber: entry.installment_number ?? 1, installmentTotal: entry.installment_total ?? 1,
+    isSubscription:active,wasSubscription:active,
+    subscriptionSeriesId:entry.subscription_series_id??null,installmentSeriesId:entry.installment_series_id??null,applyPast:false,
   };
 }
 
+function auditValue(field:string,value:unknown,view:ViewData):string{
+  if(value===null||value===undefined||value==="")return "—";
+  if(field==="amount_cents"&&typeof value==="number")return money(value);
+  if(field==="box_id")return view.boxes.find(x=>x.id===value)?.name??String(value);
+  if(field==="bank_id")return view.banks.find(x=>x.id===value)?.name??String(value);
+  if(field==="card_id")return view.cards.find(x=>x.id===value)?.name??String(value);
+  if(field==="origin_id")return view.origins.find(x=>x.id===value)?.name??String(value);
+  if(field==="category")return CATEGORY_LABELS[value as FinanceCategory]??String(value);
+  if(field==="is_subscription")return value?"Sim":"Não";
+  if(field==="status")return value==="paid"?"Pago":"Pendente";
+  if(field==="due_on"&&typeof value==="string")return shortDate(value);
+  return String(value);
+}
 export function AccountingView() {
   const [month, setMonth] = useState(monthNow);
   const [reload, setReload] = useState(0);
@@ -95,7 +121,11 @@ export function AccountingView() {
   const [quickEditing, setQuickEditing] = useState(false);
   const [quickSaving, setQuickSaving] = useState<string | null>(null);
   const [quickSaved, setQuickSaved] = useState<string | null>(null);
+  const [historyItems,setHistoryItems]=useState<HistoryItem[]|null>(null);
+  const [historyBusy,setHistoryBusy]=useState(false);
   const titleListId = useId();
+
+  useEffect(()=>setHistoryItems(null),[entryModal?.id]);
 
   useEffect(() => {
     let live = true;
@@ -130,6 +160,17 @@ export function AccountingView() {
   const closed = view?.period?.status === "closed";
   const canRecord = Boolean(view?.banks.some((item) => item.active) && view?.boxes.some((item) => item.active));
 
+  async function openHistory(entryId:string){
+    setHistoryBusy(true);setError("");setHistoryItems(null);
+    try{
+      const response=await fetch("/api/contabilidade?historico="+encodeURIComponent(entryId),{cache:"no-store"});
+      const data=await response.json();
+      if(!response.ok)throw Error(data.error||"Não foi possível carregar o histórico.");
+      setHistoryItems(data.history??[]);
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:"Não foi possível carregar o histórico.");
+    }finally{setHistoryBusy(false);}
+  }
   function showEntry(kind: Entry["kind"], bankId?: string, boxId?: string) {
     if (!view) return;
     if (!canRecord) { setSettingsOpen(true); return; }
@@ -169,6 +210,13 @@ export function AccountingView() {
     const cents = Math.round(Number(entryModal.amount) * 100);
     if (!Number.isSafeInteger(cents) || cents <= 0) { setError("Informe um valor válido maior que zero."); return; }
     const dueOn = entryModal.kind === "expense" ? entryModal.dueOn : null;
+    if(entryModal.isSubscription&&(entryModal.installmentTotal>1||entryModal.installmentSeriesId)){
+      setError("Assinatura é uma conta mensal contínua e não pode ser parcelada.");return;
+    }
+    if(entryModal.wasSubscription&&!entryModal.isSubscription&&
+      !confirm("Encerrar a assinatura a partir desta competência? Os vencimentos futuros pendentes serão removidos, e o histórico de alterações ficará preservado."))return;
+    if(entryModal.applyPast&&
+      !confirm("Aplicar os ajustes também às contas anteriores desta série? Isso pode alterar valores históricos. Todas as versões anteriores serão preservadas na auditoria do banco."))return;
     if(entryModal.cardId&&entryModal.status==="paid") {
       setError("Compra no cartão não é pagamento bancário. Vá à aba Faturas para registrar a quitação.");
       return;
@@ -185,6 +233,8 @@ export function AccountingView() {
       kind: entryModal.kind, title: entryModal.title.trim(), amountCents: cents,
       cardId: entryModal.kind==="expense" ? entryModal.cardId||null : null,
       category:entryModal.kind==="expense"?entryModal.category:"outros",
+      isSubscription:entryModal.kind==="expense"&&entryModal.isSubscription,
+      applyPast:entryModal.applyPast,
       bankId: entryModal.bankId, boxId: entryModal.boxId,
       targetBankId: entryModal.targetBankId, targetBoxId: entryModal.targetBoxId,
       originId: entryModal.originId === "__new" ? null : entryModal.originId || null,
@@ -446,7 +496,7 @@ export function AccountingView() {
         onNew={(kind)=>showEntry(kind)}
         onEdit={(id)=>{
           const item=view.ledgerEntries.find(e=>e.id===id);
-          if(item){setError("");setEntryModal(entryToDraft(item));}
+          if(item){setError("");setEntryModal(entryToDraft(item,view?.subscriptionRules));}
         }}
         />}
 
@@ -546,8 +596,8 @@ export function AccountingView() {
         </div>
         {sheetTab === "accounts" && quickEnabled && <div className={styles.quickHelp}>
           <Save size={16}/> Edição rápida habilitada. Selecione uma opção para salvar; textos, valores e datas
-          são salvos ao sair do campo ou pressionar Enter. Ao mudar o caixa, as parcelas futuras
-          ainda pendentes e com a mesma classificação anterior acompanham a alteração.
+          são salvos ao sair do campo ou pressionar Enter. Ajustes de categoria, valor, caixa e
+          banco/cartão são aplicados às próximas parcelas pendentes; meses anteriores continuam inalterados.
           {quickBusy && <span><Loader2 size={15} className={styles.quickSpin}/> Salvando…</span>}
         </div>}
         {sheetTab === "accounts" && <div className={styles.sheetMetrics}>
@@ -578,7 +628,7 @@ export function AccountingView() {
             <td>{quickEnabled ? <QuickInputCell label={"Descrição de "+entry.title} value={entry.title}
               disabled={quickBusy} saving={quickSaving===entry.id}
               onCommit={value=>quickSave(entry,"title",value)}/> : <strong>{entry.title}</strong>}
-              <small>{labelKind[entry.kind]}</small></td>
+              <small>{labelKind[entry.kind]}{entry.is_subscription?" · Assinatura mensal":""}</small></td>
             <td>{quickEnabled ? <QuickSelectCell label={"Origem de "+entry.title} value={entry.origin_id??""}
               disabled={quickBusy} saving={quickSaving===entry.id}
               onCommit={value=>quickSave(entry,"originId",value)}
@@ -594,7 +644,7 @@ export function AccountingView() {
                 <CategoryIcon category={(entry.category??"outros") as FinanceCategory} size={16}/>
                 {CATEGORY_LABELS[(entry.category??"outros") as FinanceCategory]??"Outros"}
               </span>}</td>
-            <td>{entry.installment_total ? <span className={styles.installmentBadge}>{entry.installment_number}/{entry.installment_total}</span> : <span className={styles.noInstallment}>—</span>}</td>
+            <td>{entry.is_subscription ? <span className={styles.installmentBadge}><Repeat2 size={13}/> Mensal</span> : entry.installment_total ? <span className={styles.installmentBadge}>{entry.installment_number}/{entry.installment_total}</span> : <span className={styles.noInstallment}>—</span>}</td>
             <td>{quickEnabled ? <QuickSelectCell label={"Banco ou cartão de "+entry.title}
               value={entry.card_id ? "card:"+entry.card_id : "bank:"+entry.bank_id}
               disabled={quickBusy} saving={quickSaving===entry.id}
@@ -635,7 +685,7 @@ export function AccountingView() {
               {entry.card_id && !closed && <button type="button" className={styles.payAction}
                 onClick={()=>setSheetTab("cards")}>Ver fatura</button>}
               {entry.status === "pending" && !entry.card_id && !closed && <button type="button" className={styles.payAction}
-                onClick={() => setEntryModal({ ...entryToDraft(entry), status: "paid", settledOn: today() })}>Pagar</button>}
+                onClick={() => setEntryModal({ ...entryToDraft(entry,view?.subscriptionRules), status: "paid", settledOn: today() })}>Pagar</button>}
               {!closed && <><button type="button" title="Editar lançamento" onClick={() => setEntryModal(entryToDraft(entry))}><Pencil size={15}/></button>
                 <button type="button" title="Excluir lançamento" onClick={() => void deleteEntry(entry.id)}><Trash2 size={15}/></button></>}
               {closed && <LockKeyhole size={16} className={styles.lock}/>}
@@ -752,7 +802,9 @@ export function AccountingView() {
               onChange={(e) => setEntryModal({...entryModal,originName:e.target.value})}/></label>}
             {entryModal.kind === "expense" && !entryModal.id && <label>Quantidade total de parcelas
               <input type="number" min={1} max={120} required value={entryModal.installmentTotal}
-                onChange={(e) => {const total = Math.max(1,Math.min(120,Number(e.target.value)||1));setEntryModal({...entryModal,installmentTotal:total,installmentNumber:Math.min(entryModal.installmentNumber,total)});}}/>
+                onChange={(e) => {const total = Math.max(1,Math.min(120,Number(e.target.value)||1));setEntryModal({...entryModal,
+                  installmentTotal:total,installmentNumber:Math.min(entryModal.installmentNumber,total),
+                  isSubscription:total>1?false:entryModal.isSubscription});}}/>
             </label>}
             {entryModal.kind === "expense" && !entryModal.id && entryModal.installmentTotal > 1 && <>
               <label>Parcela que está cadastrando
@@ -769,8 +821,20 @@ export function AccountingView() {
             </>}
             {entryModal.kind === "expense" && !!entryModal.id && entryModal.installmentTotal > 1 && <div className={styles.installmentInfo}>
               <CalendarDays size={18}/><span>Parcela <strong>{entryModal.installmentNumber}/{entryModal.installmentTotal}</strong>.
-                As alterações deste registro não modificam as outras parcelas.</span>
+                As alterações desta parcela acompanham as próximas parcelas pendentes. As anteriores permanecem como estavam.</span>
             </div>}
+            {entryModal.kind==="expense"&&<label className={styles.subscriptionToggle}>
+              <input type="checkbox" checked={entryModal.isSubscription}
+                disabled={entryModal.installmentTotal>1||!!entryModal.installmentSeriesId}
+                onChange={e=>setEntryModal({...entryModal,isSubscription:e.target.checked})}/>
+              <span><strong><Repeat2 size={17}/> Assinatura mensal</strong>
+                <small>{entryModal.installmentTotal>1||entryModal.installmentSeriesId
+                  ?"Assinatura e parcelamento são modos diferentes. Use apenas um deles."
+                  :entryModal.isSubscription
+                    ?"A conta é incluída na planilha todos os meses, sem cobrança automática. Desmarque ao encerrar."
+                    :"Ative para repetir esta conta mensalmente, mantendo vencimento, caixa, categoria e banco/cartão."}
+                </small></span>
+            </label>}
             {entryModal.kind === "expense" && !entryModal.cardId && <label>Situação<select value={entryModal.status}
               onChange={(e) => setEntryModal({...entryModal,status:e.target.value as Entry["status"]})}>
               <option value="pending">Pendente (não reduz o saldo)</option><option value="paid">Pago (reduz o saldo)</option></select></label>}
@@ -792,6 +856,45 @@ export function AccountingView() {
           {entryModal.kind === "expense" && !entryModal.cardId && <div className={styles.formInfo}>Ao marcar como pago, o valor será abatido somente do caixa <strong>{findBox(entryModal.boxId)}</strong> dentro do banco <strong>{findBank(entryModal.bankId)}</strong>. O mês contábil segue a data do pagamento; para contas pendentes, segue o vencimento.</div>}
           {entryModal.kind === "opening" && <div className={styles.formInfo}>Registre o saldo inicial uma única vez para cada banco e caixa. Os meses seguintes herdam automaticamente o saldo; novos aportes somam ao valor anterior.</div>}
           {entryModal.kind === "transfer" && <div className={styles.formInfo}>A transferência debita o caixa de origem e credita o destino em uma única operação. Se o banco for o mesmo, o saldo consolidado dele não muda.</div>}
+          {entryModal.kind==="expense"&&entryModal.id&&
+            (entryModal.installmentTotal>1||entryModal.subscriptionSeriesId)&&
+            <label className={styles.pastChangesToggle}>
+              <input type="checkbox" checked={entryModal.applyPast}
+                onChange={e=>setEntryModal({...entryModal,applyPast:e.target.checked})}/>
+              <span><strong>Aplicar ajustes no passado</strong>
+                <small>{entryModal.applyPast
+                  ?"As informações desta conta também serão aplicadas às anteriores da mesma série. Todas as versões antigas ficam guardadas no banco."
+                  :"Desmarcado por segurança: o histórico anterior é mantido. As alterações valerão para esta conta e para os próximos meses."}</small>
+              </span>
+            </label>}
+          {entryModal.id&&<div className={styles.historyArea}>
+            <button className={styles.historyButton} type="button"
+              disabled={historyBusy} onClick={()=>void openHistory(entryModal.id!)}>
+              <History size={16}/> {historyBusy?"Consultando histórico...":"Ver histórico de alterações"}
+            </button>
+            {historyItems!==null&&<div className={styles.historyList}>
+              <strong>Auditoria da conta · {historyItems.length} registros</strong>
+              {historyItems.length===0?<p>Esta conta ainda não possui alterações auditadas após a ativação do histórico.</p>:
+                historyItems.map(item=><div className={styles.historyRow} key={item.id}>
+                  <span>{new Date(item.changed_at).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}
+                    {" · "}{item.operation==="UPDATE"?"Alteração":item.operation==="INSERT"?"Criação":"Exclusão"}</span>
+                  {item.operation==="UPDATE"&&item.previous_data&&item.next_data?
+                    <small>{Object.keys(item.next_data).filter(key=>key!=="updated_at"&&key!=="created_at"&&
+                      JSON.stringify(item.previous_data?.[key])!==JSON.stringify(item.next_data?.[key]))
+                      .map(key=>({
+                        key,label:({
+                          category:"Categoria",box_id:"Caixa",bank_id:"Banco",card_id:"Cartão",
+                          amount_cents:"Valor",title:"Descrição",notes:"Observações",
+                          origin_id:"Origem",is_subscription:"Assinatura",status:"Situação",
+                          due_on:"Vencimento",
+                        } as Record<string,string>)[key]??key,
+                      })).map(field=><span key={field.key}>{field.label}: {
+                        auditValue(field.key,item.previous_data?.[field.key],view)
+                      } → {auditValue(field.key,item.next_data?.[field.key],view)}{"; "}</span>)}</small>
+                    :<small>{item.operation==="INSERT"?"Conta registrada com suas informações originais.":"Registro futuro removido após encerramento."}</small>}
+                </div>)}
+            </div>}
+          </div>}
           {error && <div className={styles.formError} role="alert">{error}</div>}
           <div className={styles.formActions}><button type="button" className={styles.outlineButton} onClick={() => setEntryModal(null)}>Cancelar</button>
             <button type="submit" className={styles.primaryButton} disabled={saving}>{saving ? "Salvando..." : entryModal.id ? "Salvar alterações" : "Registrar lançamento"}</button></div>

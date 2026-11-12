@@ -121,6 +121,7 @@ async function entryPayload(supabase: Client, owner: string, body: Record<string
     kind,
     status,
     title: requiredString(body, "title", 160),
+    is_subscription:kind==="expense" && body.isSubscription===true,
     category: kind==="expense" ? (isFinanceCategory(body.category) ? body.category
       : body.category==null ? suggestCategory(requiredString(body,"title",160))
       : (()=>{throw new HttpError(400,"Categoria inválida.");})()) : "outros",
@@ -150,11 +151,30 @@ function installmentConfig(body: Record<string, unknown>) {
 async function accountGet(request: Request) {
   const { supabase, user } = await requirePlatformAdmin();
   const url = new URL(request.url);
+  const historyId=url.searchParams.get("historico");
+  if(historyId){
+    if(!idPattern.test(historyId))throw new HttpError(400,"Conta inválida para consulta do histórico.");
+    const history=await supabase.from("finance_entry_history")
+      .select("id,entry_id,operation,actor_user_id,previous_data,next_data,changed_at,source")
+      .eq("owner_user_id",user.id).eq("entry_id",historyId)
+      .order("changed_at",{ascending:false}).order("id",{ascending:false})
+      .limit(100);
+    fromDb(history.error);
+    return NextResponse.json({history:history.data??[]},{headers:{"Cache-Control":"private, no-store"}});
+  }
   const month = monthParam(url.searchParams.get("mes"));
   const [year,monthNumber]=month.split("-").map(Number);
   const previousMonth=new Date(Date.UTC(year,monthNumber-2,1)).toISOString().slice(0,7);
   const currentDay=localParts(new Date()).date;
-  const [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments] = await Promise.all([
+  // Materializa assinaturas ate pelo menos 12 meses depois da data atual.
+  // A rotina e idempotente e protege meses fechados.
+  const latestSubscriptionMonth=new Date(Date.UTC(
+    Number(currentDay.slice(0,4))+10,Number(currentDay.slice(5,7))-1,1)).toISOString().slice(0,7);
+  if(month<=latestSubscriptionMonth){
+    const recurring=await supabase.rpc("finance_ensure_subscriptions",{p_until:month+"-01"});
+    fromDb(recurring.error);
+  }
+  const [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments,subscriptions] = await Promise.all([
     supabase.from("finance_banks").select("*").eq("owner_user_id",user.id).order("name"),
     supabase.from("finance_boxes").select("*").eq("owner_user_id",user.id).order("name"),
     supabase.from("finance_origins").select("*").eq("owner_user_id",user.id).order("name"),
@@ -163,8 +183,9 @@ async function accountGet(request: Request) {
     supabase.from("finance_card_payments").select("*").eq("owner_user_id",user.id).order("paid_at",{ascending:false}).limit(3000),
     supabase.from("finance_expected_incomes").select("*").eq("owner_user_id",user.id).order("expected_on").limit(3000),
     supabase.from("finance_card_adjustments").select("*").eq("owner_user_id",user.id).limit(3000),
+    supabase.from("finance_subscriptions").select("*").eq("owner_user_id",user.id).order("created_at"),
   ]);
-  [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments].forEach(result=>fromDb(result.error));
+  [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments,subscriptions].forEach(result=>fromDb(result.error));
   // Movimentacoes e saldo geral utilizam TODO o historico, sem filtro de competencia mensal.
   const entries:Entry[]=[];
   for(let offset=0;;offset+=500){
@@ -192,7 +213,8 @@ async function accountGet(request: Request) {
     previousMonth,
     previousPeriod:(periods.data as Period[])?.find(p=>p.month===previousMonth+"-01")??null,
     cards:cardList,cardPayments:payments,expectedIncomes:receipts,cardAdjustments:adjustments,
-    invoices,ledgerEntries:entries.filter(e=>e.status==="paid"&&!e.card_id),
+    invoices,subscriptionRules:subscriptions.data??[],
+    ledgerEntries:entries.filter(e=>e.status==="paid"&&!e.card_id),
     generalBalanceCents,
     forecast:{today:currentDay,balances:position,events},
     ...summary,
@@ -228,6 +250,7 @@ async function createRecord(request: Request) {
   if (action === "entry") {
     const entry = await entryPayload(supabase, user.id, body);
     const { number, total } = entry.kind === "expense" ? installmentConfig(body) : { number: 1, total: 1 };
+    if(entry.is_subscription&&total>1)throw new HttpError(400,"Assinatura mensal não pode ser parcelada.");
     if (total > 1) {
       // Um único INSERT é transacional: se qualquer mês estiver fechado, nenhuma parcela será criada.
       const seriesId = randomUUID();
@@ -399,6 +422,14 @@ async function modifyRecord(request: Request) {
   if (action === "entry") {
     const id = uuid(body, "id");
     const payload = await entryPayload(supabase, user.id, body);
+    if(body.applyPast===true){
+      const result=await supabase.rpc("finance_update_entry_with_past",{
+        p_id:id,p_data:payload,
+      });
+      fromDb(result.error);
+      const value=result.data as unknown as {record:Entry;past_updated:number};
+      return NextResponse.json({record:value.record,past_updated:value.past_updated});
+    }
     // O mês antigo e o novo são protegidos pelo gatilho transacional do banco.
     const result = await supabase.from("finance_entries").update(payload)
       .eq("id", id).eq("owner_user_id", user.id).select("*").maybeSingle();

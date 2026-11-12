@@ -18,6 +18,7 @@ export const CATEGORY_OPTIONS=[
   {key:"servicos",label:"Serviços",description:"Serviços contratados"},
   {key:"educacao",label:"Educação",description:"Cursos e formação"},
   {key:"seguros",label:"Seguros",description:"Seguro de veículos ou outros riscos"},
+  {key:"produto",label:"Produto",description:"Produtos e mercadorias"},
   {key:"outros",label:"Outros",description:"Despesas ainda não classificadas"},
 ] as const;
 export type FinanceCategory = typeof CATEGORY_OPTIONS[number]["key"];

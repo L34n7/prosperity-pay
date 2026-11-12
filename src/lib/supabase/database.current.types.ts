@@ -412,9 +412,20 @@ type FinanceEntryRow = {
   movement_at: string | null;
   installment_series_id: string | null; installment_number: number | null; installment_total: number | null;
   card_id: string | null;
+  subscription_series_id: string | null; is_subscription: boolean;
   created_at: string; updated_at: string;
 };
 
+type FinanceSubscriptionRow = {
+  id:string;owner_user_id:string;start_on:string;due_day:number;
+  active:boolean;created_at:string;updated_at:string;
+};
+type FinanceEntryHistoryRow = {
+  id:number;owner_user_id:string;entry_id:string;actor_user_id:string|null;
+  operation:"INSERT"|"UPDATE"|"DELETE";
+  previous_data:Json|null;next_data:Json|null;changed_at:string;transaction_id:number;
+  source:string;
+};
 type FinanceCardRow = {
   id: string; owner_user_id: string; name: string; legacy_bank_id: string;
   default_payment_bank_id: string | null; due_day: number; closing_day: number | null;
@@ -489,12 +500,22 @@ export type Database = Omit<GeneratedDatabase, "public"> & {
       finance_origins: LooseTable<FinanceOriginRow>;
       finance_periods: LooseTable<FinancePeriodRow>;
       finance_entries: LooseTable<FinanceEntryRow>;
+      finance_subscriptions: LooseTable<FinanceSubscriptionRow>;
+      finance_entry_history: LooseTable<FinanceEntryHistoryRow>;
       finance_cards: LooseTable<FinanceCardRow>;
       finance_card_payments: LooseTable<FinanceCardPaymentRow>;
       finance_card_adjustments: LooseTable<FinanceCardAdjustmentRow>;
       finance_expected_incomes: LooseTable<FinanceExpectedIncomeRow>;
     };
     Functions: GeneratedFunctions & {
+      finance_ensure_subscriptions:{
+        Args:{p_until:string};
+        Returns:number;
+      };
+      finance_update_entry_with_past:{
+        Args:{p_id:string;p_data:Json};
+        Returns:Json;
+      };
       bootstrap_initial_platform_admin: {
         Args: never;
         Returns: boolean;

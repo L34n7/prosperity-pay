@@ -253,3 +253,37 @@
 .table td:has(>.categoryBadge){min-width:130px}
 .quickRow td:has(>.quickSelect){min-width:145px}
 @media(max-width:560px){.categoryBadge{font-size:.7rem;padding:7px 8px}}
+
+/* Assinaturas mensais e correção retroativa com histórico auditável. */
+.formGrid .subscriptionToggle,.entryForm .pastChangesToggle{display:flex;align-items:flex-start;gap:12px;
+  background:linear-gradient(120deg,#173724,#15251b);border:1px solid #3d7553;
+  padding:13px 14px;border-radius:11px;color:#dfefe2;cursor:pointer}
+.formGrid .subscriptionToggle{grid-column:1/-1}
+.formGrid .subscriptionToggle input,.entryForm .pastChangesToggle input{
+  flex:0 0 auto;width:20px!important;height:20px!important;min-width:20px!important;
+  min-height:20px!important;margin:1px 0 0;accent-color:#66e5a5;cursor:pointer}
+.formGrid .subscriptionToggle input:disabled{opacity:.35;cursor:not-allowed}
+.subscriptionToggle>span,.pastChangesToggle>span{display:grid;gap:5px;min-width:0}
+.subscriptionToggle>span>strong{display:flex;align-items:center;gap:7px;font-size:.79rem;color:#c8f9dc}
+.subscriptionToggle>span>small,.pastChangesToggle>span>small{font-size:.71rem;
+  color:#a5c6ae;line-height:1.55;font-weight:450}
+.pastChangesToggle{margin-top:4px!important;background:#2d281b!important;
+  border-color:#716043!important}
+.pastChangesToggle>span>strong{color:#f6dfb2;font-size:.78rem}
+.pastChangesToggle>span>small{color:#e0cda6}
+.historyArea{display:grid;gap:9px;border-top:1px solid #31533e;padding-top:12px}
+.historyButton{display:inline-flex;justify-self:start;align-items:center;gap:7px;
+  color:#9deabc;background:none;border:0;padding:6px 2px;cursor:pointer;
+  font:inherit;font-size:.75rem;font-weight:710}
+.historyButton:hover{text-decoration:underline}
+.historyButton:disabled{opacity:.5;cursor:wait}
+.historyList{display:grid;gap:9px;max-height:340px;overflow-y:auto;
+  background:#111d15;border:1px solid #324d3c;border-radius:10px;padding:12px}
+.historyList>strong{font-size:.76rem}
+.historyList>p{color:#a8c5ae;font-size:.7rem;margin:0}
+.historyRow{display:grid;gap:5px;border-top:1px solid #2b4937;padding-top:10px}
+.historyRow:first-of-type{border-top:0;padding-top:0}
+.historyRow>span{font-size:.69rem;color:#b7e6c6;font-weight:720}
+.historyRow>small{font-size:.67rem;color:#adc4b2;line-height:1.65;overflow-wrap:anywhere}
+.historyRow>small>span{display:inline;overflow-wrap:anywhere}
+@media(max-width:560px){.formGrid .subscriptionToggle,.entryForm .pastChangesToggle{padding:12px 10px}}
