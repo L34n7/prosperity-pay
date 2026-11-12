@@ -17,7 +17,7 @@ import type { Bank, CashBox, Entry, MonthlySnapshot, Origin, Period } from "@/li
 import styles from "./accounting-view.module.css";
 
 type ViewData = MonthlySnapshot & PlannerView & {
-  origins: Origin[]; period: Period | null; ledgerEntries: Entry[];
+  origins: Origin[]; period: Period | null; ledgerEntries: Entry[]; generalBalanceCents:number;
 };
 type EntryDraft = {
   id?: string; kind: Entry["kind"]; title: string; amount: string; cardId: string;
@@ -73,7 +73,6 @@ function entryToDraft(entry: Entry): EntryDraft {
 
 export function AccountingView() {
   const [month, setMonth] = useState(monthNow);
-  const [movementUntil,setMovementUntil] = useState(today);
   const [reload, setReload] = useState(0);
   const [view, setView] = useState<ViewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,7 +95,7 @@ export function AccountingView() {
 
   useEffect(() => {
     let live = true;
-    fetch("/api/contabilidade?mes=" + encodeURIComponent(month) + "&movAte=" + encodeURIComponent(movementUntil), { cache: "no-store" })
+    fetch("/api/contabilidade?mes=" + encodeURIComponent(month), { cache: "no-store" })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw Error(data.error || "Falha ao consultar o financeiro.");
@@ -105,7 +104,7 @@ export function AccountingView() {
       .catch((cause) => { if (live) { setError(cause instanceof Error ? cause.message : "Falha ao carregar."); setView(null); } })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [month, reload, movementUntil]);
+  }, [month, reload]);
 
   async function mutate(method: "POST" | "PATCH" | "DELETE", payload: Record<string, unknown>, message: string) {
     setSaving(true); setError(""); setNotice("");
@@ -360,7 +359,7 @@ export function AccountingView() {
       <section className={styles.totals}>
         {[
           { icon: Wallet, label: "Saldo consolidado", value: view.totals.balance, help: "Dinheiro contabilizado até o mês selecionado", kind: "main" },
-          { icon: Landmark, label: "Saldo anterior", value: view.totals.initialBalance, help: "Transportado do mês anterior", kind: "neutral" },
+          { icon: Landmark, label: "Saldo geral", value: view.generalBalanceCents, help: "Saldo bancário atual de todos os caixas, sem filtro de mês", kind: "neutral" },
           { icon: ArrowUpCircle, label: "Entradas no mês", value: view.totals.received + view.totals.opening, help: "Receitas e aportes efetivados", kind: "green" },
           { icon: ArrowDownCircle, label: "Despesas pagas", value: view.totals.paid, help: "Contas e faturas pagas", kind: "orange" },
           { icon: ArrowLeftRight, label: "Saídas avulsas", value: view.totals.outflow, help: "Pix e débitos sem conta a pagar", kind: "neutral" },
@@ -430,7 +429,7 @@ export function AccountingView() {
           const item=view.ledgerEntries.find(e=>e.id===id);
           if(item){setError("");setEntryModal(entryToDraft(item));}
         }}
-        onEndDateChange={setMovementUntil}/>}
+        />}
 
       {sheetTab === "balances" && <section className={styles.panel}>
         <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha de saldos · {labelMonth(month)}</span>

@@ -4,7 +4,7 @@ import { HttpError, asObject, jsonError, requiredInteger, requiredString } from 
 import { requirePlatformAdmin } from "@/lib/auth/require-user";
 import { summarizeAccounting } from "@/lib/accounting/calculations";
 import { buildInstallmentSchedule } from "@/lib/accounting/installments";
-import { bankBoxActualBalances, forecastEvents, groupCardInvoices, dayPlus } from "@/lib/accounting/cash-flow";
+import { bankBoxActualBalances, forecastEvents, groupCardInvoices } from "@/lib/accounting/cash-flow";
 import type { Card, CardPayment, CardAdjustment, ExpectedIncome } from "@/lib/accounting/cash-flow";
 import type { Bank, CashBox, Entry, Origin, Period } from "@/lib/accounting/calculations";
 import type { Database } from "@/lib/supabase/database.current.types";
@@ -150,10 +150,6 @@ async function accountGet(request: Request) {
   const [year,monthNumber]=month.split("-").map(Number);
   const previousMonth=new Date(Date.UTC(year,monthNumber-2,1)).toISOString().slice(0,7);
   const currentDay=localParts(new Date()).date;
-  const horizonDay=dayPlus(currentDay,125);
-  const movementUntil=url.searchParams.get("movAte");
-  const movementMonth=movementUntil ? date({movAte:movementUntil},"movAte").slice(0,7)+"-01" : currentDay.slice(0,7)+"-01";
-  const maxMonth=[month+"-01",horizonDay.slice(0,7)+"-01",movementMonth].sort().at(-1)!;
   const [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments] = await Promise.all([
     supabase.from("finance_banks").select("*").eq("owner_user_id",user.id).order("name"),
     supabase.from("finance_boxes").select("*").eq("owner_user_id",user.id).order("name"),
@@ -165,11 +161,11 @@ async function accountGet(request: Request) {
     supabase.from("finance_card_adjustments").select("*").eq("owner_user_id",user.id).limit(3000),
   ]);
   [banks,boxes,origins,periods,cards,cardPayments,expectedIncomes,cardAdjustments].forEach(result=>fromDb(result.error));
-  // Os saldos e a previsao usam o historico completo ate o horizonte projetado.
+  // Movimentacoes e saldo geral utilizam TODO o historico, sem filtro de competencia mensal.
   const entries:Entry[]=[];
   for(let offset=0;;offset+=500){
     const result=await supabase.from("finance_entries").select("*")
-      .eq("owner_user_id",user.id).lte("competence_month",maxMonth)
+      .eq("owner_user_id",user.id)
       .order("created_at",{ascending:false}).order("id").range(offset,offset+499);
     fromDb(result.error);
     const batch=result.data??[];
@@ -183,6 +179,7 @@ async function accountGet(request: Request) {
   const invoices=groupCardInvoices(cardList,entries,payments,adjustments);
   const summary=summarizeAccounting(month,banks.data??[],boxes.data??[],entries,cardList,payments,receipts,adjustments);
   const position=bankBoxActualBalances(entries,payments,receipts,currentDay);
+  const generalBalanceCents=Object.values(position).reduce((sum,cents)=>sum+cents,0);
   const events=forecastEvents(entries,invoices,receipts,currentDay);
   return NextResponse.json({
     banks:banks.data as Bank[],boxes:boxes.data as CashBox[],
@@ -192,6 +189,7 @@ async function accountGet(request: Request) {
     previousPeriod:(periods.data as Period[])?.find(p=>p.month===previousMonth+"-01")??null,
     cards:cardList,cardPayments:payments,expectedIncomes:receipts,cardAdjustments:adjustments,
     invoices,ledgerEntries:entries.filter(e=>e.status==="paid"&&!e.card_id),
+    generalBalanceCents,
     forecast:{today:currentDay,balances:position,events},
     ...summary,
   },{headers:{"Cache-Control":"private, no-store"}});

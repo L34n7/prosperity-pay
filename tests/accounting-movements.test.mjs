@@ -19,7 +19,7 @@ vm.runInNewContext(js,{
   }
 });
 const {collectBankMovements,filterBankMovements,movementSignedAmount,sumMovements,
-  shiftReportDay,reportMonthBounds}=module.exports;
+  shiftReportDay,reportMonthBounds,paginateMovements,movementMonthTone}=module.exports;
 const timestamp="2026-10-02T12:00:00-03:00";
 function entry(id,kind,amount,bank="Inter",box="CRM",rest={}){
   return {id,kind,status:"paid",title:id,amount_cents:amount,
@@ -85,4 +85,35 @@ test("periodo com ultimo dia do mes inclui registros do dia 31",()=>{
   assert.equal(reportMonthBounds("2026-10").end,"2026-10-31");
   assert.equal(reportMonthBounds("2027-02").end,"2027-02-28");
   assert.equal(shiftReportDay("2026-11-06",-59),"2026-09-08");
+});
+
+test("paginação apresenta exatamente 50 registros por página, em ordem existente",()=>{
+  const all=Array.from({length:121},(_,i)=>({id:"m"+i, date:i<63?"2026-11-12":"2026-10-31"}));
+  const p1=paginateMovements(all,1);
+  const p2=paginateMovements(all,2);
+  const p3=paginateMovements(all,3);
+  assert.equal(p1.items.length,50);
+  assert.equal(p2.items.length,50);
+  assert.equal(p3.items.length,21);
+  assert.equal(p1.items[0].id,"m0");
+  assert.equal(p2.items[0].id,"m50");
+  assert.equal(p3.items[0].id,"m100");
+  assert.equal(p1.totalPages,3);
+  assert.equal(paginateMovements(all,999).page,3);
+  assert.equal(paginateMovements([],1).totalPages,1);
+  assert.equal(paginateMovements([],1).items.length,0);
+});
+test("o agrupamento mantém a mesma cor para o mesmo mês entre páginas",()=>{
+  const november="2026-11-08",october="2026-10-31",september="2026-09-30";
+  assert.equal(movementMonthTone(november),movementMonthTone("2026-11-01"));
+  assert.notEqual(movementMonthTone(november),movementMonthTone(october));
+  assert.notEqual(movementMonthTone(october),movementMonthTone(september));
+});
+test("movimentações sem filtro de data mostram todo o histórico, inclusive mês passado",()=>{
+  const list=filterBankMovements(rows,{kind:"all",bankId:"",boxId:"",search:""});
+  assert.equal(list.length,rows.length);
+  assert.ok(list.some(m=>m.date.startsWith("2026-10")));
+  // O filtro de tipo continua independente e só muda a lista, não o mês global.
+  const only=filterBankMovements(rows,{kind:"outflow",bankId:"",boxId:"",search:""});
+  assert.equal(only.length,1);
 });

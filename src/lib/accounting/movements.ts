@@ -102,8 +102,8 @@ export function collectBankMovements(
 }
 
 export type MovementFilter = {
-  start: string;
-  end: string;
+  start?: string;
+  end?: string;
   kind: MovementKind | "all";
   bankId: string;
   boxId: string;
@@ -113,7 +113,8 @@ export type MovementFilter = {
 export function filterBankMovements(rows: BankMovement[], filters: MovementFilter): BankMovement[] {
   const search = filters.search.trim().toLocaleLowerCase("pt-BR");
   return rows.filter(m => {
-    if (m.date < filters.start || m.date > filters.end) return false;
+    if (filters.start && m.date < filters.start) return false;
+    if (filters.end && m.date > filters.end) return false;
     if (filters.kind !== "all" && m.kind !== filters.kind) return false;
     if (filters.bankId || filters.boxId) {
       const sourceMatch = (!filters.bankId || m.bank_id === filters.bankId) &&
@@ -164,4 +165,20 @@ export function reportMonthBounds(month: string) {
   const [y,m] = month.split("-").map(Number);
   const last = new Date(Date.UTC(y,m,0)).getUTCDate();
   return {start:first, end:month+"-"+String(last).padStart(2,"0")};
+}
+
+/** Paginação verdadeira por páginas de tamanho fixo, após aplicar filtros locais. */
+export const MOVEMENTS_PAGE_SIZE=50;
+export function paginateMovements<T>(rows: readonly T[], requestedPage: number, pageSize = MOVEMENTS_PAGE_SIZE) {
+  if (!Number.isInteger(pageSize) || pageSize<1) throw new Error("Tamanho de página inválido");
+  const totalPages=Math.max(1,Math.ceil(rows.length/pageSize));
+  const page=Number.isFinite(requestedPage)?Math.max(1,Math.min(totalPages,Math.trunc(requestedPage))):1;
+  const start=(page-1)*pageSize;
+  return {page,pageSize,totalPages,total:rows.length,start,items:rows.slice(start,start+pageSize)};
+}
+
+/** A cor é derivada do mês, não da posição da linha nem da página. */
+export function movementMonthTone(date:string):0|1|2 {
+  const year=Number(date.slice(0,4)),month=Number(date.slice(5,7));
+  return (((year*12+month)%3+3)%3) as 0|1|2;
 }
