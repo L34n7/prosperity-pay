@@ -546,7 +546,8 @@ export function AccountingView() {
         </div>
         {sheetTab === "accounts" && quickEnabled && <div className={styles.quickHelp}>
           <Save size={16}/> Edição rápida habilitada. Selecione uma opção para salvar; textos, valores e datas
-          são salvos ao sair do campo ou pressionar Enter. Cada parcela é independente.
+          são salvos ao sair do campo ou pressionar Enter. Ao mudar o caixa, as parcelas futuras
+          ainda pendentes e com a mesma classificação anterior acompanham a alteração.
           {quickBusy && <span><Loader2 size={15} className={styles.quickSpin}/> Salvando…</span>}
         </div>}
         {sheetTab === "accounts" && <div className={styles.sheetMetrics}>
@@ -725,7 +726,10 @@ export function AccountingView() {
             {(!entryModal.cardId||entryModal.kind!=="expense")&&<label>Banco de {entryModal.kind === "transfer" ? "origem" : "pagamento"}<select required value={entryModal.bankId} onChange={(e) => setEntryModal({...entryModal,bankId:e.target.value})}>
               <option value="">Selecione o banco</option>{availableBanks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>}
             <label>Caixa responsável<select required value={entryModal.boxId} onChange={(e) => setEntryModal({...entryModal,boxId:e.target.value})}>
-              <option value="">Selecione o caixa</option>{availableBoxes.map((b) => <option key={b.id} value={b.id}>{b.name} · {b.person_type.toUpperCase()}</option>)}</select></label>
+              <option value="">Selecione o caixa</option>{availableBoxes.map((b) => <option key={b.id} value={b.id}>{b.name} · {b.person_type.toUpperCase()}</option>)}</select>
+              {entryModal.kind==="expense" && entryModal.id && entryModal.installmentTotal>1 &&
+                <small className={styles.inputHelp}>Ao mudar o caixa, as próximas parcelas pendentes desta compra também serão atualizadas, respeitando ajustes individuais e meses fechados.</small>}
+            </label>
 
             {entryModal.kind === "transfer" && <>
               <label>Banco de destino<select required value={entryModal.targetBankId} onChange={(e) => setEntryModal({...entryModal,targetBankId:e.target.value})}>
