@@ -823,18 +823,16 @@ export function AccountingView() {
               <CalendarDays size={18}/><span>Parcela <strong>{entryModal.installmentNumber}/{entryModal.installmentTotal}</strong>.
                 As alterações desta parcela acompanham as próximas parcelas pendentes. As anteriores permanecem como estavam.</span>
             </div>}
-            {entryModal.kind==="expense"&&<label className={styles.subscriptionToggle}>
-              <input type="checkbox" checked={entryModal.isSubscription}
-                disabled={entryModal.installmentTotal>1||!!entryModal.installmentSeriesId}
-                onChange={e=>setEntryModal({...entryModal,isSubscription:e.target.checked})}/>
-              <span><strong><Repeat2 size={17}/> Assinatura mensal</strong>
-                <small>{entryModal.installmentTotal>1||entryModal.installmentSeriesId
-                  ?"Assinatura e parcelamento são modos diferentes. Use apenas um deles."
-                  :entryModal.isSubscription
+            {entryModal.kind==="expense" && entryModal.installmentTotal===1 && !entryModal.installmentSeriesId &&
+              <label className={styles.subscriptionToggle}>
+                <input type="checkbox" checked={entryModal.isSubscription}
+                  onChange={e=>setEntryModal({...entryModal,isSubscription:e.target.checked})}/>
+                <span><strong><Repeat2 size={17}/> Assinatura mensal</strong>
+                  <small>{entryModal.isSubscription
                     ?"A conta é incluída na planilha todos os meses, sem cobrança automática. Desmarque ao encerrar."
                     :"Ative para repetir esta conta mensalmente, mantendo vencimento, caixa, categoria e banco/cartão."}
-                </small></span>
-            </label>}
+                  </small></span>
+              </label>}
             {entryModal.kind === "expense" && !entryModal.cardId && <label>Situação<select value={entryModal.status}
               onChange={(e) => setEntryModal({...entryModal,status:e.target.value as Entry["status"]})}>
               <option value="pending">Pendente (não reduz o saldo)</option><option value="paid">Pago (reduz o saldo)</option></select></label>}
