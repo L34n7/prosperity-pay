@@ -244,3 +244,12 @@
 @media(max-width:1220px){.fixedBoxGrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.fixedBoxGrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:440px){.fixedBoxCard{padding:12px 10px}.fixedBoxTitle>strong{font-size:.77rem}.fixedBoxGrid{gap:8px}.fixedBoxMoney>strong{font-size:.92rem}.fixedBoxFoot{align-items:start;flex-wrap:wrap}}
+
+/* Categoria da despesa, independente da origem de pagamento. */
+.categoryBadge{display:inline-flex;align-items:center;gap:7px;padding:6px 9px;border:1px solid #41694f;
+  border-radius:8px;background:#1b3725;color:#c7e8d1;font-size:.71rem;font-weight:700;
+  line-height:1.35;white-space:normal;min-width:120px}
+.categoryBadge svg{flex-shrink:0;color:#81ebb0}
+.table td:has(>.categoryBadge){min-width:130px}
+.quickRow td:has(>.quickSelect){min-width:145px}
+@media(max-width:560px){.categoryBadge{font-size:.7rem;padding:7px 8px}}

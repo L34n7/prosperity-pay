@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { HttpError, asObject, jsonError, requiredInteger, requiredString } from "@/lib/api/http";
 import { requirePlatformAdmin } from "@/lib/auth/require-user";
 import { summarizeAccounting } from "@/lib/accounting/calculations";
+import { isFinanceCategory, suggestCategory } from "@/lib/accounting/categories";
 import { buildInstallmentSchedule } from "@/lib/accounting/installments";
 import { bankBoxActualBalances, forecastEvents, groupCardInvoices } from "@/lib/accounting/cash-flow";
 import type { Card, CardPayment, CardAdjustment, ExpectedIncome } from "@/lib/accounting/cash-flow";
@@ -120,6 +121,9 @@ async function entryPayload(supabase: Client, owner: string, body: Record<string
     kind,
     status,
     title: requiredString(body, "title", 160),
+    category: kind==="expense" ? (isFinanceCategory(body.category) ? body.category
+      : body.category==null ? suggestCategory(requiredString(body,"title",160))
+      : (()=>{throw new HttpError(400,"Categoria inválida.");})()) : "outros",
     amount_cents: requiredInteger(body, "amountCents", 1),
     due_on: due,
     settled_on: movement.on,
@@ -302,6 +306,9 @@ async function quickEditEntry(supabase: Client, owner: string, body: Record<stri
   const changes:Database["public"]["Tables"]["finance_entries"]["Update"]={};
   if(field==="originId"){
     changes.origin_id=body.value?uuid({originId:body.value},"originId"):null;
+  } else if(field==="category"){
+    if(!isFinanceCategory(body.value))throw new HttpError(400,"Categoria inválida.");
+    changes.category=body.value;
   } else if(field==="title"){
     changes.title=requiredString({title:body.value},"title",160);
     if(changes.title.trim().length<2)throw new HttpError(400,"Descrição muito curta.");

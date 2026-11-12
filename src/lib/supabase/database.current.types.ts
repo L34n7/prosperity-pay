@@ -407,7 +407,7 @@ type FinanceEntryRow = {
   target_bank_id: string | null; target_box_id: string | null; origin_id: string | null;
   kind: "opening" | "income" | "expense" | "transfer" | "outflow";
   status: "pending" | "paid";
-  title: string; amount_cents: number; competence_month: string;
+  title: string; amount_cents: number; competence_month: string; category: string;
   due_on: string | null; settled_on: string | null; notes: string | null;
   movement_at: string | null;
   installment_series_id: string | null; installment_number: number | null; installment_total: number | null;

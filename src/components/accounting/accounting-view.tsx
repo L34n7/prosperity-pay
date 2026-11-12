@@ -3,12 +3,15 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import {
   ArrowDownCircle, ArrowLeftRight, ArrowRight, ArrowUpCircle, Building2, CalendarDays,
-  CheckCircle2, CircleDollarSign, Download, Landmark, LockKeyhole,
+  CheckCircle2, CircleDollarSign, Download, Landmark, LockKeyhole, Layers3,
   Pencil, Plus, ReceiptText, Search, Settings2, ShieldCheck, Trash2, Wallet, X, Save, Loader2,
 } from "lucide-react";
 import { formatCents } from "@/lib/operational";
 import { shiftMonthlyDate } from "@/lib/accounting/installments";
 import { CashFlowPanel } from "./cash-flow-panel";
+import { CategoryAnalysis, CategoryIcon } from "./category-analysis";
+import { CATEGORY_LABELS, CATEGORY_OPTIONS, suggestCategory } from "@/lib/accounting/categories";
+import type { FinanceCategory } from "@/lib/accounting/categories";
 import { MovementsReport } from "./movements-report";
 import { QuickInputCell, QuickSelectCell } from "./quick-edit-cell";
 import type { PlannerView } from "./cash-flow-panel";
@@ -22,7 +25,7 @@ type ViewData = MonthlySnapshot & PlannerView & {
 type EntryDraft = {
   id?: string; kind: Entry["kind"]; title: string; amount: string; cardId: string;
   bankId: string; boxId: string; targetBankId: string; targetBoxId: string;
-  originId: string; originName: string; status: Entry["status"];
+  originId: string; originName: string; category: FinanceCategory; categoryTouched:boolean; status: Entry["status"];
   dueOn: string; settledOn: string; movementAt: string; notes: string;
   installmentNumber: number; installmentTotal: number;
 };
@@ -54,7 +57,7 @@ function blankEntry(kind: Entry["kind"], month: string, view: ViewData): EntryDr
     boxId: view.boxes.find((item) => item.active)?.id ?? "",
     targetBankId: view.banks.find((item) => item.active)?.id ?? "",
     targetBoxId: view.boxes.find((item) => item.active)?.id ?? "",
-    originId: "", originName: "", status: kind === "expense" ? "pending" : "paid", dueOn: date,
+    originId: "", originName: "", category:"outros",categoryTouched:false,status: kind === "expense" ? "pending" : "paid", dueOn: date,
     settledOn: kind === "opening" ? "" : date, movementAt: "", notes: "",
     installmentNumber: 1, installmentTotal: 1,
   };
@@ -64,7 +67,7 @@ function entryToDraft(entry: Entry): EntryDraft {
     id: entry.id, kind: entry.kind, title: entry.title, cardId:entry.card_id??"",
     amount: String(entry.amount_cents / 100), bankId: entry.bank_id, boxId: entry.box_id,
     targetBankId: entry.target_bank_id ?? "", targetBoxId: entry.target_box_id ?? "",
-    originId: entry.origin_id ?? "", originName: "", status: entry.status,
+    originId: entry.origin_id ?? "", originName: "", category:(entry.category??"outros") as FinanceCategory,categoryTouched:true,status: entry.status,
     dueOn: entry.due_on ?? today(), settledOn: entry.settled_on ?? today(),
     movementAt: entry.movement_at ? localDateTime(new Date(entry.movement_at)) : "", notes: entry.notes ?? "",
     installmentNumber: entry.installment_number ?? 1, installmentTotal: entry.installment_total ?? 1,
@@ -86,8 +89,9 @@ export function AccountingView() {
   const [boxFilter, setBoxFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [originFilter, setOriginFilter] = useState("");
+  const [categoryFilter,setCategoryFilter]=useState<FinanceCategory | "">("");
   const [search, setSearch] = useState("");
-  const [sheetTab, setSheetTab] = useState<"forecast" | "accounts" | "cards" | "balances" | "other">("accounts");
+  const [sheetTab, setSheetTab] = useState<"forecast" | "accounts" | "cards" | "balances" | "other" | "categories">("accounts");
   const [quickEditing, setQuickEditing] = useState(false);
   const [quickSaving, setQuickSaving] = useState<string | null>(null);
   const [quickSaved, setQuickSaved] = useState<string | null>(null);
@@ -134,10 +138,12 @@ export function AccountingView() {
   }
   function chooseSuggestion(name: string, current: EntryDraft) {
     const suggestion = view?.suggestions.find((item) => item.title.trim().toLocaleLowerCase("pt-BR") === name.trim().toLocaleLowerCase("pt-BR"));
+    const category=current.categoryTouched?current.category:
+      suggestion?.category ? suggestion.category as FinanceCategory : suggestCategory(name);
     setEntryModal(suggestion && !current.id ? {
-      ...current, title: name, bankId: suggestion.bank_id, boxId: suggestion.box_id,
-      originId: suggestion.origin_id ?? "",
-    } : { ...current, title: name });
+      ...current,title:name,category,bankId:suggestion.bank_id,boxId:suggestion.box_id,
+      originId:suggestion.origin_id??"",
+    } : {...current,title:name,category});
   }
   const selectedEntries = useMemo(() => {
     if (!view) return [];
@@ -146,6 +152,7 @@ export function AccountingView() {
       if (bankFilter && entry.bank_id !== bankFilter && entry.target_bank_id !== bankFilter) return false;
       if (boxFilter && entry.box_id !== boxFilter && entry.target_box_id !== boxFilter) return false;
       if (originFilter && entry.origin_id !== originFilter) return false;
+      if (categoryFilter && entry.category !== categoryFilter) return false;
       if (statusFilter === "pending" && entry.status !== "pending") return false;
       if (statusFilter === "paid" && entry.status !== "paid") return false;
       if (statusFilter === "expenses" && entry.kind !== "expense") return false;
@@ -154,7 +161,7 @@ export function AccountingView() {
         .some((str) => str.toLocaleLowerCase("pt-BR").includes(text))) return false;
       return true;
     });
-  }, [view, search, bankFilter, boxFilter, originFilter, statusFilter]);
+  }, [view, search, bankFilter, boxFilter, originFilter, statusFilter,categoryFilter]);
 
   async function saveEntry(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -177,6 +184,7 @@ export function AccountingView() {
       action: "entry", id: entryModal.id,
       kind: entryModal.kind, title: entryModal.title.trim(), amountCents: cents,
       cardId: entryModal.kind==="expense" ? entryModal.cardId||null : null,
+      category:entryModal.kind==="expense"?entryModal.category:"outros",
       bankId: entryModal.bankId, boxId: entryModal.boxId,
       targetBankId: entryModal.targetBankId, targetBoxId: entryModal.targetBoxId,
       originId: entryModal.originId === "__new" ? null : entryModal.originId || null,
@@ -244,12 +252,13 @@ export function AccountingView() {
 
   function exportCsv() {
     if (!view) return;
-    const headers = ["Mês","Descrição","Tipo","Banco","Cartão","Caixa","Origem","Parcela","Valor (R$)","Situação","Vencimento","Pagamento","Data e hora","Observações"];
+    const headers = ["Mês","Descrição","Tipo","Banco","Cartão","Caixa","Origem","Categoria","Parcela","Valor (R$)","Situação","Vencimento","Pagamento","Data e hora","Observações"];
     const cells = (entry: Entry) => [
       month, entry.title, labelKind[entry.kind], view.banks.find((x) => x.id === entry.bank_id)?.name ?? "",
       view.cards.find(c=>c.id===entry.card_id)?.name??"",
       view.boxes.find((x) => x.id === entry.box_id)?.name ?? "",
       view.origins.find((x) => x.id === entry.origin_id)?.name ?? "",
+      CATEGORY_LABELS[(entry.category??"outros") as FinanceCategory]??"Outros",
       entry.installment_total ? entry.installment_number + "/" + entry.installment_total : "",
       (entry.amount_cents / 100).toFixed(2).replace(".", ","), entry.card_id?"Na fatura":entry.status==="paid"?"Pago":"Pendente",
       entry.due_on ?? "", entry.settled_on ?? "", entry.movement_at ?? "", entry.notes ?? "",
@@ -408,6 +417,9 @@ export function AccountingView() {
       <nav className={styles.sheetTabs} aria-label="Áreas da contabilidade">
         <button type="button" className={sheetTab === "accounts" ? styles.activeTab : styles.tab}
           aria-current={sheetTab === "accounts" ? "page" : undefined} onClick={() => setSheetTab("accounts")}><ReceiptText size={17}/> Planilha mensal</button>
+        <button type="button" className={sheetTab==="categories"?styles.activeTab:styles.tab}
+          aria-current={sheetTab==="categories"?"page":undefined}
+          onClick={()=>setSheetTab("categories")}><Layers3 size={17}/> Categorias</button>
         <button type="button" className={sheetTab==="forecast"?styles.activeTab:styles.tab}
           onClick={()=>setSheetTab("forecast")}><CalendarDays size={17}/> Fluxo de caixa</button>
         <button type="button" className={sheetTab==="cards"?styles.activeTab:styles.tab}
@@ -420,6 +432,13 @@ export function AccountingView() {
       {(sheetTab==="forecast"||sheetTab==="cards")&&<CashFlowPanel
         view={view} mode={sheetTab} closed={Boolean(closed)}
         onChanged={()=>setReload(x=>x+1)}/>}
+      {sheetTab==="categories" && <CategoryAnalysis
+        month={month} onMonthChange={setMonth} entries={view.monthEntries}
+        adjustments={view.cardAdjustments} boxes={view.boxes}
+        onShowEntries={(boxId,category)=>{
+          setBoxFilter(boxId);setCategoryFilter(category);setOriginFilter("");setBankFilter("");
+          setStatusFilter("all");setSearch("");setSheetTab("accounts");
+        }}/>}
       {sheetTab==="other" && <MovementsReport
         entries={view.ledgerEntries} payments={view.cardPayments}
         receipts={view.expectedIncomes} cards={view.cards}
@@ -541,13 +560,18 @@ export function AccountingView() {
           <select aria-label="Filtrar por banco" value={bankFilter} onChange={(e) => setBankFilter(e.target.value)}><option value="">Todos os bancos</option>{view.banks.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
           <select aria-label="Filtrar por caixa" value={boxFilter} onChange={(e) => setBoxFilter(e.target.value)}><option value="">Todos os caixas</option>{view.boxes.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
           <select aria-label="Filtrar por origem" value={originFilter} onChange={(e) => setOriginFilter(e.target.value)}><option value="">Todas as origens</option>{view.origins.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+          <select aria-label="Filtrar por categoria" value={categoryFilter}
+            onChange={e=>setCategoryFilter(e.target.value as FinanceCategory|"")}>
+            <option value="">Todas as categorias</option>
+            {CATEGORY_OPTIONS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
           <select aria-label="Filtrar por situação" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="all">Todas as movimentações</option><option value="pending">Pendentes</option><option value="paid">Efetivadas</option>
             
           </select>
         </div>
         <div className={styles.sheetTableWrap}><table className={styles.table}><thead><tr>
-          <th>Conta / descrição</th><th>Origem</th><th>Parcela</th><th>Banco / Cartão</th><th>Caixa</th><th>Data</th><th>Situação</th><th>Valor</th><th>Ações</th>
+          <th>Conta / descrição</th><th>Origem</th><th>Categoria</th><th>Parcela</th><th>Banco / Cartão</th><th>Caixa</th><th>Data</th><th>Situação</th><th>Valor</th><th>Ações</th>
         </tr></thead><tbody>
           {visibleRows.map((entry) => <tr key={entry.id} className={quickEnabled ? styles.quickRow : undefined}>
             <td>{quickEnabled ? <QuickInputCell label={"Descrição de "+entry.title} value={entry.title}
@@ -561,6 +585,14 @@ export function AccountingView() {
               options={[{value:"",label:"Sem origem"},
                 ...view.origins.map(o=>({value:o.id,label:o.name})),
                 {value:"__new__",label:"+ Nova origem"}]}/> : findOrigin(entry.origin_id)}</td>
+            <td>{quickEnabled ? <QuickSelectCell label={"Categoria de "+entry.title}
+              value={entry.category??"outros"} disabled={quickBusy}
+              saving={quickSaving===entry.id} onCommit={value=>quickSave(entry,"category",value)}
+              options={CATEGORY_OPTIONS.map(c=>({value:c.key,label:c.label}))}/> :
+              <span className={styles.categoryBadge}>
+                <CategoryIcon category={(entry.category??"outros") as FinanceCategory} size={16}/>
+                {CATEGORY_LABELS[(entry.category??"outros") as FinanceCategory]??"Outros"}
+              </span>}</td>
             <td>{entry.installment_total ? <span className={styles.installmentBadge}>{entry.installment_number}/{entry.installment_total}</span> : <span className={styles.noInstallment}>—</span>}</td>
             <td>{quickEnabled ? <QuickSelectCell label={"Banco ou cartão de "+entry.title}
               value={entry.card_id ? "card:"+entry.card_id : "bank:"+entry.bank_id}
@@ -702,10 +734,15 @@ export function AccountingView() {
                 <option value="">Selecione o caixa</option>{availableBoxes.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
             </>}
 
-            {entryModal.kind !== "transfer" && <label>Origem / categoria<select value={entryModal.originId}
+            {entryModal.kind !== "transfer" && <label>Origem<select value={entryModal.originId}
               onChange={(e) => setEntryModal({...entryModal,originId:e.target.value})}>
               <option value="">Sem origem</option>{view.origins.map((origin) => <option key={origin.id} value={origin.id}>{origin.name}</option>)}
               <option value="__new">+ Criar nova origem</option></select></label>}
+            {entryModal.kind==="expense"&&<label>Categoria
+              <select value={entryModal.category}
+                onChange={e=>setEntryModal({...entryModal,category:e.target.value as FinanceCategory,categoryTouched:true})}>
+                {CATEGORY_OPTIONS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
+              </select></label>}
             {entryModal.originId === "__new" && entryModal.kind !== "transfer" && <label>Nome da nova origem<input required minLength={2} maxLength={100}
               placeholder="Ex.: Cartão Inter, Internet..." value={entryModal.originName}
               onChange={(e) => setEntryModal({...entryModal,originName:e.target.value})}/></label>}

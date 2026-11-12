@@ -84,6 +84,17 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
   const overdueInvoices=view.invoices.filter(i=>i.remaining_cents>0&&i.due_on<view.forecast.today&&i.invoice_month!==view.month+"-01");
   const shownInvoices=[...monthInvoices,...overdueInvoices].sort((a,b)=>a.due_on.localeCompare(b.due_on));
   const unpaidInMonth=monthInvoices.reduce((s,i)=>s+i.remaining_cents,0);
+  const cardMonthlyTotals=view.cards
+    .map(card=>{
+      const invoices=monthInvoices.filter(i=>i.card_id===card.id);
+      return {id:card.id,name:card.name,
+        total:invoices.reduce((s,i)=>s+i.total_cents+i.adjustment_cents,0),
+        remaining:invoices.reduce((s,i)=>s+i.remaining_cents,0),
+        count:invoices.reduce((s,i)=>s+i.charges,0),
+        active:card.active,
+      };
+    }).filter(card=>card.active||card.count>0)
+    .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,"pt-BR"));
   const extraUnassigned=monthInvoices.filter(i=>i.remaining_cents>0&&!i.default_payment_bank_id)
     .reduce((s,i)=>s+i.remaining_cents,0);
   const nextReceipts=view.expectedIncomes.filter(r=>r.status==="expected")
@@ -311,6 +322,11 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
         <div><span>Faturas neste mês</span><strong>{new Set(monthInvoices.map(i=>i.card_id)).size}</strong></div>
         <div><span>Valor restante no mês</span><strong>{money(unpaidInMonth)}</strong></div>
         <div><span>Sem banco pagador</span><strong>{money(extraUnassigned)}</strong></div>
+        {cardMonthlyTotals.map(card=><div key={card.id} className={styles.cardMonthlyTotal}>
+          <span><CreditCard size={15}/> {card.name}</span>
+          <strong>{money(card.total)}</strong>
+          <small>{card.count} {card.count===1?"compra":"compras"} · Restante: {money(card.remaining)}</small>
+        </div>)}
       </div>
       {showCardsSettings&&<div className={styles.panel}>
         <div className={styles.sectionTitle}><div><span className={styles.eyebrow}>Configurações</span><h3>Cartões e dias de vencimento</h3>

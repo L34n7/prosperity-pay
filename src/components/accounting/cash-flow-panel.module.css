@@ -21,7 +21,7 @@
 .kpis span,.cardKpis span{font-size:.71rem;color:#9ab19f;font-weight:690}
 .kpis strong,.cardKpis strong{font-size:clamp(1.01rem,1.7vw,1.3rem);font-weight:850;letter-spacing:-.038em;overflow-wrap:anywhere}
 .kpis small{color:#839b8a;font-size:.64rem;line-height:1.5}
-.cardKpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+.cardKpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 .green{color:#7bedb4!important}.orange{color:#e5ba83!important}.red{color:#ff9d97!important}
 .warning{display:flex;align-items:flex-start;gap:12px;border:1px solid #9e7943;background:#3a311e;padding:13px 15px;border-radius:12px;color:#f5d89a}
 .warning svg{flex:0 0 auto;margin-top:2px}.warning strong{font-size:.82rem}.warning p{font-size:.73rem;line-height:1.65;margin:5px 0 0;color:#dac79d}
@@ -110,3 +110,12 @@
 @media(max-width:1100px){.twoCol{grid-template-columns:1fr}.side{grid-template-columns:1fr 1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:720px){.side{grid-template-columns:1fr}.invoiceMain{align-items:flex-start;flex-wrap:wrap}.invoiceAmount{flex-basis:100%;text-align:left;margin-left:55px}.invoiceDetails{grid-template-columns:1fr}.settingsCards{grid-template-columns:1fr}.insightSummary{grid-template-columns:repeat(2,1fr);row-gap:4px}.insightSummary span{grid-row:auto}.insightSummary strong{grid-row:auto}.dayRow,.badDay{grid-template-columns:98px 1fr;gap:8px}.dayBalance{grid-column:1/-1;text-align:right}.formGrid{grid-template-columns:1fr}.formGrid>label{grid-column:1/-1}}
 @media(max-width:520px){.topPanel,.panel,.helpNote{padding:14px}.kpis,.cardKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpis article,.cardKpis>div{padding:12px}.invoiceMain{padding:14px}.invoiceActions{padding:12px}.invoiceActions>div{width:100%}.invoiceActions .primary{flex:1}.modal{padding:17px}.receiptTop{flex-wrap:wrap}.dayEvents>span{max-width:100%}}
+
+/* Visão rápida por cartão, consolidada no mês e ordenada por total. */
+.cardMonthlyTotal{border-color:#386a54!important;background:linear-gradient(145deg,#1b3829,#11231a)!important}
+.cardMonthlyTotal>span{display:flex;align-items:center;gap:8px;color:#b5dfc2!important}
+.cardMonthlyTotal>span>svg{color:#81eeb1;flex-shrink:0}
+.cardMonthlyTotal>small{color:#a5c8af;font-size:.67rem;line-height:1.5}
+@media(max-width:1100px){.cardKpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:690px){.cardKpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:440px){.cardMonthlyTotal{padding:12px!important}.cardMonthlyTotal strong{font-size:1.05rem}}

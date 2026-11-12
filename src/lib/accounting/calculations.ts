@@ -97,12 +97,12 @@ export function summarizeAccounting(
   let outflow = 0;
   let opening = 0;
   const monthEntries: Entry[] = [];
-  const titles = new Map<string, Pick<Entry, "title" | "bank_id" | "box_id" | "origin_id">>();
+  const titles = new Map<string, Pick<Entry, "title" | "bank_id" | "box_id" | "origin_id" | "category">>();
 
   for (const entry of entries) {
     if (entry.kind === "expense" && !titles.has(entry.title.trim().toLocaleLowerCase("pt-BR"))) {
       titles.set(entry.title.trim().toLocaleLowerCase("pt-BR"), {
-        title: entry.title, bank_id: entry.bank_id, box_id: entry.box_id, origin_id: entry.origin_id,
+        title: entry.title, bank_id: entry.bank_id, box_id: entry.box_id, origin_id: entry.origin_id, category:entry.category,
       });
     }
     if (entry.competence_month > selected) continue;

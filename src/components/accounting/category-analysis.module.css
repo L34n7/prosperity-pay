@@ -1,0 +1,58 @@
+.root{display:grid;gap:19px;min-width:0}
+.head{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;padding:20px;background:linear-gradient(120deg,#183b2a,#112219);border:1px solid #3d7051;border-radius:14px}
+.head h2{margin:5px 0 7px;font-size:1.15rem;font-weight:830;letter-spacing:-.035em}
+.head p{max-width:690px;color:#a7c8b1;font-size:.76rem;line-height:1.6;margin:0}
+.eyebrow{display:block;color:#72ebaa;font-size:.64rem;font-weight:780;text-transform:uppercase;letter-spacing:.1em}
+.filters{display:flex;gap:9px;flex-wrap:wrap}
+.filters label{display:grid;gap:7px;font-size:.7rem;font-weight:750;color:#c3e5cd}
+.filters label svg{display:inline;vertical-align:middle}
+.filters select,.filters input{min-height:38px;padding:7px 10px;background:#0c1c13;color:#e9f3eb;border:1px solid #457358;border-radius:9px;color-scheme:dark;font:inherit;font-size:.76rem;min-width:140px}
+.totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.totalCard{display:grid;gap:9px;align-content:start;background:linear-gradient(155deg,#173324,#111e17);border:1px solid #355d45;border-radius:13px;padding:17px;min-width:0;animation:riseIn .38s ease both}
+.totalCard:nth-child(2){animation-delay:65ms}.totalCard:nth-child(3){animation-delay:120ms}
+.metricIcon{display:grid;place-items:center;width:33px;height:33px;border-radius:10px;border:1px solid #39704c;background:#234b32;color:#8cf3b8}
+.totalCard>span{color:#afd0b9;font-size:.7rem;font-weight:700}
+.totalCard strong{font-size:clamp(1.02rem,2vw,1.47rem);font-weight:880;letter-spacing:-.045em;overflow-wrap:anywhere}
+.totalCard small{font-size:.67rem;color:#91b19b;line-height:1.5}
+.adjustmentsInfo{display:flex;gap:9px;align-items:flex-start;margin:0;padding:11px 13px;border-radius:10px;background:#283121;border:1px solid #5f6544;color:#ded5ab;font-size:.72rem;line-height:1.6}
+.adjustmentsInfo svg{flex-shrink:0;margin-top:1px}
+.listHead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.listHead h3{font-size:1rem;font-weight:810;margin:0 0 5px}
+.listHead p{font-size:.7rem;color:#95b6a0;margin:0}
+.search{display:flex;align-items:center;gap:9px;min-height:38px;padding:0 10px;background:#13251b;border:1px solid #355b42;border-radius:9px;color:#8daf98}
+.search input{width:190px;max-width:100%;border:0;outline:0;background:transparent;color:#e5f6e8;font:inherit;font-size:.73rem}
+.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.categoryCard{display:grid;gap:14px;align-content:start;min-width:0;padding:17px;background:linear-gradient(140deg,#162b20,#102118);border:1px solid #3d6049;border-radius:14px;animation:riseIn .48s cubic-bezier(.2,.72,.22,1) both;transition:border-color .18s,transform .18s,box-shadow .18s}
+.categoryCard:hover{transform:translateY(-3px);border-color:#609a73;box-shadow:0 10px 30px #0003}
+.categoryCard[data-tone="1"]{background:linear-gradient(140deg,#172b30,#102126);border-color:#395a60}
+.categoryCard[data-tone="2"]{background:linear-gradient(140deg,#25283a,#171d2d);border-color:#414765}
+.categoryCard[data-tone="3"]{background:linear-gradient(140deg,#31291d,#211c15);border-color:#68543b}
+.categoryHeader{display:flex;align-items:center;gap:10px;min-width:0}
+.categoryIcon{width:39px;height:39px;display:grid;place-items:center;flex:0 0 auto;background:#235437;color:#9ef6c3;border:1px solid #3a8357;border-radius:11px}
+.categoryCard[data-tone="1"] .categoryIcon{background:#1d4a52;border-color:#397981;color:#9ceaf1}
+.categoryCard[data-tone="2"] .categoryIcon{background:#383458;border-color:#676098;color:#d5c4ff}
+.categoryCard[data-tone="3"] .categoryIcon{background:#51402a;border-color:#80623b;color:#ffdb98}
+.categoryLabel{display:grid;min-width:0;gap:4px}
+.categoryLabel strong{font-size:.79rem;line-height:1.35;font-weight:780;overflow-wrap:anywhere}
+.categoryLabel small{font-size:.65rem;color:#a7bcb0;line-height:1.35}
+.amount,.negativeAmount{display:block;font-size:clamp(1.05rem,2.05vw,1.45rem);font-weight:880;letter-spacing:-.038em;line-height:1.3;overflow-wrap:anywhere}
+.negativeAmount{color:#ffbc9f}
+.progressTrack{height:7px;overflow:hidden;border-radius:30px;background:#52605652}
+.progressTrack span{display:block;height:100%;background:linear-gradient(90deg,#43c990,#99f8bf);border-radius:30px;transform-origin:left;animation:expandBar .65s ease both;animation-delay:inherit}
+.categoryCard[data-tone="1"] .progressTrack span{background:linear-gradient(90deg,#4ec6d9,#91ebf5)}
+.categoryCard[data-tone="2"] .progressTrack span{background:linear-gradient(90deg,#9785f0,#d1befa)}
+.categoryCard[data-tone="3"] .progressTrack span{background:linear-gradient(90deg,#deab64,#f5d59b)}
+.cardFooter{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.cardFooter>span{font-size:.65rem;color:#9eafa3;line-height:1.4}
+.cardFooter button{font:inherit;font-size:.67rem;border:0;background:transparent;padding:5px 0;color:#8ae9b3;cursor:pointer;font-weight:740}
+.cardFooter button:hover{text-decoration:underline}
+.disclaimer{font-size:.72rem;color:#91afa0;line-height:1.65;margin:0}
+.empty{display:grid;justify-items:center;gap:9px;text-align:center;padding:35px;border:1px dashed #42694c;border-radius:12px;color:#9db6a1}
+.empty strong{font-size:.82rem;color:#e2f3e8}.empty p{font-size:.72rem;margin:0}
+@keyframes riseIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes expandBar{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media(max-width:1300px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:950px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.totals{grid-template-columns:repeat(2,minmax(0,1fr))}.head{padding:15px}}
+@media(max-width:540px){.cards{grid-template-columns:1fr}.totals{grid-template-columns:1fr}.filters{width:100%}.filters label{flex:1;min-width:0}.filters select,.filters input{width:100%;min-width:0}.search{width:100%}.search input{flex:1;width:100%}}
+@media(prefers-reduced-motion:reduce){.categoryCard,.totalCard,.progressTrack span{animation:none!important}.categoryCard:hover{transform:none}}
