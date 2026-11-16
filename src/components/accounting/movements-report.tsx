@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownCircle, ArrowLeftRight, ArrowUpCircle, CalendarDays, Download, Pencil,
-  Plus, Search, Wallet } from "lucide-react";
+  Plus, ReceiptText, Search, Wallet } from "lucide-react";
 import type { Bank, CashBox, Entry } from "@/lib/accounting/calculations";
 import type { Card, CardPayment, ExpectedIncome } from "@/lib/accounting/cash-flow";
 import { brazilDate } from "@/lib/accounting/cash-flow";
