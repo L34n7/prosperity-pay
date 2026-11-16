@@ -62,7 +62,7 @@ export async function GET(_: Request, context: Context) {
       new Set(orders.map((order) => order.customer_id).filter(Boolean)),
     );
 
-    const [paymentsResult, customersResult, snapshotsResult] = await Promise.all([
+    const [paymentsResult, customersResult, snapshotsResult, correctionResult] = await Promise.all([
       orderIds.length
         ? admin
             .from("payments")
@@ -84,10 +84,20 @@ export async function GET(_: Request, context: Context) {
             )
             .in("order_id", orderIds)
         : Promise.resolve({ data: [], error: null }),
+      // Immutable snapshots preserve the historical calculation. Read
+      // compensating ledger entries for the effective producer/partner split.
+      orderIds.length
+        ? admin.from("ledger_entries")
+            .select("order_id,amount_cents")
+            .in("order_id", orderIds)
+            .eq("source_type", "partner_attribution_correction")
+            .eq("entry_type", "adjustment")
+            .eq("status", "posted")
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
-    if (paymentsResult.error || customersResult.error || snapshotsResult.error) {
-      throw paymentsResult.error ?? customersResult.error ?? snapshotsResult.error;
+    if (paymentsResult.error || customersResult.error || snapshotsResult.error || correctionResult.error) {
+      throw paymentsResult.error ?? customersResult.error ?? snapshotsResult.error ?? correctionResult.error;
     }
 
     const payments = (paymentsResult.data ?? []).filter((payment) => !isHiddenTestPayment(payment.raw_provider_data));
@@ -234,6 +244,15 @@ export async function GET(_: Request, context: Context) {
     const snapshotMap = new Map(
       (snapshotsResult.data ?? []).map((snapshot) => [snapshot.order_id, snapshot]),
     );
+    const correctionByOrder = new Map<string, { producerCents: number; partnerCents: number }>();
+    for (const entry of correctionResult.data ?? []) {
+      if (!entry.order_id) continue;
+      const current = correctionByOrder.get(entry.order_id) ?? { producerCents: 0, partnerCents: 0 };
+      const cents = Number(entry.amount_cents ?? 0);
+      if (cents > 0) current.producerCents += cents;
+      if (cents < 0) current.partnerCents += cents;
+      correctionByOrder.set(entry.order_id, current);
+    }
     const transactionsByPayment = new Map<string, typeof transactionsResult.data>();
 
     for (const transaction of transactionsResult.data ?? []) {
@@ -249,6 +268,7 @@ export async function GET(_: Request, context: Context) {
       const offer = offerMap.get(order.offer_id);
       const customer = customerMap.get(order.customer_id);
       const snapshot = snapshotMap.get(order.id);
+      const correction = correctionByOrder.get(order.id);
       const metadata = mercadoPagoPaymentMetadata(payment.raw_provider_data);
       const planName =
         metadataText(payment.raw_provider_data, "plan_label") ??
@@ -301,15 +321,15 @@ export async function GET(_: Request, context: Context) {
                 prosperity_fee_amount_cents: Number(
                   snapshot.prosperity_fee_amount_cents ?? 0,
                 ),
-                affiliate_amount_cents: Number(
+                affiliate_amount_cents: Math.max(0, Number(
                   snapshot.affiliate_amount_cents ?? 0,
-                ),
+                ) + (correction?.partnerCents ?? 0)),
                 coproducer_amount_cents: Number(
                   snapshot.coproducer_amount_cents ?? 0,
                 ),
                 producer_amount_cents: Number(
                   snapshot.producer_amount_cents ?? 0,
-                ),
+                ) + (correction?.producerCents ?? 0),
               }
             : null,
           events: transactionsByPayment.get(payment.id) ?? [],

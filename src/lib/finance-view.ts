@@ -289,7 +289,8 @@ export async function getFinanceView() {
   );
 
   for (const commission of outgoingCommissionsResult.data ?? []) {
-    if (!["affiliate", "accredited"].includes(commission.commission_type)) continue;
+    if (!["affiliate", "accredited"].includes(commission.commission_type)
+      || commission.status === "reversed" || commission.status === "cancelled") continue;
     const orderId = paymentOrderById.get(commission.payment_id);
     if (!orderId) continue;
     if (commission.commission_type === "accredited") {

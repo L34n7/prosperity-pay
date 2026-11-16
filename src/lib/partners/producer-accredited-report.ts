@@ -253,6 +253,9 @@ export async function getProducerAccreditedReport(input: { month?: string; produ
       .in("payment_id", batch).in("commission_type", ["accredited", "affiliate"]);
     if (error) throw error;
     for (const c of data ?? []) {
+      // A reversed or cancelled commission must not re-attribute an order
+      // that was deliberately detached from a partner.
+      if (c.status === "reversed" || c.status === "cancelled") continue;
       const orderId = orderIdByPayment.get(c.payment_id);
       const order = orders.find((o) => o.id === orderId);
       if (!order) continue;
