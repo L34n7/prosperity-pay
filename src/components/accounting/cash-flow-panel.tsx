@@ -83,6 +83,17 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
   const monthInvoices=view.invoices.filter(i=>i.invoice_month===view.month+"-01");
   const overdueInvoices=view.invoices.filter(i=>i.remaining_cents>0&&i.due_on<view.forecast.today&&i.invoice_month!==view.month+"-01");
   const shownInvoices=[...monthInvoices,...overdueInvoices].sort((a,b)=>a.due_on.localeCompare(b.due_on));
+  // Exibição por caixa responsável, sem mudar a competência nem a apuração das faturas.
+  const invoiceGroups=[...new Set(shownInvoices.map(invoice=>invoice.box_id))]
+    .map(boxId=>{
+      const invoices=shownInvoices.filter(invoice=>invoice.box_id===boxId);
+      return {
+        boxId,
+        name:view.boxes.find(box=>box.id===boxId)?.name??"Caixa não encontrado",
+        invoices,
+        remainingCents:invoices.reduce((sum,invoice)=>sum+invoice.remaining_cents,0),
+      };
+    }).sort((a,b)=>a.name.localeCompare(b.name,"pt-BR"));
   const unpaidInMonth=monthInvoices.reduce((s,i)=>s+i.remaining_cents,0);
   const cardMonthlyTotals=view.cards
     .map(card=>{
@@ -336,7 +347,20 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
           onClick={()=>editCard(c)}><CreditCard size={18}/><span><strong>{c.name}</strong><small>Vence dia {c.due_day} · {c.default_payment_bank_id?findBank(c.default_payment_bank_id):"Banco pagador pendente"}</small></span><Pencil size={15}/></button>)}</div>
       </div>}
       <div className={styles.cardList}>
-        {shownInvoices.map(inv=>{
+        {invoiceGroups.map(group=><section className={styles.invoiceGroup} key={group.boxId}
+          aria-label={"Faturas do caixa "+group.name}>
+          <div className={styles.invoiceGroupHead}>
+            <div className={styles.invoiceGroupIdentity}>
+              <span className={styles.invoiceGroupIcon}><Wallet size={18}/></span>
+              <div><span>CAIXA RESPONSÁVEL</span><h3>{group.name}</h3></div>
+            </div>
+            <div className={styles.invoiceGroupTotals}>
+              <span>{group.invoices.length} {group.invoices.length===1?"fatura":"faturas"}</span>
+              <strong>{money(group.remainingCents)} <small>a pagar</small></strong>
+            </div>
+          </div>
+          <div className={styles.invoiceGroupList}>
+            {group.invoices.map(inv=>{
           const cardData=view.cards.find(c=>c.id===inv.card_id);
           const adjustments=view.cardAdjustments.filter(a=>a.card_id===inv.card_id&&
             a.box_id===inv.box_id&&a.invoice_month===inv.invoice_month);
@@ -347,15 +371,31 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
           return <article key={inv.key} className={styles.invoiceCard}>
             <div className={styles.invoiceMain}>
               <div className={styles.cardIcon}><CreditCard size={20}/></div>
-              <div className={styles.invoiceTitle}><div className={styles.invoiceName}><h3>{inv.card_name}</h3>
-                <span className={inv.remaining_cents>0?styles.openBadge:styles.doneBadge}>
-                  {inv.remaining_cents>0?"A pagar":"Quitada"}</span></div>
-                <p>Fatura {inv.invoice_month.slice(0,7)} · Vence {shortDate(inv.due_on)} · Caixa <b>{findBox(inv.box_id)}</b>
-                  {inv.due_on<view.forecast.today&&inv.remaining_cents>0?" · Vencida":""}</p>
-                <small>{inv.charges} compra(s) · {money(inv.total_cents)} em compras
-                  {inv.adjustment_cents!==0?" · ajustes "+money(inv.adjustment_cents):""}</small></div>
-              <div className={styles.invoiceAmount}><span>Saldo da fatura</span><strong>{money(inv.remaining_cents)}</strong>
-                <small>Valor líquido {money(net)}{inv.paid_cents?" · pago "+money(inv.paid_cents):""}</small></div>
+              <div className={styles.invoiceTitle}>
+                <div className={styles.invoiceName}>
+                  <h3>{inv.card_name}</h3>
+                  <span className={inv.remaining_cents>0?styles.openBadge:styles.doneBadge}>
+                    {inv.remaining_cents>0?"A pagar":"Quitada"}</span>
+                  <span className={styles.invoiceBoxBadge}><Wallet size={14}/> {findBox(inv.box_id)}</span>
+                </div>
+                <div className={styles.invoiceMeta}>
+                  <span><CalendarDays size={15}/> Fatura {inv.invoice_month.slice(0,7)}</span>
+                  <span>Vencimento: <b>{shortDate(inv.due_on)}</b></span>
+                  {inv.due_on<view.forecast.today&&inv.remaining_cents>0&&
+                    <span className={styles.overdueBadge}>Vencida</span>}
+                </div>
+                <div className={styles.invoicePurchases}>
+                  <span><b>{inv.charges}</b> {inv.charges===1?"compra":"compras"}</span>
+                  <span>Total em compras: <b>{money(inv.total_cents)}</b></span>
+                  {inv.adjustment_cents!==0&&<span>Ajustes: <b>{money(inv.adjustment_cents)}</b></span>}
+                </div>
+              </div>
+              <div className={styles.invoiceAmount}>
+                <span>Saldo da fatura</span>
+                <strong>{money(inv.remaining_cents)}</strong>
+                <div className={styles.invoiceNet}>Valor líquido: <b>{money(net)}</b></div>
+                {inv.paid_cents>0&&<small>Pago: <b>{money(inv.paid_cents)}</b></small>}
+              </div>
             </div>
             <div className={styles.invoiceActions}>
               <span>{cardData?.default_payment_bank_id? "Pagador previsto: "+findBank(cardData.default_payment_bank_id):
@@ -389,7 +429,9 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
               </div>
             </div>}
           </article>;
-        })}
+            })}
+          </div>
+        </section>)}
         {!shownInvoices.length&&<div className={styles.panel}><p className={styles.empty}>Não há faturas neste mês. Alterne a competência mensal ou cadastre compras na planilha.</p></div>}
       </div>
       <div className={styles.helpNote}><ShieldAlert size={18}/><div>

@@ -183,3 +183,12 @@ Foram executados testes transacionais (com rollback) de geração, propagação 
 Na aba **Movimentações**, ao editar um lançamento bancário (saldo inicial, entrada, saída/Pix ou transferência), o rodapé do modal agora exibe o botão vermelho **Excluir movimentação**. Um painel de confirmação mostra a descrição, explica que a exclusão é permanente na tabela operacional e solicita um segundo clique **Sim, excluir definitivamente**. O botão Salvar fica indisponível enquanto a confirmação estiver aberta; a exclusão descarta edições não salvas.
 
 A interface usa DELETE /api/contabilidade com ação "movement" e ID do lançamento. O endpoint autentica o administrador e aplica DELETE físico em finance_entries com filtros por proprietário, ID e tipo diferente de despesa. Contas, parcelas, assinaturas e seus vencimentos não podem ser apagados por esta ação. As proteções existentes para meses fechados permanecem; pagamentos de cartão e recebimentos confirmados mantidos em tabelas específicas não são removidos por essa opção. Ao confirmar, a lista e os saldos são recarregados sem a linha excluída. O histórico de auditoria imutável do banco pode registrar a exclusão, sem manter a linha operacional ativa.
+
+
+## Faturas de cartões agrupadas por caixa e legibilidade (novembro/2026)
+
+A aba **Faturas de cartões** mantém os totais gerais e os totais por cartão, mas agora divide a lista das faturas em grupos por **caixa responsável** (CRM, Leandro, Lucas, Sonia e outros cadastrados), ordenados alfabeticamente. Cada seção indica o nome do caixa, a quantidade de faturas e o total ainda a pagar desse grupo, sem somar em duplicidade faturas de outros caixas. Dentro do grupo as faturas preservam a ordem de vencimento, incluindo faturas anteriores vencidas. Cada card recebe um badge **Caixa: [nome]**, além do badge de situação.
+
+Para tornar as informações legíveis, a data/competência, o vencimento, a quantidade de compras, o total bruto das compras, os ajustes, o valor líquido e os valores pagos passaram a ser exibidos como campos explícitos, com fonte maior e contraste melhor. O valor a pagar permanece destacado. Os textos de rodapé dos cartões-resumo e a indicação do banco pagador também ficaram maiores. A interface se adapta a telas pequenas, colocando o valor à esquerda abaixo dos detalhes quando necessário.
+
+Nenhuma regra de pagamento, cálculo de faturas, vínculo de cartões ou saldo foi alterada por esta reorganização visual.

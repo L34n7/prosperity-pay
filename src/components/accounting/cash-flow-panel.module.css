@@ -119,3 +119,71 @@
 @media(max-width:1100px){.cardKpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:690px){.cardKpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:440px){.cardMonthlyTotal{padding:12px!important}.cardMonthlyTotal strong{font-size:1.05rem}}
+
+/* Faturas organizadas por caixa e tipografia mais legível. */
+.invoiceGroup{display:grid;gap:12px;min-width:0}
+.invoiceGroupHead{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;
+  background:linear-gradient(100deg,#203d2c,#13271b);border:1px solid #457458;
+  border-radius:13px;padding:15px 18px}
+.invoiceGroupIdentity{display:flex;align-items:center;gap:11px;min-width:0}
+.invoiceGroupIcon{width:38px;height:38px;display:grid;place-items:center;flex:0 0 auto;
+  border-radius:10px;background:#244c34;border:1px solid #498b60;color:#a0f6c5}
+.invoiceGroupIdentity>div{display:grid;gap:3px}
+.invoiceGroupIdentity>div>span{color:#8cbba0;font-size:.7rem;font-weight:780;letter-spacing:.07em}
+.invoiceGroupIdentity h3{margin:0;font-size:1.07rem;letter-spacing:-.02em;font-weight:830}
+.invoiceGroupTotals{display:flex;gap:15px;align-items:center;flex-wrap:wrap}
+.invoiceGroupTotals>span{font-size:.82rem;color:#bed6c3;font-weight:650}
+.invoiceGroupTotals>strong{font-size:1.12rem;letter-spacing:-.025em;color:#f2e4b2;white-space:nowrap}
+.invoiceGroupTotals>strong>small{font-size:.75rem;font-weight:600;color:#9cc5aa;letter-spacing:0}
+.invoiceGroupList{display:grid;gap:11px;min-width:0}
+.invoiceGroup .invoiceCard{border-color:#355743}
+.invoiceGroup .invoiceMain{padding:20px;align-items:flex-start;gap:16px}
+.invoiceGroup .invoiceTitle{gap:11px}
+.invoiceGroup .invoiceTitle h3{font-size:1.09rem;line-height:1.4}
+.invoiceGroup .openBadge,.invoiceGroup .doneBadge{font-size:.72rem;padding:5px 10px}
+.invoiceBoxBadge{display:inline-flex;gap:6px;align-items:center;border:1px solid #559370;background:#244b35;
+  color:#b8f5d0;border-radius:30px;padding:6px 10px;font-size:.77rem;font-weight:780;line-height:1.1}
+.invoiceBoxBadge svg{flex-shrink:0}
+.invoiceMeta,.invoicePurchases{display:flex;gap:8px 17px;align-items:center;flex-wrap:wrap;
+  line-height:1.55;color:#bdd3c2;font-size:.86rem}
+.invoiceMeta>span,.invoicePurchases>span{display:inline-flex;align-items:center;gap:5px}
+.invoiceMeta svg{color:#8fe2af;flex-shrink:0}
+.invoiceMeta b,.invoicePurchases b{font-weight:800;color:#edf8ef}
+.invoicePurchases{color:#b0cdbb;font-size:.85rem}
+.invoicePurchases>span+span{padding-left:13px;border-left:1px solid #477051}
+.invoiceMeta .overdueBadge{font-size:.76rem;font-weight:780;color:#f7c6a4;
+  border:1px solid #976747;background:#443023;border-radius:8px;padding:3px 8px}
+.invoiceGroup .invoiceAmount{gap:8px;min-width:185px}
+.invoiceGroup .invoiceAmount>span{font-size:.81rem;color:#b8d4bd;font-weight:650}
+.invoiceGroup .invoiceAmount>strong{font-size:1.5rem;letter-spacing:-.03em}
+.invoiceNet{font-size:.87rem;line-height:1.5;color:#bbd5c2;white-space:nowrap}
+.invoiceNet b{font-weight:830;color:#f0f8ef}
+.invoiceGroup .invoiceAmount>small{font-size:.81rem;line-height:1.5;color:#b1c9b6}
+.invoiceGroup .invoiceAmount>small>b{color:#ebf2e8}
+.invoiceGroup .invoiceActions{padding:13px 20px;gap:12px}
+.invoiceGroup .invoiceActions>span{font-size:.81rem;line-height:1.5;color:#afcbb7}
+.invoiceGroup .invoiceDetails>div>strong{font-size:.84rem}
+.invoiceGroup .detailRow>span{font-size:.79rem}
+.invoiceGroup .detailRow small{font-size:.73rem}
+.invoiceGroup .detailRow b{font-size:.85rem}
+.cardKpis>div>span{font-size:.78rem;line-height:1.45}
+.cardMonthlyTotal>small{font-size:.79rem;line-height:1.5}
+@media(max-width:850px){
+  .invoiceGroup .invoiceMain{flex-wrap:wrap}
+  .invoiceGroup .invoiceAmount{text-align:left;min-width:0;width:100%;
+    display:flex;align-items:baseline;gap:7px 12px;flex-wrap:wrap;border-top:1px solid #31523e;
+    padding-top:12px}
+  .invoiceGroup .invoiceAmount>span{flex-basis:100%}
+}
+@media(max-width:540px){
+  .invoiceGroupHead{padding:13px;align-items:flex-start}
+  .invoiceGroupTotals{gap:5px 12px;width:100%;justify-content:space-between}
+  .invoiceGroup .invoiceMain{padding:14px;gap:11px}
+  .invoiceGroup .invoiceTitle{width:calc(100% - 54px)}
+  .invoiceGroup .invoiceTitle h3{font-size:1rem}
+  .invoiceGroup .invoiceAmount{width:100%}
+  .invoiceMeta,.invoicePurchases{font-size:.82rem;gap:6px 10px}
+  .invoicePurchases>span+span{border:0;padding:0}
+  .invoiceGroup .invoiceActions{padding:12px 14px}
+  .invoiceNet{white-space:normal}
+}
