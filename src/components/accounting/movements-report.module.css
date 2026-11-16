@@ -84,3 +84,14 @@
   .pageControls{width:100%;justify-content:flex-start}
   .monthDividerHint{display:block;margin:4px 0 0}
 }
+
+/* Acesso direto aos pagamentos confirmados da Planilha mensal. */
+.focusInfo{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
+  padding:13px 15px;border:1px solid #498465;background:linear-gradient(120deg,#173c29,#10281b);
+  border-radius:11px;margin-bottom:12px}
+.focusInfo>div{display:flex;align-items:center;gap:11px;min-width:0}
+.focusInfo>div>svg{flex-shrink:0;color:#90edb7}
+.focusInfo>div>span{display:grid;gap:4px;min-width:0}
+.focusInfo strong{font-size:.83rem;color:#d5f4de}
+.focusInfo small{font-size:.73rem;color:#a9ceb6;line-height:1.4}
+.focusInfo button{white-space:normal}

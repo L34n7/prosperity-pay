@@ -7,6 +7,8 @@ import {
   Pencil, Plus, ReceiptText, Search, Settings2, ShieldCheck, Trash2, Wallet, X, Save, Loader2, History, Repeat2,
 } from "lucide-react";
 import { formatCents } from "@/lib/operational";
+import { MoneyInput } from "./money-input";
+import { moneyInputFromCents, moneyInputToCents } from "@/lib/accounting/money-input";
 import { shiftMonthlyDate } from "@/lib/accounting/installments";
 import { summarizeBankAllocations } from "@/lib/accounting/balance-presentation";
 import { CashFlowPanel } from "./cash-flow-panel";
@@ -77,7 +79,7 @@ function entryToDraft(entry:Entry,rules?:ViewData["subscriptionRules"]):EntryDra
     rules?.find(r=>r.id===entry.subscription_series_id)?.active!==false);
   return {
     id: entry.id, kind: entry.kind, title: entry.title, cardId:entry.card_id??"",
-    amount: String(entry.amount_cents / 100), bankId: entry.bank_id, boxId: entry.box_id,
+    amount: moneyInputFromCents(entry.amount_cents), bankId: entry.bank_id, boxId: entry.box_id,
     targetBankId: entry.target_bank_id ?? "", targetBoxId: entry.target_box_id ?? "",
     originId: entry.origin_id ?? "", originName: "", category:(entry.category??"outros") as FinanceCategory,categoryTouched:true,status: entry.status,
     dueOn: entry.due_on ?? today(), settledOn: entry.settled_on ?? today(),
@@ -120,6 +122,7 @@ export function AccountingView() {
   const [categoryFilter,setCategoryFilter]=useState<FinanceCategory | "">("");
   const [search, setSearch] = useState("");
   const [sheetTab, setSheetTab] = useState<"forecast" | "accounts" | "cards" | "balances" | "other" | "categories">("accounts");
+  const [focusedPaymentEntryId,setFocusedPaymentEntryId]=useState<string|null>(null);
   const [quickEditing, setQuickEditing] = useState(false);
   const [quickSaving, setQuickSaving] = useState<string | null>(null);
   const [quickSaved, setQuickSaved] = useState<string | null>(null);
@@ -210,7 +213,7 @@ export function AccountingView() {
   async function saveEntry(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!entryModal) return;
-    const cents = Math.round(Number(entryModal.amount) * 100);
+    const cents = moneyInputToCents(entryModal.amount);
     if (!Number.isSafeInteger(cents) || cents <= 0) { setError("Informe um valor válido maior que zero."); return; }
     const dueOn = entryModal.kind === "expense" ? entryModal.dueOn : null;
     if(entryModal.isSubscription&&(entryModal.installmentTotal>1||entryModal.installmentSeriesId)){
@@ -262,12 +265,7 @@ export function AccountingView() {
     if (closed || quickSaving) return false;
     let value: string | number = raw;
     if (field === "amountCents") {
-      const normalized = raw.trim().replace(",", ".");
-      if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
-        setError("Informe um valor em reais com até duas casas decimais.");
-        return false;
-      }
-      value = Math.round(Number(normalized) * 100);
+      value = moneyInputToCents(raw);
       if (!Number.isSafeInteger(value) || value <= 0) {
         setError("O valor da conta precisa ser maior que zero."); return false;
       }
@@ -360,9 +358,21 @@ export function AccountingView() {
   }
   async function toggleClose() {
     if (!view) return;
+    const pendingDirect=view.monthEntries.filter(item=>item.kind==="expense"&&!item.card_id&&item.status==="pending").length;
+    if(!closed&&pendingDirect>0){
+      setError("Existem "+pendingDirect+" contas de banco pendentes em "+labelMonth(month)+
+        ". Pague ou reprograme essas contas antes de fechar o mês.");
+      return;
+    }
     if (!confirm(closed
-      ? "Reabrir " + labelMonth(month) + " para permitir alterações?"
-      : "Fechar " + labelMonth(month) + "? Os lançamentos ficarão bloqueados até a reabertura.")) return;
+      ? "Reabrir "+labelMonth(month)+"? Os lançamentos dessa competência poderão voltar a ser alterados."
+      : "Fechar "+labelMonth(month)+"?\n\n"+
+        "• O mês selecionado ficará protegido contra inclusão, edição ou exclusão de contas e movimentações.\n"+
+        "• Os saldos acumulados continuarão nos próximos meses, sem zerar.\n"+
+        "• Os meses anteriores não são fechados automaticamente.\n"+
+        "• Para corrigir o mês fechado, use Reabrir mês.\n\n"+
+        "Faturas de cartão continuam disponíveis, mas pagamentos com data dentro do período fechado ficam bloqueados.\n\n"+
+        "Confirmar fechamento?")) return;
     await mutate("PATCH", { action: "period", month, status: closed ? "open" : "closed" },
       closed ? "Mês reaberto." : "Mês fechado e protegido.");
   }
@@ -485,7 +495,7 @@ export function AccountingView() {
         <button type="button" className={sheetTab === "balances" ? styles.activeTab : styles.tab}
           aria-current={sheetTab === "balances" ? "page" : undefined} onClick={() => setSheetTab("balances")}><Wallet size={17}/> Saldos por banco e caixa</button>
         <button type="button" className={sheetTab === "other" ? styles.activeTab : styles.tab}
-          aria-current={sheetTab === "other" ? "page" : undefined} onClick={() => setSheetTab("other")}><ArrowLeftRight size={17}/> Movimentações</button>
+          aria-current={sheetTab === "other" ? "page" : undefined} onClick={() => {setFocusedPaymentEntryId(null);setSheetTab("other");}}><ArrowLeftRight size={17}/> Movimentações</button>
       </nav>
       {(sheetTab==="forecast"||sheetTab==="cards")&&<CashFlowPanel
         view={view} mode={sheetTab} closed={Boolean(closed)}
@@ -498,6 +508,7 @@ export function AccountingView() {
           setStatusFilter("all");setSearch("");setSheetTab("accounts");
         }}/>}
       {sheetTab==="other" && <MovementsReport
+        focusEntryId={focusedPaymentEntryId} onClearFocus={()=>setFocusedPaymentEntryId(null)}
         entries={view.ledgerEntries} payments={view.cardPayments}
         receipts={view.expectedIncomes} cards={view.cards}
         banks={view.banks} boxes={view.boxes}
@@ -734,7 +745,7 @@ export function AccountingView() {
                 {entry.card_id?"Na fatura":entry.status==="pending"?"Pendente":"Efetivado"}
               </span>}</td>
             <td className={styles.expense}>{quickEnabled ? <QuickInputCell label={"Valor de "+entry.title}
-              value={(entry.amount_cents/100).toFixed(2)} inputMode="decimal"
+              value={moneyInputFromCents(entry.amount_cents)} inputMode="decimal" currency
               disabled={quickBusy} saving={quickSaving===entry.id}
               onCommit={value=>quickSave(entry,"amountCents",value)}/> :
               "−"+money(entry.amount_cents)}</td>
@@ -745,6 +756,14 @@ export function AccountingView() {
                 onClick={()=>setSheetTab("cards")}>Ver fatura</button>}
               {entry.status === "pending" && !entry.card_id && !closed && <button type="button" className={styles.payAction}
                 onClick={() => setEntryModal({ ...entryToDraft(entry,view?.subscriptionRules), status: "paid", settledOn: today() })}>Pagar</button>}
+              {entry.status==="paid" && !entry.card_id &&
+                <button type="button" className={styles.payAction}
+                  title="Visualizar a saída bancária deste pagamento no extrato"
+                  onClick={()=>{
+                    setFocusedPaymentEntryId(entry.id);
+                    setSheetTab("other");
+                    document.getElementById("finance-origin-anchor")?.scrollIntoView({behavior:"smooth",block:"start"});
+                  }}>Ver movimentação</button>}
               {!closed && <><button type="button" title="Editar lançamento" onClick={() => setEntryModal(entryToDraft(entry))}><Pencil size={15}/></button>
                 <button type="button" title="Excluir lançamento" onClick={() => void deleteEntry(entry.id)}><Trash2 size={15}/></button></>}
               {closed && <LockKeyhole size={16} className={styles.lock}/>}
@@ -817,8 +836,8 @@ export function AccountingView() {
               placeholder={entryModal.kind === "expense" ? "Ex.: Vercel, Mercado Livre, Linkspeed" : "Informe a descrição"}
               value={entryModal.title} onChange={(e) => chooseSuggestion(e.target.value, entryModal)}/></label>
             <datalist id={titleListId}>{view.suggestions.map((item) => <option value={item.title} key={item.title}/>)}</datalist>
-            <label>Valor (R$)<input required min="0.01" step="0.01" type="number" inputMode="decimal" value={entryModal.amount}
-              onChange={(e) => setEntryModal({...entryModal,amount:e.target.value})} placeholder="0,00"/></label>
+            <label>Valor (R$)<MoneyInput required value={entryModal.amount}
+              onChange={value=>setEntryModal({...entryModal,amount:value})}/></label>
             {entryModal.kind==="expense"&&<label className={styles.full}>Como será paga a conta?
               <select value={entryModal.cardId} onChange={e=>{
                 const cardId=e.target.value;

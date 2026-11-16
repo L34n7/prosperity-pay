@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "./accounting-view.module.css";
+import { formatMoneyInput } from "@/lib/accounting/money-input";
 
 type SelectOption = { value: string; label: string; disabled?: boolean };
 type Common = { label: string; disabled: boolean; saving: boolean; onCommit(value: string): Promise<boolean> };
@@ -25,15 +26,15 @@ export function QuickSelectCell({value, options, label, disabled, saving, onComm
   </select>;
 }
 
-export function QuickInputCell({value,label,disabled,saving,onCommit,type="text",min,step,inputMode}:Common & {
-  value:string;type?:"text"|"number"|"date";min?:string;step?:string;inputMode?:"decimal"|"text";
+export function QuickInputCell({value,label,disabled,saving,onCommit,type="text",min,step,inputMode,currency=false}:Common & {
+  value:string;type?:"text"|"number"|"date";min?:string;step?:string;inputMode?:"decimal"|"text";currency?:boolean;
 }) {
   const [draft,setDraft]=useState(value);
   useEffect(()=>setDraft(value),[value]);
   return <input className={styles.quickInput} aria-label={label}
     title="Alterar e sair do campo para salvar automaticamente" disabled={disabled||saving}
-    value={draft} type={type} min={min} step={step} inputMode={inputMode}
-    onChange={e=>setDraft(e.target.value)}
+    value={draft} type={type} min={min} step={step} inputMode={currency?"numeric":inputMode}
+    onChange={e=>setDraft(currency?formatMoneyInput(e.target.value):e.target.value)}
     onKeyDown={e=>{
       if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur();}
       if(e.key==="Escape"){setDraft(value);e.currentTarget.blur();}

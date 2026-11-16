@@ -21,6 +21,8 @@ type Props = {
   boxes: CashBox[];
   onNew(kind: "opening" | "income" | "outflow" | "transfer"):void;
   onEdit(entryId:string):void;
+  focusEntryId?:string|null;
+  onClearFocus?():void;
 };
 
 type KindFilter = "all" | MovementKind;
@@ -48,7 +50,7 @@ function csvCell(input:string){
   return '"'+safe.replaceAll('"','""')+'"';
 }
 export function MovementsReport({
-  entries,payments,receipts,cards,banks,boxes,onNew,onEdit,
+  entries,payments,receipts,cards,banks,boxes,onNew,onEdit,focusEntryId,onClearFocus,
 }:Props){
   const [kind,setKind]=useState<KindFilter>("all");
   const [bankId,setBankId]=useState("");
@@ -59,11 +61,14 @@ export function MovementsReport({
   const fullList=useMemo(()=>collectBankMovements(entries,payments,receipts,cards),
     [entries,payments,receipts,cards]);
   // Histórico completo, independente da competência selecionada no módulo.
-  const filtered=useMemo(()=>filterBankMovements(fullList,{
-    kind,bankId,boxId,search,
-  }),[fullList,kind,bankId,boxId,search]);
+  const filtered=useMemo(()=>{
+    const selected=filterBankMovements(fullList,{
+      kind,bankId,boxId,search,
+    });
+    return focusEntryId ? selected.filter(item=>item.id==="ledger:"+focusEntryId) : selected;
+  },[fullList,kind,bankId,boxId,search,focusEntryId]);
   const summary=useMemo(()=>sumMovements(filtered,bankId,boxId),[filtered,bankId,boxId]);
-  useEffect(()=>setPage(1),[kind,bankId,boxId,search]);
+  useEffect(()=>setPage(1),[kind,bankId,boxId,search,focusEntryId]);
   const pagination=useMemo(()=>paginateMovements(filtered,page),[filtered,page]);
   const visible=pagination.items;
   const displayedPages=useMemo(()=>Array.from({length:pagination.totalPages},(_,i)=>i+1)
@@ -98,6 +103,7 @@ export function MovementsReport({
       <div><span className={styles.eyebrow}>Extrato financeiro · bancos e caixas</span>
         <h2>Movimentações</h2>
         <p>Histórico completo, com as movimentações mais recentes primeiro. Entradas, Pix enviados, pagamentos e transferências realmente registrados.
+          <strong> Contas pagas pela Planilha mensal aparecem como “Conta paga”</strong>, usando o próprio lançamento para não descontar duas vezes.
           Compras de cartão e contas ainda pendentes ficam fora deste extrato.</p>
       </div>
       <div className={styles.actions}>
@@ -108,6 +114,14 @@ export function MovementsReport({
       </div>
     </div>
 
+    {focusEntryId&&<div className={styles.focusInfo}>
+      <div><ReceiptText size={19}/><span><strong>Pagamento localizado na planilha</strong>
+        <small>Este registro é a saída bancária da conta paga, sem duplicar o lançamento ou o saldo.</small>
+      </span></div>
+      <button className={styles.secondary} type="button" onClick={onClearFocus}>
+        Mostrar todas as movimentações
+      </button>
+    </div>}
     <div className={styles.filters}>
       <label>Tipo
         <select aria-label="Filtrar tipo de movimentação" value={kind}

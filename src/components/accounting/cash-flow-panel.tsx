@@ -8,6 +8,8 @@ import {
   Trash2, TrendingDown, Wallet, X,
 } from "lucide-react";
 import { formatCents } from "@/lib/operational";
+import { MoneyInput } from "./money-input";
+import { moneyInputFromCents, moneyInputToCents } from "@/lib/accounting/money-input";
 import { brazilDate, dayPlus, invoiceDueDate, projectCashFlow } from "@/lib/accounting/cash-flow";
 import type { Card, CardPayment, CardAdjustment, ExpectedIncome, CardInvoice, ForecastEvent } from "@/lib/accounting/cash-flow";
 import type { Bank, CashBox } from "@/lib/accounting/calculations";
@@ -34,13 +36,10 @@ type AdjustmentForm = {
   invoice:CardInvoice;kind:"credit"|"debit";title:string;amount:string;notes:string;
 };
 const money=(cents:number)=>formatCents(cents);
-const validCents=(text:string)=>{
-  const amount=Math.round(Number(text.trim().replace(",","."))*100);
-  return Number.isSafeInteger(amount)&&amount>0 ? amount : 0;
-};
+const validCents=moneyInputToCents;
 const shortDate=(day:string)=>new Date(day+"T12:00:00Z")
   .toLocaleDateString("pt-BR",{timeZone:"UTC",day:"2-digit",month:"short",year:"numeric"});
-const asMoneyInput=(n:number)=>(n/100).toFixed(2);
+const asMoneyInput=moneyInputFromCents;
 function localClock(){
   const parts=new Intl.DateTimeFormat("en-US",{
     timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit",
@@ -453,8 +452,8 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
           <label className={styles.full}>Descrição<input autoFocus required maxLength={160} minLength={2}
             placeholder="Ex.: Renovação do plano CRM" value={receipt.title}
             onChange={e=>setReceipt({...receipt,title:e.target.value})}/></label>
-          <label>Valor previsto (R$)<input required type="number" min=".01" step=".01"
-            value={receipt.amount} onChange={e=>setReceipt({...receipt,amount:e.target.value})}/></label>
+          <label>Valor previsto (R$)<MoneyInput required value={receipt.amount}
+            onChange={value=>setReceipt({...receipt,amount:value})}/></label>
           <label>Data esperada<input required type="date" value={receipt.expectedOn}
             onChange={e=>setReceipt({...receipt,expectedOn:e.target.value})}/></label>
           <label>Banco que receberá<select required value={receipt.bankId}
@@ -495,8 +494,8 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
           <label>Banco de onde saiu o dinheiro<select required value={pay.bankId}
             onChange={e=>setPay({...pay,bankId:e.target.value,allowNegative:false})}>
             {liveBanks.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
-          <label>Valor pago (R$)<input type="number" step=".01" min=".01" required
-            value={pay.amount} onChange={e=>setPay({...pay,amount:e.target.value,allowNegative:false})}/></label>
+          <label>Valor pago (R$)<MoneyInput required value={pay.amount}
+            onChange={value=>setPay({...pay,amount:value,allowNegative:false})}/></label>
           <label className={styles.full}>Data e hora do pagamento<input type="datetime-local" required value={pay.paidAt}
             onChange={e=>setPay({...pay,paidAt:e.target.value})}/></label>
           <div className={styles.full+" "+styles.infoPanel}>
@@ -548,8 +547,8 @@ export function CashFlowPanel({view,mode,onChanged,closed}:{
         <form className={styles.formGrid} onSubmit={e=>void saveAdjustment(e)}>
           <label>Tipo<select value={adjustment.kind} onChange={e=>setAdjustment({...adjustment,kind:e.target.value as "credit"|"debit"})}>
             <option value="credit">Crédito / abatimento</option><option value="debit">Débito / encargo</option></select></label>
-          <label>Valor (R$)<input required type="number" min=".01" step=".01"
-            value={adjustment.amount} onChange={e=>setAdjustment({...adjustment,amount:e.target.value})}/></label>
+          <label>Valor (R$)<MoneyInput required value={adjustment.amount}
+            onChange={value=>setAdjustment({...adjustment,amount:value})}/></label>
           <label className={styles.full}>Descrição<input required minLength={2} maxLength={160}
             value={adjustment.title} onChange={e=>setAdjustment({...adjustment,title:e.target.value})}/></label>
           <label className={styles.full}>Observações<textarea rows={2} maxLength={1000}
