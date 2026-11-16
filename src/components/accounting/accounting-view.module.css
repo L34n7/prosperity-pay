@@ -300,3 +300,40 @@
 .movementDeleteChoices .outlineButton{border-color:#9d605a;color:#f6d2cb}
 @media(max-width:590px){.entryForm .formActions{flex-wrap:wrap}.deleteMovementButton{width:100%;margin-right:0}
   .movementDeleteChoices>button{flex:1;min-width:145px}.movementDeleteWarning{padding:12px}}
+
+/* Saldo por instituição x caixa: positivos e déficits com interpretação explícita. */
+.balanceMatrix tbody td button.matrixNegativeBalance{color:#f2a79d;flex-wrap:wrap;justify-content:flex-end}
+.balanceMatrix tbody td button.matrixPositiveBalance{color:#c8f6dc}
+.balanceMatrix tbody td button.matrixZeroBalance{color:#8aa797}
+.balanceMatrix tbody td button.matrixNegativeBalance>span{font-weight:780}
+.balanceMatrix tbody td button>small{display:block;width:100%;font-size:.67rem;
+  line-height:1.1;text-align:right;font-weight:740;color:#f1a79f}
+.balanceMatrix tfoot td>span{display:block}
+.matrixCompensated{display:block;color:#ebc48b;font-size:.66rem;line-height:1.3;
+  margin-top:5px;font-weight:750}
+.allocationPanel{display:grid;gap:13px;margin-top:18px;padding-top:17px;border-top:1px solid #355343}
+.allocationHeader{display:flex;justify-content:space-between;align-items:start;gap:13px;flex-wrap:wrap}
+.allocationHeader h3{font-size:1rem;margin:5px 0 0;letter-spacing:-.025em}
+.allocationHeader>p{margin:0;color:#a8c6b1;font-size:.75rem;line-height:1.6;max-width:650px}
+.allocationHeader>p>strong{color:#dfeddd}
+.allocationGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px}
+.allocationCard{padding:15px;display:grid;gap:13px;min-width:0;
+  background:linear-gradient(150deg,#1f3023,#17231a);border:1px solid #635c42;border-radius:12px}
+.allocationTitle{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.allocationTitle>strong{font-size:.91rem;font-weight:820}
+.allocationBadge{font-size:.68rem;color:#f3d5a5;background:#4b3c23;
+  border:1px solid #806744;padding:5px 9px;border-radius:30px;white-space:nowrap;font-weight:790}
+.allocationBanks{display:grid;gap:9px}
+.allocationBanks>div{display:flex;align-items:center;justify-content:space-between;gap:9px;
+  font-size:.82rem;line-height:1.4;color:#b9cfbe}
+.allocationBanks strong{font-size:.84rem;font-weight:820;white-space:nowrap}
+.allocationPositive{color:#9becbd}
+.allocationNegative{color:#f3a49b}
+.allocationNet{border-top:1px solid #48624d;padding-top:10px;display:flex;
+  align-items:center;justify-content:space-between;gap:12px}
+.allocationNet span{font-size:.76rem;font-weight:740;color:#e1ecd4}
+.allocationNet strong{font-size:1.09rem;letter-spacing:-.025em;white-space:nowrap}
+.allocationCard>p{margin:0;color:#b8cdb6;font-size:.72rem;line-height:1.6}
+.allocationCard>p b{color:#f3c6a2}
+@media(max-width:620px){.allocationPanel{margin-top:14px}
+  .allocationHeader h3{font-size:.96rem}.allocationCard{padding:13px}}

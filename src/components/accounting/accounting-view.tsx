@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { formatCents } from "@/lib/operational";
 import { shiftMonthlyDate } from "@/lib/accounting/installments";
+import { summarizeBankAllocations } from "@/lib/accounting/balance-presentation";
 import { CashFlowPanel } from "./cash-flow-panel";
 import { CategoryAnalysis, CategoryIcon } from "./category-analysis";
 import { CATEGORY_LABELS, CATEGORY_OPTIONS, suggestCategory } from "@/lib/accounting/categories";
@@ -509,20 +510,71 @@ export function AccountingView() {
 
       {sheetTab === "balances" && <section className={styles.panel}>
         <div className={styles.sectionHead}><div><span className={styles.eyebrow}>Planilha de saldos · {labelMonth(month)}</span>
-          <h2>Distribuição do dinheiro</h2><p>Clique em uma célula para registrar saldo inicial ou aporte neste banco e caixa. Os valores exibidos são acumulados até o mês selecionado.</p></div>
+          <h2>Distribuição do dinheiro</h2><p>Veja o saldo atribuído a cada banco e caixa até o mês selecionado. Valores negativos são <strong>déficits contábeis a conciliar</strong>, não saldo disponível. Clique numa célula para registrar um saldo ou aporte.</p></div>
           <button className={styles.primaryButton} disabled={closed || !canRecord} onClick={() => showEntry("opening")}><Plus size={16}/> Registrar saldo / aporte</button>
         </div>
         <div className={styles.sheetTableWrap}><table className={styles.balanceMatrix}>
           <thead><tr><th>Banco / Caixa</th>{view.boxes.map((box) => <th key={box.id}>{box.name}<small>{box.person_type.toUpperCase()}</small></th>)}<th>Total do banco</th></tr></thead>
           <tbody>{view.banks.filter(bank=>bank.active).map((bank) => <tr key={bank.id}><th scope="row"><Landmark size={15}/> {bank.name}</th>
-            {view.boxes.map((box) => <td key={box.id}><button type="button" title={"Adicionar saldo no banco " + bank.name + ", caixa " + box.name}
-              disabled={closed || !bank.active || !box.active}
-              onClick={() => showEntry("opening", bank.id, box.id)}>{money(view.matrix[bank.id + ":" + box.id] ?? 0)} <Plus size={13}/></button></td>)}
+            {view.boxes.map((box) => {
+              const cents=view.matrix[bank.id+":"+box.id]??0;
+              return <td key={box.id}>
+                <button type="button"
+                  title={cents<0
+                    ? "Déficit contábil de "+money(Math.abs(cents))+" em "+bank.name+" / "+box.name+". Clique para registrar um saldo ou aporte."
+                    : "Saldo atribuído a "+bank.name+" / "+box.name+": "+money(cents)+". Clique para registrar um saldo ou aporte."}
+                  aria-label={bank.name+", caixa "+box.name+": "+(cents<0?"déficit de ":"saldo de ")+money(Math.abs(cents))}
+                  disabled={closed || !bank.active || !box.active}
+                  onClick={() => showEntry("opening", bank.id, box.id)}
+                  className={cents<0?styles.matrixNegativeBalance:cents>0?styles.matrixPositiveBalance:styles.matrixZeroBalance}>
+                  <span>{money(cents)}</span><Plus size={13}/>
+                  {cents<0&&<small>Déficit</small>}
+                </button>
+              </td>;
+            })}
             <td className={styles.matrixTotal}>{money(view.bankBalances[bank.id] ?? 0)}</td></tr>)}</tbody>
-          <tfoot><tr><th>Total por caixa</th>{view.boxes.map((box) => <td key={box.id}>{money(view.boxBalances[box.id] ?? 0)}</td>)}
+          <tfoot><tr><th>Saldo líquido por caixa</th>{view.boxes.map((box) =>
+            <td key={box.id}><span>{money(view.boxBalances[box.id] ?? 0)}</span>
+              {summarizeBankAllocations(view.banks, [box], view.matrix)[0].hasCrossBankDeficit&&
+                <small className={styles.matrixCompensated}>Entre bancos</small>}
+            </td>)}
             <td>{money(view.totals.balance)}</td></tr></tfoot>
         </table></div>
         <p className={styles.balanceNote}>Saldo / aporte <strong>soma</strong> ao saldo existente; não o substitui. O saldo de um mês passa automaticamente para o seguinte.</p>
+        {summarizeBankAllocations(view.banks,view.boxes,view.matrix)
+          .filter(item=>item.hasCrossBankDeficit).length>0&&
+          <div className={styles.allocationPanel}>
+            <div className={styles.allocationHeader}>
+              <div><span className={styles.eyebrow}>Conciliação por banco</span>
+                <h3>Onde está o saldo de cada caixa?</h3></div>
+              <p>Quando há saldo positivo num banco e déficit em outro, o total do caixa é a
+                <strong> diferença contábil entre eles</strong> — não um valor depositado em uma instituição específica.</p>
+            </div>
+            <div className={styles.allocationGrid}>
+              {summarizeBankAllocations(view.banks,view.boxes,view.matrix)
+                .filter(item=>item.hasCrossBankDeficit)
+                .map(item=><article key={item.boxId} className={styles.allocationCard}>
+                  <div className={styles.allocationTitle}>
+                    <strong>{item.boxName}</strong>
+                    <span className={styles.allocationBadge}>A conciliar</span>
+                  </div>
+                  <div className={styles.allocationBanks}>
+                    {item.banks.map(bank=><div key={bank.bankId}>
+                      <span>{bank.bankName}</span>
+                      <strong className={bank.cents<0?styles.allocationNegative:styles.allocationPositive}>
+                        {money(bank.cents)}</strong>
+                    </div>)}
+                  </div>
+                  <div className={styles.allocationNet}>
+                    <span>Saldo líquido do caixa</span>
+                    <strong>{money(item.netCents)}</strong>
+                  </div>
+                  <p>O saldo líquido compensa <b>{money(item.deficitCents)}</b> de déficit
+                    em outro banco. Confira o banco registrado nos pagamentos ou os saldos lançados para saber
+                    onde o dinheiro está efetivamente disponível.</p>
+                </article>)}
+            </div>
+          </div>}
       </section>}
 {sheetTab === "balances" && <>      <div className={styles.twoCols}>
         <section className={styles.panel}>
@@ -550,7 +602,7 @@ export function AccountingView() {
                 <div><strong>{box.name}</strong><small>{box.person_type === "pj" ? "Pessoa jurídica" : "Pessoa física"}{!box.active ? " · Arquivado" : ""}</small></div>
                 <button className={styles.miniEdit} title="Editar caixa" onClick={() => {setSettingsOpen(true);startSetting("box",box);}}><Pencil size={14}/></button>
               </div>
-              <div className={styles.boxBalanceLabel}>Saldo bancário acumulado</div>
+              <div className={styles.boxBalanceLabel}>Saldo líquido entre bancos</div>
               <strong className={styles.boxAmount}>{money(view.boxBalances[box.id] ?? 0)}</strong>
               <div className={styles.boxSources}>{view.banks.filter(bank=>bank.active).map((bank) => <span key={bank.id}>{bank.name}<b>{money(view.matrix[bank.id + ":" + box.id] ?? 0)}</b></span>)}</div>
               <div className={styles.boxBills}>

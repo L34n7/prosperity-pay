@@ -192,3 +192,12 @@ A aba **Faturas de cartões** mantém os totais gerais e os totais por cartão, 
 Para tornar as informações legíveis, a data/competência, o vencimento, a quantidade de compras, o total bruto das compras, os ajustes, o valor líquido e os valores pagos passaram a ser exibidos como campos explícitos, com fonte maior e contraste melhor. O valor a pagar permanece destacado. Os textos de rodapé dos cartões-resumo e a indicação do banco pagador também ficaram maiores. A interface se adapta a telas pequenas, colocando o valor à esquerda abaixo dos detalhes quando necessário.
 
 Nenhuma regra de pagamento, cálculo de faturas, vínculo de cartões ou saldo foi alterada por esta reorganização visual.
+
+
+## Identificação do banco de origem do saldo líquido por caixa (novembro/2026)
+
+A seção **Saldos por banco e caixa → Distribuição do dinheiro** deixa explícita a diferença entre o saldo de cada combinação instituição/caixa e o saldo líquido de um responsável. Um saldo negativo na matriz aparece em tom de alerta com o rótulo **Déficit**, e não é apresentado como valor disponível. O rodapé foi renomeado para **Saldo líquido por caixa**, com aviso **Entre bancos** quando o resultado compensa um saldo positivo numa instituição e um saldo negativo em outra.
+
+Abaixo da matriz, os caixas com saldos positivos e negativos em bancos distintos apresentam **Conciliação por banco → Onde está o saldo de cada caixa?**. Cada cartão mostra as instituições com valores assinados, o saldo líquido do caixa e o valor deficitário que está sendo compensado. Esse resultado é apenas uma diferença contábil, **não identifica automaticamente a instituição em que o valor líquido está depositado**. O usuário pode revisar o banco selecionado em pagamentos ou os saldos registrados para reconciliar a realidade. Não se criam transferências ou entradas fictícias, nem se altera saldo automaticamente.
+
+Exemplo real de novembro/2026: Leandro tem Inter +R$ 931,13 e Mercado Pago -R$ 786,39, que resultam em líquido R$ 144,74. O negativo corresponde a saída atribuída ao Mercado Pago sem saldo suficiente alocado ao caixa naquele banco. Os cálculos e saldos históricos não foram alterados; a mudança é de legibilidade e conciliação, incluindo telas pequenas.
