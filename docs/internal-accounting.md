@@ -176,3 +176,10 @@ No rodapé do modal **Editar conta** existe a opção **Aplicar ajustes no passa
 A migração adicional `20261112054948_finance_recurring_protect_paid_invoices` impede propagações automáticas para lançamentos de cartão em faturas que já tenham pagamento registrado, e impede o encerramento da assinatura de apagar esses lançamentos. A correção retroativa com a flag **Aplicar ajustes no passado** permite mudar categoria e descrição dessas compras, mas rejeita mudanças em valor, cartão ou caixa de fatura já paga. O histórico registra todas as alterações permitidas sem reescrever o pagamento anterior.
 
 Foram executados testes transacionais (com rollback) de geração, propagação futura, edição retroativa de assinatura, edição retroativa de parcelamento, auditoria, cancelamento e acesso via papel `authenticated` com RLS: nenhuma conta, assinatura nem evento de teste permaneceu após os testes.
+
+
+## Excluir movimentação diretamente do modal de edição (novembro/2026)
+
+Na aba **Movimentações**, ao editar um lançamento bancário (saldo inicial, entrada, saída/Pix ou transferência), o rodapé do modal agora exibe o botão vermelho **Excluir movimentação**. Um painel de confirmação mostra a descrição, explica que a exclusão é permanente na tabela operacional e solicita um segundo clique **Sim, excluir definitivamente**. O botão Salvar fica indisponível enquanto a confirmação estiver aberta; a exclusão descarta edições não salvas.
+
+A interface usa DELETE /api/contabilidade com ação "movement" e ID do lançamento. O endpoint autentica o administrador e aplica DELETE físico em finance_entries com filtros por proprietário, ID e tipo diferente de despesa. Contas, parcelas, assinaturas e seus vencimentos não podem ser apagados por esta ação. As proteções existentes para meses fechados permanecem; pagamentos de cartão e recebimentos confirmados mantidos em tabelas específicas não são removidos por essa opção. Ao confirmar, a lista e os saldos são recarregados sem a linha excluída. O histórico de auditoria imutável do banco pode registrar a exclusão, sem manter a linha operacional ativa.

@@ -109,6 +109,7 @@ export function AccountingView() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [entryModal, setEntryModal] = useState<EntryDraft | null>(null);
+  const [confirmMovementDelete, setConfirmMovementDelete] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [setting, setSetting] = useState<SettingDraft | null>(null);
   const [bankFilter, setBankFilter] = useState("");
@@ -126,6 +127,7 @@ export function AccountingView() {
   const titleListId = useId();
 
   useEffect(()=>setHistoryItems(null),[entryModal?.id]);
+  useEffect(()=>setConfirmMovementDelete(false),[entryModal?.id]);
 
   useEffect(() => {
     let live = true;
@@ -343,6 +345,11 @@ export function AccountingView() {
   async function deleteEntry(id: string) {
     if (!confirm("Excluir este lançamento? O saldo será recalculado imediatamente. Esta ação não pode ser desfeita.")) return;
     await mutate("DELETE", { action: "entry", id }, "Lançamento excluído e saldos atualizados.");
+  }
+  async function deleteMovement(id:string) {
+    // A rota "movement" só aceita lançamentos bancários, nunca contas/parcelas.
+    await mutate("DELETE",{action:"movement",id},
+      "Movimentação excluída definitivamente. Os saldos foram recalculados.");
   }
   async function deleteSetting() {
     if (!setting?.id || setting.type === "origin") return;
@@ -894,8 +901,31 @@ export function AccountingView() {
             </div>}
           </div>}
           {error && <div className={styles.formError} role="alert">{error}</div>}
-          <div className={styles.formActions}><button type="button" className={styles.outlineButton} onClick={() => setEntryModal(null)}>Cancelar</button>
-            <button type="submit" className={styles.primaryButton} disabled={saving}>{saving ? "Salvando..." : entryModal.id ? "Salvar alterações" : "Registrar lançamento"}</button></div>
+          {entryModal.id && entryModal.kind!=="expense" && confirmMovementDelete &&
+            <div className={styles.movementDeleteWarning} role="group" aria-label="Confirmar exclusão de movimentação">
+              <strong><Trash2 size={17}/> Excluir esta movimentação definitivamente?</strong>
+              <p>O lançamento <b>{entryModal.title}</b> será removido fisicamente da tabela de movimentações.
+                O saldo dos bancos e caixas será recalculado. Alterações ainda não salvas serão descartadas.
+                Esta ação não pode ser desfeita pela tela.</p>
+              <div className={styles.movementDeleteChoices}>
+                <button type="button" className={styles.outlineButton} disabled={saving}
+                  onClick={()=>setConfirmMovementDelete(false)}>Manter movimentação</button>
+                <button type="button" className={styles.dangerButton} disabled={saving}
+                  onClick={()=>void deleteMovement(entryModal.id!)}><Trash2 size={15}/>
+                  {saving?"Excluindo...":"Sim, excluir definitivamente"}</button>
+              </div>
+            </div>}
+          <div className={styles.formActions}>
+            {entryModal.id && entryModal.kind!=="expense" &&
+              <button type="button" className={styles.dangerButton+" "+styles.deleteMovementButton}
+                disabled={saving} onClick={()=>setConfirmMovementDelete(true)}>
+                <Trash2 size={16}/> Excluir movimentação
+              </button>}
+            <button type="button" className={styles.outlineButton} disabled={saving}
+              onClick={() => setEntryModal(null)}>Cancelar</button>
+            <button type="submit" className={styles.primaryButton} disabled={saving||confirmMovementDelete}>
+              {saving ? "Salvando..." : entryModal.id ? "Salvar alterações" : "Registrar lançamento"}</button>
+          </div>
         </form>
       </section></div>}
   </div>;

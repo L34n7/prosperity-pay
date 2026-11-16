@@ -287,3 +287,16 @@
 .historyRow>small{font-size:.67rem;color:#adc4b2;line-height:1.65;overflow-wrap:anywhere}
 .historyRow>small>span{display:inline;overflow-wrap:anywhere}
 @media(max-width:560px){.formGrid .subscriptionToggle,.entryForm .pastChangesToggle{padding:12px 10px}}
+
+/* Exclusão definitiva de movimentações: confirmação contextual dentro do modal. */
+.deleteMovementButton{margin-right:auto}
+.movementDeleteWarning{display:grid;gap:10px;padding:15px 16px;border:1px solid #a75b55;
+  border-radius:12px;background:linear-gradient(125deg,#41241f,#2e1c1b);color:#ffe0d8}
+.movementDeleteWarning>strong{display:flex;align-items:center;gap:9px;font-size:.85rem;font-weight:800}
+.movementDeleteWarning>strong svg{flex-shrink:0;color:#ffada1}
+.movementDeleteWarning>p{margin:0;font-size:.75rem;line-height:1.65;color:#e8beb4}
+.movementDeleteWarning>p b{color:#fff0e9}
+.movementDeleteChoices{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:9px}
+.movementDeleteChoices .outlineButton{border-color:#9d605a;color:#f6d2cb}
+@media(max-width:590px){.entryForm .formActions{flex-wrap:wrap}.deleteMovementButton{width:100%;margin-right:0}
+  .movementDeleteChoices>button{flex:1;min-width:145px}.movementDeleteWarning{padding:12px}}

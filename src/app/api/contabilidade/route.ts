@@ -484,6 +484,16 @@ async function deleteRecord(request: Request) {
     if (!result.data) throw new HttpError(404, "Cadastro não encontrado.");
     return NextResponse.json({ ok: true });
   }
+  if (action === "movement") {
+    // Exclui fisicamente apenas movimentações bancárias. Compras, parcelas e
+    // assinaturas não podem ser removidas por esta ação.
+    const result=await supabase.from("finance_entries").delete()
+      .eq("id",id).eq("owner_user_id",user.id)
+      .neq("kind","expense").select("id").maybeSingle();
+    fromDb(result.error);
+    if(!result.data)throw new HttpError(404,"Movimentação não encontrada ou não pode ser excluída.");
+    return NextResponse.json({ok:true});
+  }
   if (action !== "entry" && action !== undefined)
     throw new HttpError(400, "Ação inválida.");
   const result = await supabase.from("finance_entries").delete()
